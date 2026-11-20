@@ -1,7 +1,5 @@
 import React, { useMemo, useState } from "react";
 import { Download, FileText, Search } from "lucide-react";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
@@ -10,8 +8,10 @@ import { Company, DispatchPlan, Order, OrderSchedule, Truck } from "../types";
 import { formatDate } from "../lib/serial";
 import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
-import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
+import { getFirmOptions } from "../lib/firmDisplay";
 import { exportsAllowed } from "../lib/exportPolicy";
+import { buildReportPdf, computeDispatchPlanDayRows, dispatchPlanPdfSpec, type DispatchPlanDayRow } from "../lib/reports/whatsappReports";
+import { SendReportWhatsappButton } from "../components/SendReportWhatsappButton";
 
 const localDay = (value: unknown) => {
   const date = new Date(String(value || ""));
@@ -21,19 +21,7 @@ const localDay = (value: unknown) => {
 const todayKey = () => localDay(new Date());
 const qty = (value: unknown) => Number(value || 0).toLocaleString("en-IN");
 
-type PlanRow = {
-  plan: DispatchPlan;
-  firmName: string;
-  companyName: string;
-  orderNo: string;
-  itemName: string;
-  itemKey: string;
-  truckNo: string;
-  planned: number;
-  invoiced: number;
-  cancelled: number;
-  pending: number;
-};
+type PlanRow = DispatchPlanDayRow;
 
 /**
  * Dispatch Plan for one date (Quick Access), in the Production Plan pattern:
@@ -55,38 +43,11 @@ export function DispatchPlanByDate() {
   const { resolveOrderItem } = useOrderItemCatalog();
   const allowExports = exportsAllowed();
 
-  const dayRows = useMemo<PlanRow[]>(() => {
-    const orderById = new Map(orders.map((order) => [order.id, order]));
-    const companyById = new Map(companies.map((company) => [company.id, company]));
-    const scheduleFirm = new Map(schedules.map((row) => [row.id, row.firmId]));
-    const truckById = new Map(trucks.map((truck) => [truck.id, truck]));
-    return plans
-      .filter((plan) => localDay(plan.date) === selectedDate)
-      .map((plan) => {
-        const order = orderById.get(plan.orderId);
-        const item = resolveOrderItem(order);
-        const itemName = String(item?.name || "").trim();
-        const itemErp = String(order?.erpCode || item?.erp || "").trim();
-        const firmId = String(order?.firmId || plan.orderFirmId || plan.firmId || scheduleFirm.get(plan.scheduleId) || "");
-        const planned = Number(plan.plannedQty || 0);
-        const invoiced = Number(plan.loadedQty || 0);
-        const cancelled = Number(plan.canceledQty || 0);
-        return {
-          plan,
-          firmName: getFirmDisplayNameById(firmId, firms),
-          companyName: String(companyById.get(order?.companyId as string)?.name || "").trim(),
-          orderNo: String(order?.orderNo || ""),
-          itemName: itemName && itemErp && !itemName.toLowerCase().includes(itemErp.toLowerCase()) ? `${itemName} - ${itemErp}` : itemName || itemErp,
-          itemKey: `${itemName}::${itemErp}`,
-          truckNo: String(truckById.get(String(plan.truckId || ""))?.truckNo || (plan as any).truckNo || ""),
-          planned,
-          invoiced,
-          cancelled,
-          pending: planned - invoiced - cancelled,
-          firmId,
-        } as PlanRow & { firmId: string };
-      });
-  }, [companies, firms, orders, plans, resolveOrderItem, schedules, selectedDate, trucks]);
+  // Same rows as the WhatsApp PDF the server sends for this date.
+  const dayRows = useMemo<PlanRow[]>(
+    () => computeDispatchPlanDayRows({ plans, orders, companies, schedules, trucks, firms }, resolveOrderItem, selectedDate),
+    [companies, firms, orders, plans, resolveOrderItem, schedules, selectedDate, trucks]
+  );
 
   const options = useMemo(() => {
     const unique = (values: Array<[string, string]>) => Array.from(new Map(values.filter(([value, label]) => value && label)).entries())
@@ -152,23 +113,7 @@ export function DispatchPlanByDate() {
     XLSX.writeFile(wb, `Dispatch_Plan_${selectedDate}.xlsx`);
   };
   const handlePdf = () => {
-    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("Dispatch Plan", pageWidth / 2, 12, { align: "center" });
-    doc.setFontSize(10);
-    doc.text(`Date: ${formatDate(selectedDate)}`, pageWidth / 2, 18, { align: "center" });
-    autoTable(doc, {
-      startY: 22,
-      head: [HEADERS],
-      body: [...exportRows().map((row) => row.map((cell) => typeof cell === "number" ? cell.toLocaleString("en-IN") : String(cell))), totalRow.map((cell) => typeof cell === "number" ? cell.toLocaleString("en-IN") : String(cell))],
-      styles: { fontSize: 7, cellPadding: 1.2, lineColor: [0, 0, 0], lineWidth: 0.1 },
-      headStyles: { fillColor: [49, 46, 129], textColor: 255, fontStyle: "bold" },
-      columnStyles: { 7: { halign: "right" }, 8: { halign: "right" }, 9: { halign: "right" }, 10: { halign: "right" } },
-      didParseCell: (data) => { if (data.section === "body" && data.row.index === rows.length) data.cell.styles.fontStyle = "bold"; },
-    });
-    doc.save(`Dispatch_Plan_${selectedDate}.pdf`);
+    buildReportPdf(dispatchPlanPdfSpec(rows, selectedDate)).save(`Dispatch_Plan_${selectedDate}.pdf`);
   };
 
   const LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
@@ -201,6 +146,7 @@ export function DispatchPlanByDate() {
               </button>
             </>
           ) : null}
+          <SendReportWhatsappButton report="dispatch-plan" disabled={!rows.length} buildSpec={() => (rows.length ? dispatchPlanPdfSpec(rows, selectedDate) : null)} />
         </div>
       </div>
 

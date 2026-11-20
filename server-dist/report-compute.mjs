@@ -519,6 +519,21 @@ function calculateTakeUpFactor(flute) {
   const normalized2 = flute.toUpperCase().trim().replace(/\s+/g, "");
   return takeUpFactorMap[normalized2] ?? "";
 }
+function formatDate(value) {
+  if (!value) return "-";
+  if (typeof value === "string") {
+    const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+    if (dateOnly) {
+      const [, year, month, day] = dateOnly;
+      const localDate = new Date(Number(year), Number(month) - 1, Number(day));
+      if (localDate.getFullYear() === Number(year) && localDate.getMonth() === Number(month) - 1 && localDate.getDate() === Number(day)) return `${day}-${month}-${year}`;
+      return "-";
+    }
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return `${String(date.getDate()).padStart(2, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${date.getFullYear()}`;
+}
 
 // src/lib/productionCalculations.ts
 var numberValue = (value) => {
@@ -1964,8 +1979,8 @@ function normalizeText(value) {
 function normalizeLoose(value) {
   return normalizeText(value).replace(/[^a-z0-9]+/g, "");
 }
-function getBucketForText(text4, source) {
-  const normalized2 = normalizeText(text4);
+function getBucketForText(text5, source) {
+  const normalized2 = normalizeText(text5);
   return factoryBuckets.find((bucket) => {
     if (bucket.source !== "both" && bucket.source !== source) return false;
     return bucket.keywords.some((keyword) => normalized2.includes(keyword));
@@ -2259,6 +2274,17 @@ function isCorrugationLinerComplete(processing, productionId) {
     (entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner" && isProcessingStepFull(entry)
   );
 }
+function corrugationLinerQtyByJobId(processing) {
+  const totals = /* @__PURE__ */ new Map();
+  const target = normalizeMachineName("Corrugation Liner");
+  processing.forEach((entry) => {
+    if (normalizeMachineName(entry.machineName) !== target) return;
+    const jobId = String(entry.productionId || "").trim();
+    if (!jobId) return;
+    totals.set(jobId, (totals.get(jobId) || 0) + (Number(entry.qty) || 0));
+  });
+  return totals;
+}
 
 // src/lib/samplingPlanQty.ts
 var DEFAULT_SAMPLING_PLAN_QTY_DIVISOR = 2e3;
@@ -2302,7 +2328,7 @@ function calculateSamplingPlanQty(planQty, settings) {
 var s2 = (v) => String(v ?? "").trim();
 var key3 = (v) => s2(v).toLowerCase();
 var n2 = (v) => v === "" || v == null ? "" : Number.isFinite(Number(v)) ? Number(v) : s2(v);
-var formatDate = (value) => {
+var formatDate2 = (value) => {
   const normalized2 = dateKey(value);
   return normalized2 ? `${normalized2.slice(8, 10)}-${normalized2.slice(5, 7)}-${normalized2.slice(0, 4)}` : s2(value);
 };
@@ -2429,7 +2455,7 @@ function computeQcViewRows(lists, items) {
     const requiredBgsm = Number(b?.boardGsm || 0);
     const bgsmMin = whole(requiredBgsm * (1 - bgsmTolerance / 100));
     const bgsmMax = whole(requiredBgsm * (1 + bgsmTolerance / 100));
-    return { __rowKey: s2(p.id) || `${job}|${s2(p.date)}|${erp}`, "Job No.": job, Date: formatDate(p.date), "Party Name": s2(p.companyName || b?.partyName || pr?.partyName), "Item Name": itemName, "ERP Code": erp, "Plan Quantity": planQty, "Item Status": getQcProductionStatus(p, getProductionActualPaperUsed(p, materialUsageMap), hasProductionCorrugatedSheetUsage(p, corrugatedSheetUsageMap), processingByProductionId.get(s2(p.id)) || []), Artwork: s2(item?.artwork), Spec: s2(item?.spec), "File No.": s2(qcUpdate?.fileNo), "Index No": s2(qcUpdate?.indexNo), "Sample Zone No": s2(qcUpdate?.zoneNo), "Sample No.": s2(qcUpdate?.sampleNo), "Block Location": s2(block?.blockLocation), "Block No.": s2(block?.blockNo), "Sample Location": s2(qcUpdate?.location), "Sample No. (Control)": s2(control?.sampleNo), "Boardline AUTO-CORRECTION Message": [b?.systemAutoCorrection1, b?.systemAutoCorrection2, b?.systemAutoCorrection3, b?.systemAutoCorrection4, b?.systemAutoCorrection5].filter(Boolean).join(" | "), "Previous Customer Complaint": s2(b?.previousCustomerComplaintWarning || pr?.previousCustomerComplaintWarning), "PDI RESULT": pdiResult, "Boardline Production": n2(processingQuantity2(p, job, "Corrugation Liner")), "Printing Production": n2(processingQuantity2(p, job, "Printing")), "Loaded Quantity": n2((loadingByJob.get(p.id) || []).reduce((total, record) => total + record.qty, 0)), Length: n2(p.length || b?.length || pr?.lengthId), Width: n2(p.breadth || b?.width || pr?.widthId), Height: n2(p.height || b?.heightOd || pr?.heightId), "L-OD": n2(b?.length), "W-OD": n2(b?.width), "H-OD": n2(b?.heightOd), FLAP: n2(b?.flap), Ply: n2(b?.ply), "No. Of parts": s2(b?.part), "SAMPLING PLAN QTY": calculateSamplingPlanQty(planQty, settings[0]), "Required Size": s2(b?.standard) || formatFlapHeightFlap(b?.flap, b?.heightOd, b?.flap) || s2(pr?.standardBoxSize), "Check 1": mappedChecks.checks[0], "Check 2": mappedChecks.checks[1], "Check 3": mappedChecks.checks[2], "Check 4": mappedChecks.checks[3], "Required Cutting Size": whole(b?.cuttingSizeRequired), "Cutting Check 1": mappedChecks.cutting[0], "Cutting Check 2": mappedChecks.cutting[1], "Cutting Check 3": mappedChecks.cutting[2], "Cutting Check 4": mappedChecks.cutting[3], "Required B.GSM": whole(b?.boardGsm), "BGSM MIN": bgsmMin, "BGSM MAX": bgsmMax, "GSM Check 1": bgsmMin, "GSM Check 2": bgsmMax, "GSM Check 3": bgsmMin, "GSM Check 4": bgsmMax, "PLY": whole(b?.ply), "Flute Check": s2(b?.typeOfFlute), "Moisture Check": whole(b?.moisture), "Board Thickness Achieved": whole(b?.boardThickness || pr?.boardThickness), "BS Achieved": whole(b?.bsAchieved || pr?.bsAchieved), "Board Weight Achieved (Grams)": whole(b?.sheetWeightGrams || pr?.boxWeightGrams), "QC Remarks": s2(b?.boardlineRemarks || pr?.column40) };
+    return { __rowKey: s2(p.id) || `${job}|${s2(p.date)}|${erp}`, "Job No.": job, Date: formatDate2(p.date), "Party Name": s2(p.companyName || b?.partyName || pr?.partyName), "Item Name": itemName, "ERP Code": erp, "Plan Quantity": planQty, "Item Status": getQcProductionStatus(p, getProductionActualPaperUsed(p, materialUsageMap), hasProductionCorrugatedSheetUsage(p, corrugatedSheetUsageMap), processingByProductionId.get(s2(p.id)) || []), Artwork: s2(item?.artwork), Spec: s2(item?.spec), "File No.": s2(qcUpdate?.fileNo), "Index No": s2(qcUpdate?.indexNo), "Sample Zone No": s2(qcUpdate?.zoneNo), "Sample No.": s2(qcUpdate?.sampleNo), "Block Location": s2(block?.blockLocation), "Block No.": s2(block?.blockNo), "Sample Location": s2(qcUpdate?.location), "Sample No. (Control)": s2(control?.sampleNo), "Boardline AUTO-CORRECTION Message": [b?.systemAutoCorrection1, b?.systemAutoCorrection2, b?.systemAutoCorrection3, b?.systemAutoCorrection4, b?.systemAutoCorrection5].filter(Boolean).join(" | "), "Previous Customer Complaint": s2(b?.previousCustomerComplaintWarning || pr?.previousCustomerComplaintWarning), "PDI RESULT": pdiResult, "Boardline Production": n2(processingQuantity2(p, job, "Corrugation Liner")), "Printing Production": n2(processingQuantity2(p, job, "Printing")), "Loaded Quantity": n2((loadingByJob.get(p.id) || []).reduce((total, record) => total + record.qty, 0)), Length: n2(p.length || b?.length || pr?.lengthId), Width: n2(p.breadth || b?.width || pr?.widthId), Height: n2(p.height || b?.heightOd || pr?.heightId), "L-OD": n2(b?.length), "W-OD": n2(b?.width), "H-OD": n2(b?.heightOd), FLAP: n2(b?.flap), Ply: n2(b?.ply), "No. Of parts": s2(b?.part), "SAMPLING PLAN QTY": calculateSamplingPlanQty(planQty, settings[0]), "Required Size": s2(b?.standard) || formatFlapHeightFlap(b?.flap, b?.heightOd, b?.flap) || s2(pr?.standardBoxSize), "Check 1": mappedChecks.checks[0], "Check 2": mappedChecks.checks[1], "Check 3": mappedChecks.checks[2], "Check 4": mappedChecks.checks[3], "Required Cutting Size": whole(b?.cuttingSizeRequired), "Cutting Check 1": mappedChecks.cutting[0], "Cutting Check 2": mappedChecks.cutting[1], "Cutting Check 3": mappedChecks.cutting[2], "Cutting Check 4": mappedChecks.cutting[3], "Required B.GSM": whole(b?.boardGsm), "BGSM MIN": bgsmMin, "BGSM MAX": bgsmMax, "GSM Check 1": bgsmMin, "GSM Check 2": bgsmMax, "GSM Check 3": bgsmMin, "GSM Check 4": bgsmMax, "PLY": whole(b?.ply), "Flute Check": s2(b?.typeOfFlute), "Moisture Check": whole(b?.moisture), "Board Thickness Achieved": whole(b?.boardThickness || pr?.boardThickness), "BS Achieved": whole(b?.bsAchieved || pr?.bsAchieved), "Board Weight Achieved (Grams)": whole(b?.sheetWeightGrams || pr?.boxWeightGrams), "QC Remarks": s2(b?.boardlineRemarks || pr?.column40) };
   });
 }
 
@@ -2451,7 +2477,7 @@ var firstValue = (...values) => {
 };
 var latest = (rows2, timestamp) => [...rows2].sort((left, right) => text3(timestamp(left)).localeCompare(text3(timestamp(right)))).at(-1);
 var dateText = (value) => text3(value).slice(0, 19);
-var formatDate2 = (value) => text3(value).slice(0, 10);
+var formatDate3 = (value) => text3(value).slice(0, 10);
 var normalizedJob = (value) => key4(value).replace(/^0+(?=\d)/, "");
 var sameJob = (left, right) => normalizedJob(left) === normalizedJob(right);
 var reelIdentity = (line) => {
@@ -2623,7 +2649,7 @@ function buildTraceabilityRecord(production, input) {
     paperIssue,
     planning: {
       planQuantity,
-      plannedDate: formatDate2(plannedDate),
+      plannedDate: formatDate3(plannedDate),
       jobWeightKg: firstValue(production.totalWeightOfSet, production.totalPaperWeight),
       realizationPerKg: firstValue(production.realizationPerKg),
       customerSpecification,
@@ -2690,7 +2716,7 @@ function buildTraceabilityRecord(production, input) {
     dispatch: {
       plannedQuantity: firstValue(latestPlan?.plannedQty, planQuantity),
       dispatchQuantity: dispatchQuantity || firstValue(latestPlan?.loadedQty),
-      dispatchDate: formatDate2(firstText(latestSlip?.date, invoice?.date)),
+      dispatchDate: formatDate3(firstText(latestSlip?.date, invoice?.date)),
       invoiceNo: firstText(invoice?.invoiceNo, latestSlip?.invoiceNo),
       rate: firstValue(invoiceLine?.rate, production.rate, order?.rate),
       saleValue: firstValue(invoiceLine?.amount, order?.orderAmount),
@@ -2792,6 +2818,824 @@ function buildTraceabilitySearchIndex(input) {
 function buildTraceabilityRecordById(input, productionId) {
   const production = rows(input.productions).find((row) => Boolean(row && text3(row.id)) && row.id === productionId);
   return production ? buildTraceabilityRecord(production, input) : null;
+}
+
+// src/lib/reports/whatsappReports.ts
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+
+// src/lib/fluteBatch.ts
+var DEFAULT_FLUTE_BATCHES = {
+  A: "1",
+  B: "2",
+  "B+C": "3",
+  C: "4",
+  E: "5"
+};
+function normalizeFlute(value) {
+  return String(value ?? "").toUpperCase().trim().replace(/\s+/g, "");
+}
+function buildFluteBatchMap(masters) {
+  const rows2 = (masters || []).filter((row) => normalizeFlute(row.flute) && String(row.batchNo ?? "").trim() !== "");
+  if (rows2.length === 0) return { ...DEFAULT_FLUTE_BATCHES };
+  const map = {};
+  rows2.forEach((row) => {
+    map[normalizeFlute(row.flute)] = String(row.batchNo).trim();
+  });
+  return map;
+}
+function resolveFluteBatch(flute, map, stored) {
+  const fromMaster = map[normalizeFlute(flute)];
+  if (fromMaster) return fromMaster;
+  return String(stored ?? "").trim();
+}
+
+// src/lib/serial.ts
+function formatDate4(dateStr) {
+  return formatDate(dateStr);
+}
+
+// src/lib/productionPlanSorting.ts
+function toNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+function normalizeText2(value) {
+  return String(value || "").trim();
+}
+function getCompanyName(row) {
+  return normalizeText2(row.productionPlanCompanyName || row.companyName);
+}
+function getFluteBatch(row) {
+  return normalizeText2(row.fluteBatches);
+}
+function compareFluteBatch(a, b) {
+  if (!a || !b) return a === b ? 0 : a ? -1 : 1;
+  const numA = Number(a);
+  const numB = Number(b);
+  if (Number.isFinite(numA) && Number.isFinite(numB) && numA !== numB) return numA - numB;
+  return a.localeCompare(b, void 0, { sensitivity: "base", numeric: true });
+}
+function getReel(row) {
+  return toNumber(row.reelActualWithTrimming);
+}
+function getJobNumber(row) {
+  const text5 = normalizeText2(row.transactionNo || row.jobCardNo);
+  const match = text5.match(/(\d+)\s*$/);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+function sortByCompanyThenReelDesc(a, b) {
+  return getCompanyName(a).localeCompare(getCompanyName(b), void 0, { sensitivity: "base" }) || getReel(b) - getReel(a);
+}
+function sortByReelDesc(a, b) {
+  return getReel(b) - getReel(a);
+}
+function mergeSmallRowsNearClosestReel(bigRows, smallRows) {
+  const merged = [...bigRows];
+  if (merged.length === 0) return [...smallRows];
+  smallRows.forEach((smallRow) => {
+    const smallReel = getReel(smallRow);
+    let closestBigRow = bigRows[0];
+    let closestDifference = Number.POSITIVE_INFINITY;
+    bigRows.forEach((row) => {
+      const difference = Math.abs(getReel(row) - smallReel);
+      if (difference < closestDifference) {
+        closestDifference = difference;
+        closestBigRow = row;
+      }
+    });
+    const matchedIndex = merged.indexOf(closestBigRow);
+    const insertAfter = smallReel <= getReel(closestBigRow);
+    merged.splice(Math.max(0, matchedIndex + (insertAfter ? 1 : 0)), 0, smallRow);
+  });
+  return merged;
+}
+function groupMergedRowsByCompany(rows2) {
+  const grouped = /* @__PURE__ */ new Map();
+  rows2.forEach((row) => {
+    const companyName = getCompanyName(row);
+    const key5 = companyName.toLowerCase();
+    grouped.set(key5, [...grouped.get(key5) || [], row]);
+  });
+  return Array.from(grouped.values()).sort((a, b) => {
+    const maxA = Math.max(...a.map(getReel));
+    const maxB = Math.max(...b.map(getReel));
+    return maxB - maxA || getCompanyName(a[0]).localeCompare(getCompanyName(b[0]), void 0, { sensitivity: "base" });
+  }).flat();
+}
+function sortProductionPlanRows(rows2) {
+  const inJobOrder = [...rows2].sort((a, b) => getJobNumber(a) - getJobNumber(b));
+  const groupedByFlute = /* @__PURE__ */ new Map();
+  inJobOrder.forEach((row) => {
+    const key5 = getFluteBatch(row).toLowerCase();
+    groupedByFlute.set(key5, [...groupedByFlute.get(key5) || [], row]);
+  });
+  return Array.from(groupedByFlute.values()).sort((a, b) => compareFluteBatch(getFluteBatch(a[0]), getFluteBatch(b[0]))).flatMap((batchRows) => {
+    const bigRows = batchRows.filter((row) => toNumber(row.plannedProductionInMeter) > 200).sort(sortByCompanyThenReelDesc);
+    const smallRows = batchRows.filter((row) => toNumber(row.plannedProductionInMeter) <= 200).sort(sortByReelDesc);
+    const mergedRows = mergeSmallRowsNearClosestReel(bigRows, smallRows);
+    return groupMergedRowsByCompany(mergedRows);
+  });
+}
+
+// src/lib/realizationTargets.ts
+var MONTH_OPTIONS = ["All", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function parseAppDate2(value) {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  const onlyDate = trimmed.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(onlyDate)) {
+    const [year, month, day] = onlyDate.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+function toDateInput(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+function normalizeDate2(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+function fyRangeToDates(fy, month) {
+  const match = String(fy || "").trim().match(/^(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const startYear = 2e3 + Number(match[1]);
+  const monthIndex = MONTH_OPTIONS.indexOf(month);
+  if (monthIndex > 0) {
+    const calendarYear = monthIndex >= 4 ? startYear : startYear + 1;
+    const start = new Date(calendarYear, monthIndex - 1, 1);
+    const end = new Date(calendarYear, monthIndex, 0);
+    return { dateFrom: toDateInput(start), dateTo: toDateInput(end) };
+  }
+  return {
+    dateFrom: toDateInput(new Date(startYear, 3, 1)),
+    dateTo: toDateInput(new Date(startYear + 1, 2, 31))
+  };
+}
+function parseRealizationTargets(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((row) => {
+      const value = Number(row?.value || 0);
+      const directDateFrom = String(row?.dateFrom || "").trim();
+      const directDateTo = String(row?.dateTo || "").trim();
+      const parsedDateFrom = parseAppDate2(directDateFrom);
+      const parsedDateTo = parseAppDate2(directDateTo);
+      if (parsedDateFrom && parsedDateTo) {
+        return {
+          dateFrom: toDateInput(parsedDateFrom),
+          dateTo: toDateInput(parsedDateTo),
+          value
+        };
+      }
+      const fy = String((row?.fy ?? row?.year) || "").trim();
+      const month = String(row?.month || "All").trim() || "All";
+      const legacyRange = fyRangeToDates(fy, MONTH_OPTIONS.includes(month) ? month : "All");
+      if (!legacyRange) return null;
+      return {
+        ...legacyRange,
+        value,
+        fy,
+        month: MONTH_OPTIONS.includes(month) ? month : "All"
+      };
+    }).filter((row) => Boolean(row) && Number.isFinite(row.value));
+  } catch {
+    return [];
+  }
+}
+function findRealizationTargetForDate(targets, value) {
+  const date = parseAppDate2(value);
+  if (!date) return null;
+  const dateValue = normalizeDate2(date).getTime();
+  return targets.reduce((selected, row) => {
+    const from = parseAppDate2(row.dateFrom);
+    const to = parseAppDate2(row.dateTo);
+    if (!from || !to) return selected;
+    const fromValue = normalizeDate2(from).getTime();
+    const toValue = normalizeDate2(to).getTime();
+    if (dateValue < fromValue || dateValue > toValue) return selected;
+    if (!selected) return row;
+    const selectedFrom = parseAppDate2(selected.dateFrom);
+    const selectedFromValue = selectedFrom ? normalizeDate2(selectedFrom).getTime() : Number.NEGATIVE_INFINITY;
+    return fromValue >= selectedFromValue ? row : selected;
+  }, null);
+}
+
+// src/lib/productionPlanCompany.ts
+var text4 = (value) => String(value ?? "").trim();
+function resolveProductionPlanCompany(production, schedule, order, companies) {
+  const company = order?.companyId ? companies.find((entry) => String(entry.id) === String(order.companyId)) : void 0;
+  const sources = [
+    { companyName: company?.name },
+    production,
+    schedule || {},
+    order || {}
+  ];
+  const name = sources.map((source) => text4(source.companyName)).find(Boolean) || text4(production.firmName) || text4(schedule?.firmName) || text4(order?.firmName) || "-";
+  return { name, companyId: text4(order?.companyId) };
+}
+
+// src/lib/productionPlanStatus.ts
+function normalizedText(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+function normalizeProductionPlanJobNumber(value) {
+  return String(value ?? "").replace(/,/g, "").replace(/\s+/g, "").trim();
+}
+function numericJobNumber(value) {
+  const normalized2 = normalizeProductionPlanJobNumber(value);
+  const match = normalized2.match(/(\d+)$/);
+  return match ? Number(match[1]) : null;
+}
+function buildSampleJobNumbers(requests) {
+  const set = /* @__PURE__ */ new Set();
+  requests.forEach((row) => {
+    const job = normalizeProductionPlanJobNumber(row.jobCardNo);
+    if (!job) return;
+    set.add(job);
+    const number = numericJobNumber(job);
+    if (number !== null) set.add(String(number));
+  });
+  return set;
+}
+function deriveProductionPlanStatuses(rows2, sampleJobNumbers, minimumRealization) {
+  return rows2.map((row, index) => {
+    const previous = rows2[index - 1];
+    const currentJob = normalizeProductionPlanJobNumber(row.transactionNo || row.jobCardNo);
+    const previousJob = numericJobNumber(previous?.transactionNo || previous?.jobCardNo);
+    const consecutiveSameItem = Boolean(
+      previous && numericJobNumber(currentJob) !== null && previousJob !== null && numericJobNumber(currentJob) === previousJob + 1 && normalizedText(row.itemName) === normalizedText(previous.itemName)
+    );
+    const currentNumber = numericJobNumber(currentJob);
+    const inSampleList = sampleJobNumbers.has(currentJob) || currentNumber !== null && sampleJobNumbers.has(String(currentNumber));
+    const isSample = inSampleList || consecutiveSameItem;
+    const realization = Number(row.realizationPerKg);
+    const shouldHighlight = !isSample && minimumRealization !== null && Number.isFinite(realization) && realization < minimumRealization;
+    return { ...row, isSample, shouldHighlight };
+  });
+}
+
+// src/lib/firmDisplay.ts
+var LEGAL_SUFFIXES = /* @__PURE__ */ new Set(["LLP", "LTD", "LIMITED", "PRIVATE", "PVT", "COMPANY"]);
+function generateFirmShortName(firmName) {
+  const words = String(firmName || "").trim().split(/[^A-Za-z0-9]+/).filter(Boolean).filter((word) => !LEGAL_SUFFIXES.has(word.toUpperCase()));
+  const initials = words.map((word) => word[0]).join("").toUpperCase();
+  return (initials || String(firmName || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 4)).toUpperCase();
+}
+function getFirmDisplayName(firm) {
+  if (!firm) return "Unknown firm";
+  return String(firm.shortName || generateFirmShortName(firm.firmName) || "Unknown firm").trim();
+}
+function getFirmDisplayNameById(firmId, firms, _legacyTransactionName) {
+  const firm = firms.find((item) => String(item.id) === String(firmId || ""));
+  if (firm) return getFirmDisplayName(firm);
+  return String(firmId || "").trim() ? "Unknown firm" : "Unassigned";
+}
+
+// src/lib/reports/whatsappReports.ts
+var WHATSAPP_REPORT_MENUS = {
+  "production-plan": "/production/plan",
+  "dispatch-plan": "/dispatch/plan",
+  "pending-loading": "/loading/pending"
+};
+var whatsappReportKeyForMenu = (menu) => Object.keys(WHATSAPP_REPORT_MENUS).find((key5) => WHATSAPP_REPORT_MENUS[key5] === menu);
+var DEFAULT_WHATSAPP_REPORT_MESSAGES = {
+  "production-plan": `\u{1F3ED} *PRODUCTION PLAN*
+
+*Plan Date:* {{date}}
+*Firm:* {{firm}}
+*Jobs:* {{jobs}}
+*Total Plan Qty:* {{totalQty}}
+*Total Paper Weight:* {{totalPaperWeight}} Kg
+*Total Value:* \u20B9{{totalValue}}
+
+\u{1F4C4} Production Plan PDF attached.`,
+  "dispatch-plan": `\u{1F69A} *DISPATCH PLAN*
+
+*Plan Date:* {{date}}
+*Plans:* {{plans}}
+*Planned Qty:* {{planned}}
+*Invoiced Qty:* {{invoiced}}
+*Pending Qty:* {{pending}}
+
+\u{1F4C4} Dispatch Plan PDF attached.`,
+  "pending-loading": `\u{1F4E6} *PENDING LOADING*
+
+*As on:* {{dateTime}}
+*Pending Plans:* {{plans}}
+*Planned Qty:* {{planned}}
+*Loaded Qty:* {{loaded}}
+*Pending Qty:* {{pending}}
+
+\u{1F4C4} Pending Loading PDF attached.`
+};
+function renderWhatsappReportMessage(template, values) {
+  return String(template || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key5) => values[key5] ?? "");
+}
+var qtyText = (value) => Number(value || 0).toLocaleString("en-IN");
+var money2 = (value) => value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+var s3 = (value) => String(value ?? "").trim();
+var localDay = (value) => {
+  const date = new Date(s3(value));
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).slice(0, 10);
+};
+function computeProductionPlanRows(lists, date, filters = {}) {
+  const { productions, schedules, orders, companies, sampleRequests, settings, fluteMasters, npdItems } = lists;
+  const fluteBatchMap = buildFluteBatchMap(fluteMasters);
+  const sampleJobNumbers = buildSampleJobNumbers(sampleRequests);
+  const target = findRealizationTargetForDate(parseRealizationTargets(settings[0]?.realizationPerKgTargets), date);
+  const requiredRealization = target ? Number(target.value || 0) * 0.98 : null;
+  const erpLeastGsm = /* @__PURE__ */ new Map();
+  productions.forEach((p) => {
+    if (p.status === "Cancelled" || p.cancelTimestamp) return;
+    const erp = s3(p.erpCode);
+    const gsm = Number(p.gsm || 0);
+    if (erp && gsm > 0 && (!erpLeastGsm.has(erp) || gsm < erpLeastGsm.get(erp))) erpLeastGsm.set(erp, gsm);
+  });
+  const itemById = new Map(npdItems.map((item) => [s3(item.id), item]));
+  const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
+  const orderById = new Map(orders.map((order) => [order.id, order]));
+  const rows2 = productions.filter((p) => (s3(p.date) ? localDay(p.date) || s3(p.date) : "") === date).map((production) => {
+    const schedule = scheduleById.get(production.scheduleId);
+    const order = schedule ? orderById.get(schedule.orderId) : void 0;
+    const company = resolveProductionPlanCompany(production, schedule, order, companies);
+    const item = itemById.get(s3(production.itemId));
+    return { production, company, item };
+  }).filter(({ production, company, item }) => {
+    if (filters.companies?.length && !filters.companies.some((selected) => selected === company.companyId || selected === company.name)) return false;
+    const itemKey = item?.id || `${item?.name || ""}::${production.erpCode || ""}`;
+    return !filters.item || itemKey === filters.item;
+  }).map(({ production, company, item }) => ({
+    ...production,
+    leastGsm: erpLeastGsm.get(s3(production.erpCode)) ?? production.leastGsm,
+    // Batch comes from the Flute Master, so a master change re-orders the plan.
+    fluteBatches: resolveFluteBatch(production.flute, fluteBatchMap, production.fluteBatches),
+    productionPlanCompanyName: company.name,
+    productionPlanCompanyId: company.companyId,
+    itemName: item?.name || ""
+  }));
+  return deriveProductionPlanStatuses(sortProductionPlanRows(rows2), sampleJobNumbers, requiredRealization);
+}
+function productionPlanPdfSpec(rows2, date, firmLabel = "") {
+  const pdfNumber = (value) => {
+    if (value === "" || value === null || value === void 0) return "";
+    const num = Number(value);
+    if (!Number.isFinite(num)) return String(value);
+    const rounded = Math.round(num * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+  };
+  const jobNumber = (p) => {
+    const text5 = s3(p.transactionNo || p.jobCardNo);
+    return text5.match(/(\d+)\s*$/)?.[1] || text5 || "-";
+  };
+  let totalValue = 0;
+  let totalPaperWeight = 0;
+  let totalQty = 0;
+  const highlightRows = [];
+  const body = rows2.map((p, index) => {
+    const value = (Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0);
+    totalValue += value;
+    totalPaperWeight += Number(p.totalPaperWeight || 0) || 0;
+    totalQty += Number(p.qty || 0) || 0;
+    if (p.shouldHighlight) highlightRows.push(index);
+    return [
+      jobNumber(p),
+      s3(p.productionPlanCompanyName),
+      s3(p.itemName),
+      s3(p.erpCode),
+      pdfNumber(p.ups),
+      pdfNumber(p.qty),
+      pdfNumber(p.reelAsPerCalc),
+      pdfNumber(p.reelActualWithTrimming),
+      pdfNumber(p.cuttingWithTrimming),
+      pdfNumber(p.ply),
+      s3(p.flute),
+      pdfNumber(p.l1),
+      pdfNumber(p.f1),
+      pdfNumber(p.l2),
+      pdfNumber(p.f2),
+      pdfNumber(p.l3),
+      pdfNumber(p.gsm),
+      pdfNumber(p.totalPaperWeight),
+      pdfNumber(p.plannedProductionInMeter),
+      pdfNumber(p.realizationPerKg),
+      pdfNumber(p.sheetWeight),
+      pdfNumber(p.rate),
+      value.toFixed(2),
+      p.isSample ? "YES" : "",
+      s3(p.remarks)
+    ];
+  });
+  return {
+    report: "production-plan",
+    title: "Production Plan",
+    subtitle: `Date: ${formatDate4(date)}${firmLabel ? `   Firm: ${firmLabel}` : ""}`,
+    head: [
+      "Job\nNo",
+      "Company Name",
+      "Item Name",
+      "ERP\nCODE",
+      "UPS",
+      "Plan\nQTY",
+      "Reel As\nPer\nCalculation",
+      "REEL\nActual\nwith\nTRIMMING",
+      "CUTTING\nwith\nTRIMMING",
+      "PLY",
+      "FLUTE",
+      "L1",
+      "F1",
+      "L2",
+      "F2",
+      "L3",
+      "GSM",
+      "TOTAL\nPaper\nWEIGHT",
+      "Planned\nProduction\nin Meter",
+      "REALIZATION\nPER KG",
+      "SHEET\nWEIGHT",
+      "Rate",
+      "Value",
+      "Sample",
+      "Remark"
+    ],
+    body,
+    // TOTAL row: Total Paper Weight (column 18) and Value.
+    foot: ["TOTAL", ...Array(16).fill(""), totalPaperWeight.toFixed(2), ...Array(4).fill(""), totalValue.toFixed(2), "", ""],
+    highlightRows,
+    values: {
+      date: formatDate4(date),
+      firm: firmLabel || "All firms",
+      jobs: String(rows2.length),
+      totalQty: qtyText(Math.round(totalQty)),
+      totalPaperWeight: money2(totalPaperWeight),
+      totalValue: money2(totalValue)
+    },
+    fileName: `Production_Plan_${date}.pdf`
+  };
+}
+function computeDispatchPlanDayRows(lists, resolveOrderItem, date) {
+  const orderById = new Map(lists.orders.map((order) => [order.id, order]));
+  const companyById = new Map(lists.companies.map((company) => [company.id, company]));
+  const scheduleFirm = new Map(lists.schedules.map((row) => [row.id, row.firmId]));
+  const truckById = new Map(lists.trucks.map((truck) => [truck.id, truck]));
+  return lists.plans.filter((plan) => localDay(plan.date) === date).map((plan) => {
+    const order = orderById.get(plan.orderId);
+    const item = resolveOrderItem(order);
+    const itemName = s3(item?.name);
+    const itemErp = s3(order?.erpCode || item?.erp);
+    const firmId = String(order?.firmId || plan.orderFirmId || plan.firmId || scheduleFirm.get(plan.scheduleId) || "");
+    const planned = Number(plan.plannedQty || 0);
+    const invoiced = Number(plan.loadedQty || 0);
+    const cancelled = Number(plan.canceledQty || 0);
+    return {
+      plan,
+      firmId,
+      firmName: getFirmDisplayNameById(firmId, lists.firms),
+      companyName: s3(companyById.get(order?.companyId)?.name),
+      orderNo: String(order?.orderNo || ""),
+      itemName: itemName && itemErp && !itemName.toLowerCase().includes(itemErp.toLowerCase()) ? `${itemName} - ${itemErp}` : itemName || itemErp,
+      itemKey: `${itemName}::${itemErp}`,
+      truckNo: String(truckById.get(String(plan.truckId || ""))?.truckNo || plan.truckNo || ""),
+      planned,
+      invoiced,
+      cancelled,
+      pending: planned - invoiced - cancelled
+    };
+  });
+}
+var sortDispatchPlanDayRows = (rows2) => [...rows2].sort((a, b) => s3(a.plan.planNo).localeCompare(s3(b.plan.planNo), void 0, { numeric: true, sensitivity: "base" }));
+var DISPATCH_PLAN_HEADERS = ["Sr.", "Plan No", "Firm", "Company", "Order No", "Item", "Truck", "Planned", "Invoice Qty", "Cancl", "Pending", "Status"];
+function dispatchPlanPdfSpec(rows2, date) {
+  const totals = rows2.reduce((sum, row) => ({
+    planned: sum.planned + row.planned,
+    invoiced: sum.invoiced + row.invoiced,
+    cancelled: sum.cancelled + row.cancelled,
+    pending: sum.pending + row.pending
+  }), { planned: 0, invoiced: 0, cancelled: 0, pending: 0 });
+  return {
+    report: "dispatch-plan",
+    title: "Dispatch Plan",
+    subtitle: `Date: ${formatDate4(date)}`,
+    head: DISPATCH_PLAN_HEADERS,
+    body: rows2.map((row, index) => [
+      String(index + 1),
+      s3(row.plan.planNo),
+      row.firmName,
+      row.companyName,
+      row.orderNo,
+      row.itemName,
+      row.truckNo,
+      qtyText(row.planned),
+      qtyText(row.invoiced),
+      qtyText(row.cancelled),
+      qtyText(row.pending),
+      s3(row.plan.status)
+    ]),
+    foot: ["TOTAL", "", "", "", "", "", "", qtyText(totals.planned), qtyText(totals.invoiced), qtyText(totals.cancelled), qtyText(totals.pending), ""],
+    values: {
+      date: formatDate4(date),
+      plans: String(rows2.length),
+      planned: qtyText(totals.planned),
+      invoiced: qtyText(totals.invoiced),
+      cancelled: qtyText(totals.cancelled),
+      pending: qtyText(totals.pending)
+    },
+    fileName: `Dispatch_Plan_${date}.pdf`
+  };
+}
+function pendingLoadingRowsFromProjections(projections, firms) {
+  return projections.map((projection) => ({
+    date: s3(projection.plan?.date),
+    planNo: s3(projection.plan?.planNo),
+    orderNo: s3(projection.order?.orderNo) || "N/A",
+    firmName: getFirmDisplayNameById(projection.firmId, firms),
+    companyName: s3(projection.company?.name) || "Company unavailable",
+    itemName: s3(projection.item?.name) || "Item unavailable",
+    itemSource: s3(projection.itemSource),
+    planned: Number(projection.plan?.plannedQty || 0),
+    loaded: Number(projection.plan?.loadedQty || 0),
+    pending: Number(projection.pendingQty || 0)
+  })).sort((a, b) => b.date.slice(0, 10).localeCompare(a.date.slice(0, 10)) || a.planNo.localeCompare(b.planNo, void 0, { numeric: true }));
+}
+var shortDocNo = (value) => value.match(/(\d{2}-\d{2}\/[^/]+)$/)?.[1] || value || "-";
+function pendingLoadingPdfSpec(rows2, asOf) {
+  const totals = rows2.reduce((sum, row) => ({ planned: sum.planned + row.planned, loaded: sum.loaded + row.loaded, pending: sum.pending + row.pending }), { planned: 0, loaded: 0, pending: 0 });
+  const dateTime = asOf.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
+  const stamp = asOf.toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).slice(0, 16).replace(/[: ]/g, "-");
+  return {
+    report: "pending-loading",
+    title: "Pending Loading",
+    subtitle: `As on: ${dateTime}`,
+    head: ["Sr.", "Plan Date", "Plan No", "Order No", "Firm", "Company", "Item", "Source", "Planned", "Loaded", "Pending"],
+    body: rows2.map((row, index) => [
+      String(index + 1),
+      formatDate4(row.date),
+      shortDocNo(row.planNo),
+      shortDocNo(row.orderNo),
+      row.firmName,
+      row.companyName,
+      row.itemName,
+      row.itemSource,
+      qtyText(row.planned),
+      qtyText(row.loaded),
+      qtyText(row.pending)
+    ]),
+    foot: ["TOTAL", "", "", "", "", "", "", "", qtyText(totals.planned), qtyText(totals.loaded), qtyText(totals.pending)],
+    values: {
+      dateTime,
+      plans: String(rows2.length),
+      planned: qtyText(totals.planned),
+      loaded: qtyText(totals.loaded),
+      pending: qtyText(totals.pending)
+    },
+    fileName: `Pending_Loading_${stamp}.pdf`
+  };
+}
+function buildReportPdf(spec) {
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const isProductionPlan = spec.report === "production-plan";
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text(spec.title, pageWidth / 2, 12, { align: "center" });
+  doc.setFontSize(isProductionPlan ? 8 : 10);
+  doc.text(spec.subtitle, pageWidth / 2, 18, { align: "center" });
+  const highlight = new Set(spec.highlightRows || []);
+  if (isProductionPlan) {
+    autoTable(doc, {
+      head: [spec.head],
+      body: spec.body,
+      foot: spec.foot ? [spec.foot] : void 0,
+      startY: 22,
+      margin: { left: 6, right: 6 },
+      theme: "grid",
+      showFoot: "lastPage",
+      rowPageBreak: "avoid",
+      styles: { font: "helvetica", fontSize: 5.5, cellPadding: 0.8, halign: "center", valign: "middle", textColor: 0, lineColor: 0, lineWidth: 0.15, overflow: "linebreak" },
+      headStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold", fontSize: 5.5 },
+      footStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold" },
+      columnStyles: {
+        0: { cellWidth: 9 },
+        1: { cellWidth: 28 },
+        2: { cellWidth: 34 },
+        3: { cellWidth: 11 },
+        19: { cellWidth: 16 },
+        22: { cellWidth: 13 },
+        23: { cellWidth: 9 },
+        24: { cellWidth: 26 }
+      },
+      didParseCell: (data) => {
+        if (data.section === "foot" && data.column.index === 0) data.cell.styles.halign = "left";
+        if (data.section === "body" && highlight.has(data.row.index)) data.cell.styles.fillColor = [255, 153, 153];
+      }
+    });
+    return doc;
+  }
+  const qtyColumns = spec.report === "dispatch-plan" ? [7, 8, 9, 10] : [8, 9, 10];
+  autoTable(doc, {
+    startY: 22,
+    head: [spec.head],
+    // Total as the last body row in bold (as the Dispatch Plan PDF had it).
+    body: spec.foot ? [...spec.body, spec.foot] : spec.body,
+    styles: { fontSize: 7, cellPadding: 1.2, lineColor: [0, 0, 0], lineWidth: 0.1 },
+    headStyles: { fillColor: [49, 46, 129], textColor: 255, fontStyle: "bold" },
+    columnStyles: Object.fromEntries(qtyColumns.map((column) => [column, { halign: "right" }])),
+    didParseCell: (data) => {
+      if (data.section === "body" && spec.foot && data.row.index === spec.body.length) data.cell.styles.fontStyle = "bold";
+    }
+  });
+  return doc;
+}
+
+// src/lib/pendingLoadingEligibility.ts
+var normalizeKey = (value) => String(value ?? "").trim().toLowerCase();
+var normalizeText3 = (value) => String(value ?? "").trim();
+function firstText2(...values) {
+  for (const value of values) {
+    const text5 = normalizeText3(value);
+    if (text5) return text5;
+  }
+  return "";
+}
+function addKey(keys, value) {
+  const key5 = normalizeKey(value);
+  if (key5) keys.add(key5);
+}
+function itemKeys(item, order) {
+  const keys = /* @__PURE__ */ new Set();
+  const raw = item?.raw || {};
+  [
+    item?.id,
+    item?.erp,
+    raw.id,
+    raw.itemId,
+    raw.npdId,
+    raw.phpId,
+    raw.plateId,
+    raw.materialId,
+    raw.erp,
+    raw.erpCode,
+    raw.erpItemCode,
+    raw.masterItemNameErpCode,
+    order?.itemId,
+    order?.npdId,
+    order?.erpCode
+  ].forEach((value) => addKey(keys, value));
+  return keys;
+}
+function productionItemKeys(production) {
+  const keys = /* @__PURE__ */ new Set();
+  [production.itemId, production.npdId, production.erpCode, production.masterErp].forEach((value) => addKey(keys, value));
+  return keys;
+}
+function getJobFirmId(production) {
+  return firstText2(
+    production.orderFirmId,
+    production.sourceFirmId,
+    production.destinationFirmId,
+    production.firmId
+  );
+}
+function isTruthyMarker(value) {
+  return ["yes", "true", "1", "posted", "tallied", "completed", "closed"].includes(normalizeKey(value));
+}
+function isClosedOrTallied(production) {
+  const status = normalizeKey(production.status);
+  return ["cancelled", "canceled", "completed", "closed", "tallied"].includes(status) || Boolean(normalizeText3(production.cancelTimestamp)) || Boolean(normalizeText3(production.tallyTimestamp)) || Boolean(normalizeText3(production.closeDate)) || normalizeKey(production.closeBy) === "yes" || isTruthyMarker(production.tallyPostingStatus);
+}
+function loadedQtyByJobId(slips) {
+  const loaded = /* @__PURE__ */ new Map();
+  slips.forEach((slip) => {
+    if (["cancelled", "canceled"].includes(normalizeKey(slip.status))) return;
+    (slip.lines || []).forEach((line) => {
+      (line.allocations || []).forEach((allocation) => {
+        if (normalizeKey(allocation.sourceType) !== "job") return;
+        const jobId = normalizeKey("jobId" in allocation ? allocation.jobId : "");
+        if (!jobId) return;
+        const quantity2 = Number("qty" in allocation ? allocation.qty || 0 : 0);
+        if (!Number.isFinite(quantity2) || quantity2 <= 0) return;
+        loaded.set(jobId, (loaded.get(jobId) || 0) + quantity2);
+      });
+    });
+  });
+  return loaded;
+}
+function getDispatchPlanPendingQty(plan) {
+  const pending = Number(plan.plannedQty || 0) - Number(plan.loadedQty || 0) - Number(plan.canceledQty || 0);
+  return Number.isFinite(pending) ? Math.max(
+    0,
+    pending
+  ) : 0;
+}
+function getLoadingJobNumber(production) {
+  return firstText2(production.transactionNo, production.jobCardNo);
+}
+var jobIndexCache = /* @__PURE__ */ new WeakMap();
+function jobIndexFor(jobs) {
+  let index = jobIndexCache.get(jobs);
+  if (index) return index;
+  index = /* @__PURE__ */ new Map();
+  jobs.forEach((production, position) => {
+    productionItemKeys(production).forEach((key5) => {
+      const list = index.get(key5);
+      if (list) list.push(position);
+      else index.set(key5, [position]);
+    });
+  });
+  jobIndexCache.set(jobs, index);
+  return index;
+}
+function eligibleLoadingJobs(itemSource, itemId, firmId, productions, phpJobs, plateJobs, alreadyLoaded, itemAliases = [], corrugationQtyByJobId, atJobWorkerByJobId) {
+  const jobQty = (production) => {
+    if (source !== "FG") return Number(production.productionOutputQty || 0);
+    if (corrugationQtyByJobId) return corrugationQtyByJobId.get(String(production.id || "").trim()) || 0;
+    return Number(production.prodFromFFG || 0);
+  };
+  const source = normalizeOrderItemSource(itemSource);
+  const sourceJobs = source === "PHP" ? phpJobs : source === "PLATE" ? plateJobs : productions;
+  const targetItemKeys = /* @__PURE__ */ new Set();
+  [itemId, ...itemAliases].forEach((value) => addKey(targetItemKeys, value));
+  const targetFirm = normalizeKey(firmId);
+  if (targetItemKeys.size === 0) return [];
+  const index = jobIndexFor(sourceJobs);
+  const positions = /* @__PURE__ */ new Set();
+  targetItemKeys.forEach((key5) => index.get(key5)?.forEach((position) => positions.add(position)));
+  const candidates = Array.from(positions).sort((a, b) => a - b).map((position) => sourceJobs[position]);
+  return candidates.filter((production) => {
+    const jobFirm = normalizeKey(getJobFirmId(production));
+    if (targetFirm && jobFirm && targetFirm !== jobFirm) return false;
+    if (!targetFirm && jobFirm) return false;
+    if (isClosedOrTallied(production)) return false;
+    const productionQty = jobQty(production);
+    return Number.isFinite(productionQty) && productionQty > 0;
+  }).map((production) => {
+    const productionQty = jobQty(production);
+    const loaded = alreadyLoaded.get(normalizeKey(production.id)) || 0;
+    const atJobWorker = atJobWorkerByJobId?.get(String(production.id || "").trim()) || 0;
+    return {
+      jobId: production.id,
+      jobNo: getLoadingJobNumber(production),
+      productionQty,
+      alreadyLoaded: loaded,
+      atJobWorker,
+      yetToLoad: Math.max(0, productionQty - loaded - atJobWorker)
+    };
+  }).filter((job) => Boolean(job.jobNo) && job.yetToLoad > 0).sort(
+    (a, b) => b.jobNo.localeCompare(a.jobNo, void 0, { numeric: true, sensitivity: "base" })
+  ).slice(0, 3);
+}
+function resolveFirmId(plan, schedule, order, firms = []) {
+  const raw = firstText2(plan.orderFirmId, plan.firmId, schedule?.firmId, order?.firmId);
+  const firm = firms.find((row) => normalizeKey(row.id) === normalizeKey(raw));
+  return normalizeText3(firm?.id || raw);
+}
+function getPendingLoadingPlanProjections(args) {
+  const orderById = new Map(args.orders.map((order) => [normalizeKey(order.id), order]));
+  const scheduleById = new Map(args.schedules.map((schedule) => [normalizeKey(schedule.id), schedule]));
+  const companyById = new Map((args.companies || []).map((company) => [normalizeKey(company.id), company]));
+  const loaded = loadedQtyByJobId(args.loadingSlips);
+  return args.plans.flatMap((plan) => {
+    const pendingQty = getDispatchPlanPendingQty(plan);
+    if (pendingQty <= 0) return [];
+    const order = orderById.get(normalizeKey(plan.orderId));
+    const schedule = scheduleById.get(normalizeKey(plan.scheduleId));
+    const itemFromOrder = args.resolveOrderItem?.(order);
+    const source = normalizeOrderItemSource(order?.itemSource || itemFromOrder?.source);
+    const item = itemFromOrder || args.findItemAcrossSources?.(
+      firstText2(order?.itemId, order?.npdId),
+      source,
+      firstText2(order?.erpCode)
+    );
+    const firmId = resolveFirmId(plan, schedule, order, args.firms);
+    const eligibleJobs = eligibleLoadingJobs(
+      source,
+      item?.id || firstText2(order?.itemId, order?.npdId),
+      firmId,
+      args.productions,
+      args.phpJobs,
+      args.plateJobs,
+      loaded,
+      Array.from(itemKeys(item, order)),
+      args.corrugationQtyByJobId,
+      args.atJobWorkerByJobId
+    );
+    return [{
+      plan,
+      order,
+      schedule,
+      item,
+      company: companyById.get(normalizeKey(order?.companyId)),
+      firmId,
+      itemSource: source,
+      pendingQty,
+      eligibleJobs
+    }];
+  });
 }
 
 // src/lib/reports/serverReports.ts
@@ -3018,12 +3862,81 @@ REPORT_DEFINITIONS["traceability-record"] = {
   ],
   compute: (lists, params, helpers) => buildTraceabilityRecordById({ ...lists, items: (helpers.npdItems || []).map(normalizeNpdItem) }, String(params.productionId || ""))
 };
+REPORT_DEFINITIONS["wa-production-plan"] = {
+  permission: "/production/plan",
+  catalog: true,
+  lists: [
+    { key: "productions", entity: "productions", scope: "firm" },
+    { key: "schedules", entity: "orders_schedule", scope: "firm" },
+    { key: "orders", entity: "orders", scope: "firm" },
+    { key: "companies", entity: "companies", scope: "firm" },
+    { key: "sampleRequests", entity: "sample_requests", scope: "firm" },
+    { key: "settings", entity: "settings", scope: "firm" },
+    { key: "fluteMasters", entity: "flute_masters", scope: "firm" }
+  ],
+  compute: (lists, params, helpers) => {
+    const npdItems = (helpers.catalogRows?.fgRows || []).map(normalizeNpdItem);
+    const rows2 = computeProductionPlanRows({ ...lists, npdItems }, String(params.date || ""));
+    return productionPlanPdfSpec(rows2, String(params.date || ""), String(params.firmLabel || ""));
+  }
+};
+REPORT_DEFINITIONS["wa-dispatch-plan"] = {
+  permission: "/dispatch/plan",
+  catalog: true,
+  lists: [
+    { key: "plans", entity: "dispatch_plans", scope: "all" },
+    { key: "orders", entity: "orders", scope: "all" },
+    { key: "companies", entity: "companies", scope: "all" },
+    { key: "schedules", entity: "orders_schedule", scope: "all" },
+    { key: "trucks", entity: "trucks", scope: "all" },
+    { key: "firms", entity: "firms", scope: "all" }
+  ],
+  compute: (lists, params, helpers) => {
+    const { resolveOrderItem } = catalogFrom(helpers);
+    const rows2 = sortDispatchPlanDayRows(computeDispatchPlanDayRows(lists, resolveOrderItem, String(params.date || "")));
+    return dispatchPlanPdfSpec(rows2, String(params.date || ""));
+  }
+};
+REPORT_DEFINITIONS["wa-pending-loading"] = {
+  permission: "/loading/pending",
+  catalog: true,
+  lists: [
+    { key: "plans", entity: "dispatch_plans", scope: "all" },
+    { key: "orders", entity: "orders", scope: "all" },
+    { key: "schedules", entity: "orders_schedule", scope: "all" },
+    { key: "firms", entity: "firms", scope: "all" },
+    { key: "companies", entity: "companies", scope: "all" },
+    { key: "productions", entity: "productions", scope: "all" },
+    { key: "phpJobs", entity: "php_job_master", scope: "all" },
+    { key: "plateJobs", entity: "plate_job_master", scope: "all" },
+    { key: "loadingSlips", entity: "loading_slips", scope: "all" },
+    { key: "processing", entity: "production_processing", scope: "all" }
+  ],
+  compute: (lists, params, helpers) => {
+    const rows2 = helpers.catalogRows || { fgRows: [], phpRows: [], plateRows: [], materialRows: [] };
+    const { resolveOrderItem, findItemAcrossSources } = createOrderItemCatalog({ ...rows2, materialRows: [] });
+    const atJobWorker = new Map(Object.entries(params.atJobWorkerByJobId || {}).map(([jobId, qty]) => [jobId, Number(qty || 0)]));
+    const projections = getPendingLoadingPlanProjections({
+      ...lists,
+      corrugationQtyByJobId: corrugationLinerQtyByJobId(lists.processing),
+      atJobWorkerByJobId: atJobWorker,
+      resolveOrderItem,
+      findItemAcrossSources
+    });
+    return pendingLoadingPdfSpec(pendingLoadingRowsFromProjections(projections, lists.firms), new Date(String(params.asOf || (/* @__PURE__ */ new Date()).toISOString())));
+  }
+};
 function runReport(name, lists, params, helpers) {
   const definition = REPORT_DEFINITIONS[name];
   if (!definition) throw new Error(`Unknown report ${name}`);
   return definition.compute(lists, params, helpers);
 }
 export {
+  DEFAULT_WHATSAPP_REPORT_MESSAGES,
   REPORT_DEFINITIONS,
-  runReport
+  WHATSAPP_REPORT_MENUS,
+  buildReportPdf,
+  renderWhatsappReportMessage,
+  runReport,
+  whatsappReportKeyForMenu
 };

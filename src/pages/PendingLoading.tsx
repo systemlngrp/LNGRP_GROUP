@@ -28,7 +28,11 @@ import {
   ChevronRight,
   Plus,
   Trash2,
+  FileText,
 } from "lucide-react";
+import { buildReportPdf, pendingLoadingPdfSpec } from "../lib/reports/whatsappReports";
+import { SendReportWhatsappButton } from "../components/SendReportWhatsappButton";
+import { exportsAllowed } from "../lib/exportPolicy";
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
@@ -324,6 +328,19 @@ export function PendingLoading() {
       default: return "";
     }
   }, [], { key: "date", direction: "desc" });
+  // PDF (Download / WhatsApp) of the rows on screen: filters and sort applied, every page.
+  const pendingLoadingSpec = () => sortedPlanRows.length ? pendingLoadingPdfSpec(sortedPlanRows.map(({ plan, group }) => ({
+    date: String(plan.date || ""),
+    planNo: String(plan.planNo || ""),
+    orderNo: plan.orderNo,
+    firmName: plan.firmName,
+    companyName: group.companyName,
+    itemName: group.itemName,
+    itemSource: String(group.itemSource || ""),
+    planned: Number(plan.plannedQty || 0),
+    loaded: Number(plan.loadedQty || 0),
+    pending: plan.pendingQty,
+  })), new Date()) : null;
   const { page: planPage, setPage: setPlanPage, pageSize: planPageSize, setPageSize: setPlanPageSize, totalItems: planTotal, paginatedItems: pagedPlanRows } = useClientPagination(sortedPlanRows, 100);
 
   const currentAdjustmentByJobId = useMemo(() => {
@@ -851,8 +868,16 @@ export function PendingLoading() {
 
   return (
     <div className="space-y-4">
-      <div className="border-b border-black pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black pb-3">
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Loading</h2>
+        <div data-header-action="true" className="flex flex-wrap items-center justify-end gap-3">
+          {exportsAllowed() ? (
+            <button type="button" data-export="pdf" onClick={() => { const spec = pendingLoadingSpec(); if (spec) buildReportPdf(spec).save(spec.fileName); }} disabled={!sortedPlanRows.length} title="Download PDF" className="inline-flex items-center gap-2 rounded border border-red-700 px-3 py-1.5 text-sm font-bold uppercase tracking-tight text-red-700 hover:bg-red-50 disabled:opacity-40">
+              <FileText size={16} /><span>PDF</span>
+            </button>
+          ) : null}
+          <SendReportWhatsappButton report="pending-loading" disabled={!sortedPlanRows.length} buildSpec={pendingLoadingSpec} />
+        </div>
       </div>
 
       <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">

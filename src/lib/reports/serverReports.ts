@@ -13,6 +13,12 @@ import { computeConversionCostBase } from "./conversionCostDetails";
 import { computeAuditDashboard } from "./auditDashboard";
 import { computeQcViewRows, toQcItems } from "./qcView";
 import { buildTraceabilityRecordById, buildTraceabilitySearchIndex } from "../traceabilityData";
+import { computeDispatchPlanDayRows, computeProductionPlanRows, dispatchPlanPdfSpec, pendingLoadingPdfSpec, pendingLoadingRowsFromProjections, productionPlanPdfSpec, sortDispatchPlanDayRows } from "./whatsappReports";
+import { getPendingLoadingPlanProjections } from "../pendingLoadingEligibility";
+import { corrugationLinerQtyByJobId } from "../productionProcessingProgress";
+
+// WhatsApp report PDFs (timed sends): the server builds the PDF from these specs.
+export { buildReportPdf, renderWhatsappReportMessage, DEFAULT_WHATSAPP_REPORT_MESSAGES, WHATSAPP_REPORT_MENUS, whatsappReportKeyForMenu } from "./whatsappReports";
 
 export type ReportListSpec = {
   key: string;
@@ -274,6 +280,77 @@ REPORT_DEFINITIONS["traceability-record"] = {
     { key: "materialReturnReelLines", entity: "material_return_reel_lines", scope: "all" },
   ],
   compute: (lists, params, helpers) => buildTraceabilityRecordById({ ...(lists as any), items: (helpers.npdItems || []).map(normalizeNpdItem) }, String(params.productionId || "")),
+};
+
+// WhatsApp reports: each returns the PDF spec (rows + totals + message values).
+// params.date = plan date (YYYY-MM-DD); params.firmLabel = firm name for the title.
+REPORT_DEFINITIONS["wa-production-plan"] = {
+  permission: "/production/plan",
+  catalog: true,
+  lists: [
+    { key: "productions", entity: "productions", scope: "firm" },
+    { key: "schedules", entity: "orders_schedule", scope: "firm" },
+    { key: "orders", entity: "orders", scope: "firm" },
+    { key: "companies", entity: "companies", scope: "firm" },
+    { key: "sampleRequests", entity: "sample_requests", scope: "firm" },
+    { key: "settings", entity: "settings", scope: "firm" },
+    { key: "fluteMasters", entity: "flute_masters", scope: "firm" },
+  ],
+  compute: (lists, params, helpers) => {
+    const npdItems = (helpers.catalogRows?.fgRows || []).map(normalizeNpdItem);
+    const rows = computeProductionPlanRows({ ...(lists as any), npdItems }, String(params.date || ""));
+    return productionPlanPdfSpec(rows, String(params.date || ""), String(params.firmLabel || ""));
+  },
+};
+
+REPORT_DEFINITIONS["wa-dispatch-plan"] = {
+  permission: "/dispatch/plan",
+  catalog: true,
+  lists: [
+    { key: "plans", entity: "dispatch_plans", scope: "all" },
+    { key: "orders", entity: "orders", scope: "all" },
+    { key: "companies", entity: "companies", scope: "all" },
+    { key: "schedules", entity: "orders_schedule", scope: "all" },
+    { key: "trucks", entity: "trucks", scope: "all" },
+    { key: "firms", entity: "firms", scope: "all" },
+  ],
+  compute: (lists, params, helpers) => {
+    const { resolveOrderItem } = catalogFrom(helpers);
+    const rows = sortDispatchPlanDayRows(computeDispatchPlanDayRows(lists as any, resolveOrderItem as any, String(params.date || "")));
+    return dispatchPlanPdfSpec(rows, String(params.date || ""));
+  },
+};
+
+// params.atJobWorkerByJobId = qty still at a job worker per job; params.asOf = ISO time.
+REPORT_DEFINITIONS["wa-pending-loading"] = {
+  permission: "/loading/pending",
+  catalog: true,
+  lists: [
+    { key: "plans", entity: "dispatch_plans", scope: "all" },
+    { key: "orders", entity: "orders", scope: "all" },
+    { key: "schedules", entity: "orders_schedule", scope: "all" },
+    { key: "firms", entity: "firms", scope: "all" },
+    { key: "companies", entity: "companies", scope: "all" },
+    { key: "productions", entity: "productions", scope: "all" },
+    { key: "phpJobs", entity: "php_job_master", scope: "all" },
+    { key: "plateJobs", entity: "plate_job_master", scope: "all" },
+    { key: "loadingSlips", entity: "loading_slips", scope: "all" },
+    { key: "processing", entity: "production_processing", scope: "all" },
+  ],
+  compute: (lists, params, helpers) => {
+    // Same catalog as the page (FG, PHP, Plate; no materials).
+    const rows = helpers.catalogRows || { fgRows: [], phpRows: [], plateRows: [], materialRows: [] };
+    const { resolveOrderItem, findItemAcrossSources } = createOrderItemCatalog({ ...rows, materialRows: [] });
+    const atJobWorker = new Map(Object.entries(params.atJobWorkerByJobId || {}).map(([jobId, qty]) => [jobId, Number(qty || 0)]));
+    const projections = getPendingLoadingPlanProjections({
+      ...(lists as any),
+      corrugationQtyByJobId: corrugationLinerQtyByJobId(lists.processing as any),
+      atJobWorkerByJobId: atJobWorker,
+      resolveOrderItem: resolveOrderItem as any,
+      findItemAcrossSources: findItemAcrossSources as any,
+    });
+    return pendingLoadingPdfSpec(pendingLoadingRowsFromProjections(projections, lists.firms), new Date(String(params.asOf || new Date().toISOString())));
+  },
 };
 
 export function runReport(name: string, lists: Record<string, any[]>, params: Record<string, any>, helpers: ReportHelpers) {

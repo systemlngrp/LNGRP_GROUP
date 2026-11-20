@@ -3,24 +3,22 @@ import { displayJobNo } from "../lib/jobNumber";
 import React, { useState, useMemo } from "react";
 import { useData } from "../hooks/useData";
 import { Production, OrderSchedule, Order, Company, SampleRequest, Setting, FluteMaster } from "../types";
-import { buildFluteBatchMap, resolveFluteBatch } from "../lib/fluteBatch";
 import { formatDate } from "../lib/serial";
 import { useTableSearch } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 import { Download, FileText } from "lucide-react";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import { exportsAllowed } from "../lib/exportPolicy";
 import { useNpdItemNames } from "../hooks/useNpdItems";
-import { sortProductionPlanRows } from "../lib/productionPlanSorting";
-import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
 import { resolveProductionPlanCompany } from "../lib/productionPlanCompany";
 import { MultiSelect } from "../components/MultiSelect";
-import { buildSampleJobNumbers, deriveProductionPlanStatuses } from "../lib/productionPlanStatus";
+import { buildReportPdf, computeProductionPlanRows, productionPlanPdfSpec } from "../lib/reports/whatsappReports";
+import { SendReportWhatsappButton } from "../components/SendReportWhatsappButton";
+import { useAuth } from "../auth/AuthContext";
 
 export function ProductionPlan() {
+  const { activeFirm } = useAuth();
   const [productions, setProductions, productionsLoading] = useData<Production>("productions", []);
   const [schedules, , schedulesLoading] = useData<OrderSchedule>("orders_schedule", []);
   const [orders, , ordersLoading] = useData<Order>("orders", []);
@@ -28,7 +26,6 @@ export function ProductionPlan() {
   const [sampleRequests, , sampleRequestsLoading] = useData<SampleRequest>("sample_requests", []);
   const [settings, , settingsLoading] = useData<Setting>("settings", []);
   const [fluteMasters, , fluteMastersLoading] = useData<FluteMaster>("flute_masters", []);
-  const fluteBatchMap = useMemo(() => buildFluteBatchMap(fluteMasters), [fluteMasters]);
   // Only item names are shown here, so the light NPD catalog is enough. The
   // firm-wise stock list (~9 MB) reloaded on every save anywhere in the app.
   const npdItems = useNpdItemNames();
@@ -65,64 +62,10 @@ export function ProductionPlan() {
     return Number.isFinite(num) ? num.toFixed(2) : "-";
   };
 
-  const sampleJobNumbers = useMemo(() => buildSampleJobNumbers(sampleRequests), [sampleRequests]);
-
-  const realizationTargets = useMemo(
-    () => parseRealizationTargets(settings[0]?.realizationPerKgTargets),
-    [settings]
-  );
-  const selectedRealizationTarget = useMemo(
-    () => findRealizationTargetForDate(realizationTargets, selectedDate),
-    [realizationTargets, selectedDate]
-  );
-  const requiredRealization = selectedRealizationTarget ? Number(selectedRealizationTarget.value || 0) * 0.98 : null;
-  // Least Sheet Weight = least GSM of the same ERP code across all
-  // non-cancelled jobs (same rule as Production Master / dashboards).
-  const erpLeastGsmMap = useMemo(() => {
-    const map = new Map<string, number>();
-    productions.forEach((p) => {
-      if (p.status === "Cancelled" || p.cancelTimestamp) return;
-      const erp = String(p.erpCode || "").trim();
-      const gsm = Number(p.gsm || 0);
-      if (erp && gsm > 0 && (!map.has(erp) || gsm < map.get(erp)!)) map.set(erp, gsm);
-    });
-    return map;
-  }, [productions]);
-
-  const filteredList = useMemo(() => {
-    return productions
-      .filter(p => normalizeDate(p.date) === selectedDate)
-      .filter(p => {
-        const item = npdItems.find(i => i.id === String(p.itemId || "").trim());
-        const schedule = schedules.find(s => s.id === p.scheduleId);
-        const order = orders.find(o => o.id === schedule?.orderId);
-        const resolvedCompany = resolveProductionPlanCompany(p, schedule, order, companies);
-        
-        if (companyFilter.length && !companyFilter.some((selected) => selected === resolvedCompany.companyId || selected === resolvedCompany.name)) return false;
-        const itemKey = item?.id || `${item?.name || ""}::${p.erpCode || ""}`;
-        if (itemFilter && itemKey !== itemFilter) return false;
-        return true;
-      })
-      .map((production) => {
-        const schedule = schedules.find(s => s.id === production.scheduleId);
-        const order = orders.find(o => o.id === schedule?.orderId);
-        const company = resolveProductionPlanCompany(production, schedule, order, companies);
-        return {
-          ...production,
-          leastGsm: erpLeastGsmMap.get(String(production.erpCode || "").trim()) ?? production.leastGsm,
-          // Batch comes from the Flute Master, so a master change re-orders the plan.
-          fluteBatches: resolveFluteBatch(production.flute, fluteBatchMap, production.fluteBatches),
-          productionPlanCompanyName: company.name,
-          productionPlanCompanyId: company.companyId,
-          itemName: npdItems.find((item) => item.id === String(production.itemId || "").trim())?.name || "",
-        };
-      });
-  }, [productions, selectedDate, companyFilter, itemFilter, npdItems, schedules, orders, companies, erpLeastGsmMap, fluteBatchMap]);
-
-  const baseSortedList = useMemo(() => sortProductionPlanRows(filteredList), [filteredList]);
+  // Rows for the date (plan order + statuses): same code as the WhatsApp PDF the server sends.
   const baseStatusRows = useMemo(
-    () => deriveProductionPlanStatuses(baseSortedList, sampleJobNumbers, requiredRealization),
-    [baseSortedList, sampleJobNumbers, requiredRealization]
+    () => computeProductionPlanRows({ productions, schedules, orders, companies, sampleRequests, settings, fluteMasters, npdItems }, selectedDate, { companies: companyFilter, item: itemFilter }),
+    [productions, schedules, orders, companies, sampleRequests, settings, fluteMasters, npdItems, selectedDate, companyFilter, itemFilter]
   );
   // Table search: matches the shown columns as displayed (Sr. No. and the
   // Sr. No. skipped). Order of the sorted list is kept.
@@ -266,83 +209,7 @@ export function ProductionPlan() {
 
   const handleExportPDF = () => {
     if (statusRows.length === 0) return;
-    // Layout of the printed Production Plan sheet: plain grid, job number only,
-    // whole numbers without decimals, total value at the end.
-    const doc = new jsPDF("landscape", "mm", "a4");
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pdfNumber = (value: unknown) => {
-      if (value === "" || value === null || value === undefined) return "";
-      const num = Number(value);
-      if (!Number.isFinite(num)) return String(value);
-      const rounded = Math.round(num * 100) / 100;
-      return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
-    };
-    const jobNumber = (p: Production) => {
-      const text = String(p.transactionNo || p.jobCardNo || "").trim();
-      return text.match(/(\d+)\s*$/)?.[1] || text || "-";
-    };
-    let totalValue = 0;
-    let totalPaperWeight = 0;
-    const body = statusRows.map((p) => {
-      const schedule = schedules.find((row) => row.id === p.scheduleId);
-      const order = orders.find((row) => row.id === schedule?.orderId);
-      const company = resolveProductionPlanCompany(p, schedule, order, companies);
-      const item = npdItems.find((row) => row.id === String(p.itemId || "").trim());
-      const value = (Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0);
-      totalValue += value;
-      totalPaperWeight += Number(p.totalPaperWeight || 0) || 0;
-      return [
-        jobNumber(p), company.name || "", item?.name || "", p.erpCode || "", pdfNumber(p.ups), pdfNumber(p.qty),
-        pdfNumber(p.reelAsPerCalc), pdfNumber(p.reelActualWithTrimming), pdfNumber(p.cuttingWithTrimming), pdfNumber(p.ply), p.flute || "",
-        pdfNumber(p.l1), pdfNumber(p.f1), pdfNumber(p.l2), pdfNumber(p.f2), pdfNumber(p.l3), pdfNumber(p.gsm),
-        pdfNumber(p.totalPaperWeight), pdfNumber(p.plannedProductionInMeter), pdfNumber(p.realizationPerKg), pdfNumber(p.sheetWeight),
-        pdfNumber(p.rate), value.toFixed(2), p.isSample ? "YES" : "", p.remarks || "",
-      ];
-    });
-    const head = [[
-      "Job\nNo", "Company Name", "Item Name", "ERP\nCODE", "UPS", "Plan\nQTY", "Reel As\nPer\nCalculation", "REEL\nActual\nwith\nTRIMMING",
-      "CUTTING\nwith\nTRIMMING", "PLY", "FLUTE", "L1", "F1", "L2", "F2", "L3", "GSM", "TOTAL\nPaper\nWEIGHT", "Planned\nProduction\nin Meter",
-      "REALIZATION\nPER KG", "SHEET\nWEIGHT", "Rate", "Value", "Sample", "Remark",
-    ]];
-    // TOTAL row: Total Paper Weight (column 18) and Value.
-    const foot = [["TOTAL", ...Array(16).fill(""), totalPaperWeight.toFixed(2), ...Array(4).fill(""), totalValue.toFixed(2), "", ""]];
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("Production Plan", pageWidth / 2, 12, { align: "center" });
-    doc.setFontSize(8);
-    doc.text(`Date: ${formatDate(selectedDate)}`, pageWidth / 2, 18, { align: "center" });
-
-    autoTable(doc, {
-      head,
-      body,
-      foot,
-      startY: 22,
-      margin: { left: 6, right: 6 },
-      theme: "grid",
-      showFoot: "lastPage",
-      rowPageBreak: "avoid",
-      styles: { font: "helvetica", fontSize: 5.5, cellPadding: 0.8, halign: "center", valign: "middle", textColor: 0, lineColor: 0, lineWidth: 0.15, overflow: "linebreak" },
-      headStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold", fontSize: 5.5 },
-      footStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold" },
-      columnStyles: {
-        0: { cellWidth: 9 },
-        1: { cellWidth: 28 },
-        2: { cellWidth: 34 },
-        3: { cellWidth: 11 },
-        19: { cellWidth: 16 },
-        22: { cellWidth: 13 },
-        23: { cellWidth: 9 },
-        24: { cellWidth: 26 },
-      },
-      didParseCell: (data) => {
-        if (data.section === "foot" && data.column.index === 0) data.cell.styles.halign = "left";
-        // Same colour as on screen: realization below 98% of the target and not a sample.
-        if (data.section === "body" && statusRows[data.row.index]?.shouldHighlight) data.cell.styles.fillColor = [255, 153, 153];
-      },
-    });
-
-    doc.save(`Production_Plan_${selectedDate}.pdf`);
+    buildReportPdf(productionPlanPdfSpec(statusRows, selectedDate)).save(`Production_Plan_${selectedDate}.pdf`);
   };
 
   return (
@@ -385,6 +252,7 @@ export function ProductionPlan() {
               </button>
             </>
           ) : null}
+          <SendReportWhatsappButton report="production-plan" disabled={statusRows.length === 0} buildSpec={() => (statusRows.length ? productionPlanPdfSpec(statusRows, selectedDate, activeFirm?.firmName || "") : null)} />
         </div>
       </div>
 

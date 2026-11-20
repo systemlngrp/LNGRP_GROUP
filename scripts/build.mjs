@@ -37,6 +37,8 @@ try {
     entryPoints: [join(root, "src/lib/reports/serverReports.ts")],
     outfile: join(root, "server-dist/report-compute.mjs"),
     bundle: true,
+    // PDF libraries come from the server's node_modules (WhatsApp report PDFs).
+    external: ["jspdf", "jspdf-autotable"],
     platform: "node",
     format: "esm",
     target: "node18",

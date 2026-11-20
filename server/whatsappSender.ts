@@ -458,6 +458,16 @@ export function sendWhatsappMrrMessage(
   return sendWhatsappPayload(config, buildWhatsappMrrPayload(config, record), options);
 }
 
+/** Report PDF (Production Plan / Dispatch Plan / Pending Loading) with its message. */
+export function sendWhatsappReportMessage(
+  config: WhatsappSenderConfig,
+  message: string,
+  pdfUrl: string,
+  options: { endpoint?: string; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+) {
+  return sendWhatsappPayload(config, { recipientIds: [text(config.groupId)], message: [message], ...(pdfUrl ? { filePathUrl: [pdfUrl] } : {}) }, { timeoutMs: 30_000, ...options });
+}
+
 export function sendWhatsappReelReturnMessage(
   config: WhatsappSenderConfig,
   record: WhatsappReelReturnRecord,

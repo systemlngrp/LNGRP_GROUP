@@ -11,6 +11,9 @@ import { Spinner } from "../components/Spinner";
 import { WhatsappConfig } from "../types";
 import { DEFAULT_QC_SCORE_MESSAGE, QC_SCORE_MENU } from "../lib/qcScore";
 import { SortHeader, useTableSort } from "../lib/tableSort";
+import { DEFAULT_WHATSAPP_REPORT_MESSAGES, whatsappReportKeyForMenu } from "../lib/reports/whatsappReports";
+import { WhatsappReportSendHistory } from "../components/WhatsappReportSendHistory";
+import { getFirmOptions } from "../lib/firmDisplay";
 
 type MenuOption = { label: string; value: string };
 type SendResult = {
@@ -151,7 +154,21 @@ const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
 *QC Person:* {{qcPerson}}
 *Operator Name:* {{operatorName}}`;
 
+/** "9:00, 14:30" -> "09:00, 14:30"; null when a part is not a valid time. */
+function normalizeSendTimes(value: string) {
+  const parts = value.split(/[,;\s]+/).map((part) => part.trim()).filter(Boolean);
+  const times: string[] = [];
+  for (const part of parts) {
+    const match = part.match(/^(\d{1,2})[:.](\d{2})$/);
+    if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null;
+    times.push(`${match[1].padStart(2, "0")}:${match[2]}`);
+  }
+  return Array.from(new Set(times)).sort().join(", ");
+}
+
 function defaultMessageForMenu(menu: string) {
+  const reportKey = whatsappReportKeyForMenu(menu);
+  if (reportKey) return DEFAULT_WHATSAPP_REPORT_MESSAGES[reportKey];
   if (menu === QC_SCORE_MENU) return DEFAULT_QC_SCORE_MESSAGE;
   if (menu === PRINTING_SHIFT_MENU) return DEFAULT_PRINTING_SHIFT_MESSAGE;
   if (menu === LOADING_SLIP_MENU) return DEFAULT_LOADING_SLIP_MESSAGE;
@@ -196,6 +213,11 @@ export function WhatsappMaster() {
   const [menu, setMenu] = useState("");
   const [message, setMessage] = useState("");
   const [active, setActive] = useState<"Yes" | "No">("Yes");
+  const [sendTimes, setSendTimes] = useState("");
+  const [reportFirmId, setReportFirmId] = useState("");
+  const [firms] = useData<any>("firms", [], { firmScope: "all", storageKey: "firms-all" });
+  const firmOptions = useMemo(() => getFirmOptions(firms), [firms]);
+  const formReportKey = whatsappReportKeyForMenu(menu);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sendingConfigId, setSendingConfigId] = useState<string | null>(null);
   const [sendResult, setSendResult] = useState<SendResult | null>(null);
@@ -238,6 +260,8 @@ export function WhatsappMaster() {
     setMenu(QC_COMPLAINT_MENU);
     setMessage(defaultMessageForMenu(QC_COMPLAINT_MENU));
     setActive("Yes");
+    setSendTimes("");
+    setReportFirmId("");
     setIsFormOpen(false);
   };
 
@@ -251,6 +275,8 @@ export function WhatsappMaster() {
     setMenu(QC_COMPLAINT_MENU);
     setMessage(defaultMessageForMenu(QC_COMPLAINT_MENU));
     setActive("Yes");
+    setSendTimes("");
+    setReportFirmId("");
     setIsFormOpen(true);
   };
 
@@ -264,6 +290,8 @@ export function WhatsappMaster() {
     setMenu(config.menu);
     setMessage(config.message);
     setActive(config.active === "No" ? "No" : "Yes");
+    setSendTimes(config.sendTimes || "");
+    setReportFirmId(config.reportFirmId || "");
     setIsFormOpen(true);
   };
 
@@ -288,6 +316,11 @@ export function WhatsappMaster() {
       alert("Enter the real Pass; the masked value cannot be saved as a password.");
       return;
     }
+    const normalizedTimes = formReportKey ? normalizeSendTimes(sendTimes) : "";
+    if (normalizedTimes === null) {
+      alert("Send Times must be times like 09:00, 14:30 (24-hour), separated by commas.");
+      return;
+    }
     const duplicate = configs.some((config) =>
       config.id !== editingId &&
       config.loginId.trim().toLowerCase() === normalized.loginId.toLowerCase() &&
@@ -308,6 +341,8 @@ export function WhatsappMaster() {
         menu: normalized.menu,
         message: normalized.message,
         active,
+        sendTimes: normalizedTimes || "",
+        reportFirmId: formReportKey === "production-plan" ? reportFirmId : "",
         updatedBy: user?.name || user?.email || "System User",
         updateTimestamp: timestamp,
       };
@@ -389,6 +424,15 @@ export function WhatsappMaster() {
             <label className="space-y-2"><span className="text-blue-700 font-bold">Menu <span className="text-red-500">*</span></span><select value={menu} onChange={(e) => { const nextMenu = e.target.value; setMenu(nextMenu); if (!editingId) setMessage(defaultMessageForMenu(nextMenu)); }} required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Select menu</option>{menuOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
             <label className="space-y-2 md:col-span-2"><span className="text-blue-700 font-bold">Auto-message template <span className="text-red-500">*</span></span><textarea value={message} onChange={(e) => setMessage(e.target.value)} required rows={5} className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /></label>
             <label className="space-y-2"><span className="text-blue-700 font-bold">Status</span><select value={active} onChange={(e) => setActive(e.target.value === "No" ? "No" : "Yes")} className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="Yes">Active</option><option value="No">Inactive</option></select></label>
+            {formReportKey ? (
+              <>
+                <label className="space-y-2"><span className="text-blue-700 font-bold">Send Times (India time)</span><input value={sendTimes} onChange={(e) => setSendTimes(e.target.value)} placeholder="09:00, 14:00, 18:00" className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /><span className="block text-xs font-semibold text-slate-500">{formReportKey === "pending-loading" ? "Pending Loading PDF as on that time." : "PDF of tomorrow's plan."} Leave blank for no timed sends; the page's WhatsApp button still works.</span></label>
+                {formReportKey === "production-plan" ? (
+                  <label className="space-y-2"><span className="text-blue-700 font-bold">Firm (timed PDF)</span><select value={reportFirmId} onChange={(e) => setReportFirmId(e.target.value)} className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="">All firms</option>{firmOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+                ) : null}
+                <div className="md:col-span-2 text-xs font-semibold text-slate-500">Message fields: {formReportKey === "production-plan" ? "{{date}} {{firm}} {{jobs}} {{totalQty}} {{totalPaperWeight}} {{totalValue}}" : formReportKey === "dispatch-plan" ? "{{date}} {{plans}} {{planned}} {{invoiced}} {{cancelled}} {{pending}}" : "{{dateTime}} {{plans}} {{planned}} {{loaded}} {{pending}}"}</div>
+              </>
+            ) : null}
           </form>
         </div>
       ) : (
@@ -408,9 +452,10 @@ export function WhatsappMaster() {
           </div> : null}
           <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-5 py-4"><div><h3 className="font-black text-slate-900">Configured senders</h3><p className="text-sm font-medium text-slate-500">Showing {filteredConfigs.length} of {configs.length} configurations</p></div><span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600"><LockKeyhole size={14} /> Credentials protected</span></div>
-            <div className="overflow-x-auto"><table className="min-w-[1060px] w-full border-collapse"><thead className="sticky top-0 z-30 bg-slate-900 text-left text-xs uppercase tracking-wider text-white"><tr><th className="px-5 py-4"><SortHeader label="Configuration" sortKey="loginId" sort={sort} onToggle={toggleSort} align="left" /></th><th className="px-5 py-4"><SortHeader label="GroupId" sortKey="groupId" sort={sort} onToggle={toggleSort} align="left" /></th><th className="px-5 py-4"><SortHeader label="Menu / Route" sortKey="menu" sort={sort} onToggle={toggleSort} align="left" /></th><th className="px-5 py-4"><SortHeader label="Message template" sortKey="message" sort={sort} onToggle={toggleSort} align="left" /></th><th className="px-5 py-4"><SortHeader label="Status" sortKey="active" sort={sort} onToggle={toggleSort} align="left" /></th><th className="px-5 py-4 text-right">Actions</th></tr></thead><tbody className="divide-y divide-slate-200">{filteredConfigs.length === 0 ? <tr><td colSpan={6} className="px-6 py-14 text-center"><FileText className="mx-auto mb-3 text-slate-300" size={34} /><div className="font-black text-slate-700">{configs.length === 0 ? "No WhatsApp configurations yet" : "No configurations match these filters"}</div><p className="mt-1 text-sm text-slate-500">{configs.length === 0 ? "Add a sender configuration to start delivering messages." : "Try clearing one or more filters."}</p></td></tr> : sortedConfigs.map((config, index) => { const isActive = config.active !== "No"; return <tr key={config.id} className={index % 2 ? "bg-slate-50/60" : "bg-white"}><td className="px-5 py-4 align-top"><div className="font-black text-slate-900">{config.loginId}</div>{config.passSaved === "Yes" ? <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-700"><LockKeyhole size={12} /> Password saved</div> : <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-700"><LockKeyhole size={12} /> Password missing</div>}</td><td className="max-w-[210px] px-5 py-4 align-top"><div className="break-all font-mono text-sm font-semibold text-slate-700">{config.groupId}</div></td><td className="max-w-[220px] px-5 py-4 align-top"><div className="font-bold leading-snug text-slate-900">{menuLabel(config.menu)}</div><div className="mt-1 break-all font-mono text-xs text-slate-400">{config.menu}</div></td><td className="max-w-[390px] px-5 py-4 align-top"><div className="line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{config.message}</div><div className="mt-2 flex flex-wrap items-center gap-2"><span className="text-xs font-bold text-slate-400">{placeholderCount(config.message)} placeholders</span><button type="button" onClick={() => setPreviewConfig(config)} title="View" aria-label="View" className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 px-2 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-50"><Eye size={13} /> message</button></div></td><td className="px-5 py-4 align-top"><span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black ${isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}><span className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-emerald-500" : "bg-slate-400"}`} />{isActive ? "Active" : "Inactive"}</span></td><td className="px-5 py-4 align-top"><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={() => void sendCurrent(config)} disabled={!isActive || Boolean(sendingConfigId)} title={!isActive ? "Activate this configuration to send" : "Send the current message"} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40">{sendingConfigId === config.id ? <Spinner size={14} className="text-white" /> : <Send size={14} />}{sendingConfigId === config.id ? "Sending..." : "Send Current"}</button><button type="button" onClick={() => openEdit(config)} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-indigo-700 transition hover:bg-indigo-50"><Eye size={14} /> Open</button></div></td></tr>; })}</tbody></table></div>
+            <div className="overflow-x-auto"><table className="min-w-[1060px] w-full border-collapse"><thead className="sticky top-0 z-30 bg-slate-900 text-left text-xs uppercase tracking-wider text-white"><tr><th className="px-5 py-4"><SortHeader label="Configuration" sortKey="loginId" sort={sort} onToggle={toggleSort} align="left" /></th><th className="px-5 py-4"><SortHeader label="GroupId" sortKey="groupId" sort={sort} onToggle={toggleSort} align="left" /></th><th className="px-5 py-4"><SortHeader label="Menu / Route" sortKey="menu" sort={sort} onToggle={toggleSort} align="left" /></th><th className="px-5 py-4"><SortHeader label="Message template" sortKey="message" sort={sort} onToggle={toggleSort} align="left" /></th><th className="px-5 py-4"><SortHeader label="Status" sortKey="active" sort={sort} onToggle={toggleSort} align="left" /></th><th className="px-5 py-4 text-right">Actions</th></tr></thead><tbody className="divide-y divide-slate-200">{filteredConfigs.length === 0 ? <tr><td colSpan={6} className="px-6 py-14 text-center"><FileText className="mx-auto mb-3 text-slate-300" size={34} /><div className="font-black text-slate-700">{configs.length === 0 ? "No WhatsApp configurations yet" : "No configurations match these filters"}</div><p className="mt-1 text-sm text-slate-500">{configs.length === 0 ? "Add a sender configuration to start delivering messages." : "Try clearing one or more filters."}</p></td></tr> : sortedConfigs.map((config, index) => { const isActive = config.active !== "No"; return <tr key={config.id} className={index % 2 ? "bg-slate-50/60" : "bg-white"}><td className="px-5 py-4 align-top"><div className="font-black text-slate-900">{config.loginId}</div>{config.passSaved === "Yes" ? <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-700"><LockKeyhole size={12} /> Password saved</div> : <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-700"><LockKeyhole size={12} /> Password missing</div>}</td><td className="max-w-[210px] px-5 py-4 align-top"><div className="break-all font-mono text-sm font-semibold text-slate-700">{config.groupId}</div></td><td className="max-w-[220px] px-5 py-4 align-top"><div className="font-bold leading-snug text-slate-900">{menuLabel(config.menu)}</div><div className="mt-1 break-all font-mono text-xs text-slate-400">{config.menu}</div>{whatsappReportKeyForMenu(config.menu) ? <div className="mt-1 text-xs font-bold text-green-700">{config.sendTimes ? `Sends at ${config.sendTimes}` : "No timed sends"}</div> : null}</td><td className="max-w-[390px] px-5 py-4 align-top"><div className="line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{config.message}</div><div className="mt-2 flex flex-wrap items-center gap-2"><span className="text-xs font-bold text-slate-400">{placeholderCount(config.message)} placeholders</span><button type="button" onClick={() => setPreviewConfig(config)} title="View" aria-label="View" className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 px-2 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-50"><Eye size={13} /> message</button></div></td><td className="px-5 py-4 align-top"><span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black ${isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}><span className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-emerald-500" : "bg-slate-400"}`} />{isActive ? "Active" : "Inactive"}</span></td><td className="px-5 py-4 align-top"><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={() => void sendCurrent(config)} disabled={!isActive || Boolean(sendingConfigId)} title={!isActive ? "Activate this configuration to send" : "Send the current message"} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40">{sendingConfigId === config.id ? <Spinner size={14} className="text-white" /> : <Send size={14} />}{sendingConfigId === config.id ? "Sending..." : "Send Current"}</button><button type="button" onClick={() => openEdit(config)} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-indigo-700 transition hover:bg-indigo-50"><Eye size={14} /> Open</button></div></td></tr>; })}</tbody></table></div>
             <div className="hidden">{filteredConfigs.length === 0 ? <div className="px-6 py-14 text-center"><FileText className="mx-auto mb-3 text-slate-300" size={34} /><div className="font-black text-slate-700">{configs.length === 0 ? "No WhatsApp configurations yet" : "No configurations match these filters"}</div><p className="mt-1 text-sm text-slate-500">Try clearing the filters or add a new configuration.</p></div> : sortedConfigs.map((config) => { const isActive = config.active !== "No"; return <article key={config.id} className="space-y-4 p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-slate-900">{menuLabel(config.menu)}</h3><p className="mt-1 text-sm font-semibold text-slate-500">{config.loginId}</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-black ${isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{isActive ? "Active" : "Inactive"}</span></div><div className="grid grid-cols-1 gap-3 rounded-xl bg-slate-50 p-3 text-sm"><div><div className="text-xs font-bold uppercase tracking-wide text-slate-400">GroupId</div><div className="mt-1 break-all font-mono font-semibold text-slate-700">{config.groupId}</div></div><div><div className="text-xs font-bold uppercase tracking-wide text-slate-400">Password</div><div className={`mt-1 inline-flex items-center gap-1 font-bold ${config.passSaved === "Yes" ? "text-emerald-700" : "text-red-700"}`}><LockKeyhole size={14} /> {config.passSaved === "Yes" ? "Saved" : "Missing"}</div></div></div><div><div className="text-xs font-bold uppercase tracking-wide text-slate-400">Message template</div><div className="mt-1 line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{config.message}</div><button type="button" onClick={() => setPreviewConfig(config)} title="View" aria-label="View" className="mt-2 inline-flex items-center gap-1 rounded-lg border border-indigo-200 px-2 py-1 text-xs font-bold text-indigo-700"><Eye size={13} /> message</button></div><div className="flex gap-2"><button type="button" onClick={() => void sendCurrent(config)} disabled={!isActive || Boolean(sendingConfigId)} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2.5 text-xs font-black text-white disabled:opacity-40">{sendingConfigId === config.id ? "Sending..." : "Send Current"}</button><button type="button" onClick={() => openEdit(config)} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-black text-indigo-700"><Eye size={14} /> Open</button></div></article>; })}</div>
           </div>
+          <WhatsappReportSendHistory />
           {previewConfig ? <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="whatsapp-message-preview-title"><div className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl"><div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4"><div><h2 id="whatsapp-message-preview-title" className="font-black text-slate-900">Message template preview</h2><p className="mt-1 text-sm font-semibold text-slate-500">{menuLabel(previewConfig.menu)}</p></div><button type="button" onClick={() => setPreviewConfig(null)} aria-label="Close message preview" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button></div><div className="max-h-[65vh] overflow-y-auto whitespace-pre-wrap px-5 py-5 text-sm leading-7 text-slate-700">{previewConfig.message}</div><div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4"><span className="text-xs font-bold text-slate-500">{placeholderCount(previewConfig.message)} placeholders · Credentials are protected</span><button type="button" onClick={() => setPreviewConfig(null)} className="rounded-lg bg-indigo-700 px-4 py-2 text-sm font-black text-white hover:bg-indigo-800">Close</button></div></div></div> : null}
         </>
       )}

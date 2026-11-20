@@ -18,7 +18,7 @@ import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processi
 import { registerSalesOrderSync } from "./salesOrderSync.js";
 import { ensurePerformanceIndexes } from "./performanceIndexes.js";
 import { getChangesSince, getTrackedChanges, instrumentPool, onSchemaChange, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
-import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappTextMessage } from "./whatsappSender.js";
+import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappReportMessage, sendWhatsappTextMessage } from "./whatsappSender.js";
 import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
 import { writeLoadingSlipPdf } from "./loadingSlipPdf.js";
@@ -8441,6 +8441,26 @@ async function initDb(retries = 5) {
       `);
             await db.query("INSERT IGNORE INTO `printing_shift_report_settings` (`id`, `activatedAt`) VALUES (1, ?)", [new Date().toISOString()]);
             await db.query(`
+        CREATE TABLE IF NOT EXISTS \`whatsapp_report_sends\` (
+          \`id\` VARCHAR(80) PRIMARY KEY,
+          \`report\` VARCHAR(40) NOT NULL,
+          \`source\` VARCHAR(20) NOT NULL,
+          \`reportDate\` VARCHAR(10),
+          \`slot\` VARCHAR(5),
+          \`label\` VARCHAR(255),
+          \`fileName\` VARCHAR(255),
+          \`message\` TEXT,
+          \`status\` VARCHAR(30),
+          \`error\` VARCHAR(500),
+          \`attempts\` INT NOT NULL DEFAULT 0,
+          \`sentAt\` VARCHAR(40),
+          \`startedAt\` VARCHAR(40),
+          \`sentBy\` VARCHAR(255),
+          \`createdAt\` VARCHAR(40),
+          KEY \`idx_whatsapp_report_sends_report\` (\`report\`, \`createdAt\`)
+        )
+      `);
+            await db.query(`
         CREATE TABLE IF NOT EXISTS \`printing_shift_reports\` (
           \`id\` VARCHAR(40) PRIMARY KEY,
           \`shiftDate\` VARCHAR(10) NOT NULL,
@@ -9294,6 +9314,8 @@ async function initDb(retries = 5) {
                 { table: "whatsapp_configs", column: "active", type: "VARCHAR(10) NOT NULL DEFAULT 'Yes'" },
                 { table: "whatsapp_configs", column: "updatedBy", type: "VARCHAR(255)" },
                 { table: "whatsapp_configs", column: "updateTimestamp", type: "VARCHAR(255)" },
+                { table: "whatsapp_configs", column: "sendTimes", type: "VARCHAR(255)" },
+                { table: "whatsapp_configs", column: "reportFirmId", type: "VARCHAR(64)" },
                 { table: "material_in", column: "transactionNo", type: "VARCHAR(100) NOT NULL" },
                 { table: "material_in", column: "mrrType", type: "VARCHAR(50)" },
                 { table: "material_in", column: "mrrSubType", type: "VARCHAR(50)" },
@@ -11134,6 +11156,278 @@ async function retryPrintingShiftReports() {
         printingShiftWorkerRunning = false;
     }
 }
+const WHATSAPP_REPORT_MENU_BY_KEY = {
+    "production-plan": "/production/plan",
+    "dispatch-plan": "/dispatch/plan",
+    "pending-loading": "/loading/pending",
+};
+const WHATSAPP_REPORT_TITLES = {
+    "production-plan": "Production Plan",
+    "dispatch-plan": "Dispatch Plan",
+    "pending-loading": "Pending Loading",
+};
+const whatsappReportKeyOfMenu = (menu) => Object.keys(WHATSAPP_REPORT_MENU_BY_KEY).find((key) => WHATSAPP_REPORT_MENU_BY_KEY[key] === menu);
+const WHATSAPP_REPORT_MAX_ATTEMPTS = 3;
+// A send time is sent only within this window after it (a server that was down longer skips it).
+const WHATSAPP_REPORT_SLOT_WINDOW_MIN = 30;
+/** "09:00, 14:30" -> ["09:00", "14:30"] (valid HH:MM only, sorted, no repeats). */
+function parseWhatsappReportSendTimes(value) {
+    const times = String(value || "").split(/[,;\s]+/).map((part) => {
+        const match = part.trim().match(/^(\d{1,2}):(\d{2})$/);
+        if (!match)
+            return "";
+        const hour = Number(match[1]);
+        const minute = Number(match[2]);
+        return hour < 24 && minute < 60 ? `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}` : "";
+    }).filter(Boolean);
+    return Array.from(new Set(times)).sort();
+}
+const addIndiaDays = (date, days) => {
+    const value = new Date(`${date}T00:00:00.000Z`);
+    value.setUTCDate(value.getUTCDate() + days);
+    return value.toISOString().slice(0, 10);
+};
+async function getWhatsappReportConfig(db, report) {
+    const [rows] = await db.query("SELECT id, loginId, pass, groupId, message, sendTimes, reportFirmId FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC, id DESC LIMIT 1", [WHATSAPP_REPORT_MENU_BY_KEY[report]]);
+    return rows[0];
+}
+const whatsappReportConfigUsable = (config) => Boolean(config && config.loginId && config.pass && config.pass !== "********" && config.groupId);
+/** Qty of each job still at a job worker (open Job Work gate passes). */
+async function loadQtyAtJobWorkerByJob(db) {
+    const [passes] = await db.query("SELECT id, productionId, `lines`, clearOffReason, clearedOffAt FROM `gate_passes` WHERE gatePassType = 'Returnable' AND purpose = 'Job Work'");
+    const passRows = passes.filter((row) => !(String(row.clearOffReason || "").trim() && String(row.clearedOffAt || "").trim()));
+    const byJob = {};
+    if (!passRows.length)
+        return byJob;
+    const [receipts] = await db.query("SELECT sourceGatePassId, `lines`, status FROM `material_in` WHERE mrrType = 'Job Work Return' AND sourceGatePassId IN (?)", [passRows.map((row) => row.id)]);
+    const parse = (value) => { try {
+        const parsed = typeof value === "string" ? JSON.parse(value) : value;
+        return Array.isArray(parsed) ? parsed : [];
+    }
+    catch {
+        return [];
+    } };
+    const returnLines = receipts
+        .filter((row) => !["cancelled", "canceled"].includes(String(row.status || "").trim().toLowerCase()))
+        .flatMap((row) => parse(row.lines).map((line) => ({ ...line, passId: String(row.sourceGatePassId || "") })));
+    for (const pass of passRows) {
+        for (const line of parse(pass.lines)) {
+            const jobId = String(line.productionId || pass.productionId || "").trim();
+            if (!jobId)
+                continue;
+            const mine = returnLines.filter((entry) => entry.passId === String(pass.id) && String(entry.sourceGatePassLineId || "") === String(line.id || ""));
+            if (mine.some((entry) => entry.jobWorkStatus === "Complete"))
+                continue;
+            const returned = mine.reduce((sum, entry) => sum + Number(entry.actualQty ?? entry.qty ?? 0), 0);
+            const pending = Math.round((Number(line.qty || 0) - returned) * 100) / 100;
+            if (pending > 0)
+                byJob[jobId] = Math.round(((byJob[jobId] || 0) + pending) * 100) / 100;
+        }
+    }
+    return byJob;
+}
+/** Build the report on the server (same code as the page) and write its PDF to /uploads. */
+async function buildWhatsappReportPdfFile(db, report, config) {
+    const module = await loadReportModule();
+    const name = `wa-${report}`;
+    const definition = module.REPORT_DEFINITIONS?.[name];
+    if (!definition)
+        throw new Error(`Report ${name} is not available.`);
+    const [adminRows] = await db.query("SELECT id FROM `users` WHERE role = 'Admin' ORDER BY id LIMIT 1");
+    const authUserId = String(adminRows[0]?.id || "");
+    const today = indiaNowParts(new Date()).date;
+    const firmId = report === "production-plan" ? String(config.reportFirmId || "").trim() : "";
+    let firmLabel = "";
+    if (firmId) {
+        const [firmRows] = await db.query("SELECT firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]);
+        firmLabel = String(firmRows[0]?.firmName || "");
+    }
+    const params = report === "pending-loading"
+        ? { asOf: new Date().toISOString(), atJobWorkerByJobId: await loadQtyAtJobWorkerByJob(db) }
+        : { date: addIndiaDays(today, 1), firmLabel };
+    const spec = await buildServerReport(module, name, definition, firmId, authUserId, params, JSON.stringify([name, firmId, params, Date.now()]), db);
+    const fileName = await writeWhatsappReportPdf(module, spec);
+    return { spec, fileName, rows: Array.isArray(spec?.body) ? spec.body.length : 0 };
+}
+async function writeWhatsappReportPdf(module, spec) {
+    const uploadsDir = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadsDir))
+        fs.mkdirSync(uploadsDir, { recursive: true });
+    const base = String(spec?.fileName || "report.pdf").replace(/\.pdf$/i, "").replace(/[^a-zA-Z0-9._-]/g, "_");
+    const fileName = `${base}_${crypto.randomUUID().slice(0, 8)}.pdf`;
+    const buffer = Buffer.from(module.buildReportPdf(spec).output("arraybuffer"));
+    fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
+    return fileName;
+}
+const whatsappReportPdfUrl = (fileName) => `${(process.env.APP_PUBLIC_URL || "https://system.lngrp.in").replace(/\/$/, "")}/uploads/${encodeURIComponent(fileName)}`;
+async function renderWhatsappReportTemplate(report, template, values) {
+    const module = await loadReportModule();
+    const text = String(template || "").trim() || module.DEFAULT_WHATSAPP_REPORT_MESSAGES?.[report] || "";
+    return module.renderWhatsappReportMessage(text, values || {});
+}
+/** Send a report PDF already written to /uploads; logs the result on the send row. */
+async function deliverWhatsappReport(db, sendId, report, config, fileName, values) {
+    const message = await renderWhatsappReportTemplate(report, config.message, values);
+    const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message };
+    const result = await sendWhatsappReportMessage(senderConfig, message, whatsappReportPdfUrl(fileName));
+    const status = result.status === "Sent" ? "Sent" : "Failed";
+    await db.query("UPDATE `whatsapp_report_sends` SET status = ?, error = ?, sentAt = ?, startedAt = NULL, message = ?, fileName = ? WHERE id = ?", [status, status === "Sent" ? null : String(result.error || "WhatsApp message could not be sent.").slice(0, 500), status === "Sent" ? (result.sentAt || new Date().toISOString()) : null, message, fileName, sendId]);
+    return { status, error: status === "Sent" ? undefined : String(result.error || "WhatsApp message could not be sent.") };
+}
+/** Build + send now (timed slot or WhatsApp Master "Send current"). */
+async function runWhatsappReportSend(db, sendId, report, config) {
+    try {
+        const { spec, fileName } = await buildWhatsappReportPdfFile(db, report, config);
+        await db.query("UPDATE `whatsapp_report_sends` SET label = ?, reportDate = ? WHERE id = ?", [String(spec?.subtitle || "").slice(0, 255), report === "pending-loading" ? indiaNowParts(new Date()).date : addIndiaDays(indiaNowParts(new Date()).date, 1), sendId]);
+        return await deliverWhatsappReport(db, sendId, report, config, fileName, spec?.values || {});
+    }
+    catch (error) {
+        const message = `Report could not be built: ${error?.message || error}`.slice(0, 500);
+        await db.query("UPDATE `whatsapp_report_sends` SET status = 'Failed', error = ?, startedAt = NULL WHERE id = ?", [message, sendId]);
+        return { status: "Failed", error: message };
+    }
+}
+async function processWhatsappReportSlot(db, report, config, date, slot) {
+    const id = `${report}|${date}|${slot}`;
+    const now = new Date().toISOString();
+    await db.query("INSERT IGNORE INTO `whatsapp_report_sends` (`id`, `report`, `source`, `reportDate`, `slot`, `status`, `attempts`, `createdAt`) VALUES (?, ?, 'Scheduled', ?, ?, 'Pending', 0, ?)", [id, report, date, slot, now]);
+    // Claim: not sent, under the attempt limit, not being sent by another run (2 min lease).
+    const stale = new Date(Date.now() - 120_000).toISOString();
+    const [claim] = await db.query("UPDATE `whatsapp_report_sends` SET status = 'Sending', startedAt = ?, attempts = attempts + 1 WHERE id = ? AND status <> 'Sent' AND attempts < ? AND (startedAt IS NULL OR startedAt < ?)", [now, id, WHATSAPP_REPORT_MAX_ATTEMPTS, stale]);
+    if (!claim.affectedRows)
+        return;
+    await runWhatsappReportSend(db, id, report, config);
+}
+let whatsappReportWorkerRunning = false;
+async function runWhatsappReportSchedules() {
+    if (whatsappReportWorkerRunning)
+        return;
+    whatsappReportWorkerRunning = true;
+    try {
+        const db = await getPool();
+        if (!db)
+            return;
+        const { date, hour, minute } = indiaNowParts(new Date());
+        const nowMinutes = hour * 60 + minute;
+        for (const report of Object.keys(WHATSAPP_REPORT_MENU_BY_KEY)) {
+            const config = await getWhatsappReportConfig(db, report);
+            if (!whatsappReportConfigUsable(config))
+                continue;
+            for (const slot of parseWhatsappReportSendTimes(config.sendTimes)) {
+                const [h, m] = slot.split(":").map(Number);
+                const late = nowMinutes - (h * 60 + m);
+                if (late < 0 || late > WHATSAPP_REPORT_SLOT_WINDOW_MIN)
+                    continue;
+                await processWhatsappReportSlot(db, report, config, date, slot);
+            }
+        }
+    }
+    catch (error) {
+        console.warn("[WHATSAPP] Report schedule worker failed:", error.message);
+    }
+    finally {
+        whatsappReportWorkerRunning = false;
+    }
+}
+// Page button: sends the PDF of what is on screen (made in the browser with the same layout).
+app.post("/api/whatsapp-reports/:report/send", requireAuth, async (req, res) => {
+    const report = String(req.params.report || "");
+    const menu = WHATSAPP_REPORT_MENU_BY_KEY[report];
+    if (!menu)
+        return res.status(404).json({ status: "Failed", error: "Unknown report." });
+    const user = await getRequestUser(req).catch(() => null);
+    if (!user)
+        return res.status(401).json({ status: "Failed", error: "Unauthorized" });
+    if (user.role === "TruckDriver" || !hasPermission(user, menu))
+        return res.status(403).json({ status: "Failed", error: "Forbidden" });
+    const pdf = String(req.body?.pdf || "");
+    const match = pdf.match(/^data:application\/pdf;(?:[^;,]*;)*base64,(.+)$/);
+    if (!match)
+        return res.status(400).json({ status: "Failed", error: "PDF is missing." });
+    const buffer = Buffer.from(match[1], "base64");
+    if (buffer.length < 100 || buffer.length > 20 * 1024 * 1024 || buffer.subarray(0, 4).toString() !== "%PDF")
+        return res.status(400).json({ status: "Failed", error: "PDF is not valid." });
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(503).json({ status: "Failed", error: "Database unavailable." });
+        const config = await getWhatsappReportConfig(db, report);
+        if (!whatsappReportConfigUsable(config))
+            return res.json({ status: "Not Configured", error: `No active WhatsApp setup for ${WHATSAPP_REPORT_TITLES[report]}. Add it in WhatsApp Master.` });
+        const uploadsDir = path.join(process.cwd(), "uploads");
+        if (!fs.existsSync(uploadsDir))
+            fs.mkdirSync(uploadsDir, { recursive: true });
+        const base = String(req.body?.fileName || `${report}.pdf`).replace(/\.pdf$/i, "").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
+        const fileName = `${base}_${crypto.randomUUID().slice(0, 8)}.pdf`;
+        fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
+        const values = Object.fromEntries(Object.entries(req.body?.values || {}).map(([key, value]) => [String(key), String(value ?? "")]));
+        const sendId = crypto.randomUUID();
+        await db.query("INSERT INTO `whatsapp_report_sends` (`id`, `report`, `source`, `reportDate`, `label`, `fileName`, `status`, `attempts`, `startedAt`, `sentBy`, `createdAt`) VALUES (?, ?, 'Page', ?, ?, ?, 'Sending', 1, ?, ?, ?)", [sendId, report, indiaNowParts(new Date()).date, String(req.body?.label || "").slice(0, 255), fileName, new Date().toISOString(), String(user.name || user.email || ""), new Date().toISOString()]);
+        const result = await deliverWhatsappReport(db, sendId, report, config, fileName, values);
+        return res.json(result);
+    }
+    catch (error) {
+        console.error("[whatsapp-reports send]", report, error);
+        return res.status(500).json({ status: "Failed", error: "WhatsApp message could not be sent." });
+    }
+});
+// WhatsApp Master: send history of the three reports (latest first).
+app.get("/api/whatsapp-reports/log", requireAuth, async (req, res) => {
+    const user = await getRequestUser(req).catch(() => null);
+    if (!user || !canManageMasterRecords(user) || !hasPermission(user, "/masters/whatsapp"))
+        return res.status(403).json({ error: "Forbidden" });
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(503).json({ error: "Database unavailable." });
+        const report = String(req.query.report || "");
+        const [rows] = await db.query(`SELECT id, report, source, reportDate, slot, label, fileName, status, error, attempts, sentAt, sentBy, createdAt FROM \`whatsapp_report_sends\` ${report ? "WHERE report = ?" : ""} ORDER BY createdAt DESC LIMIT 100`, report ? [report] : []);
+        res.setHeader("Cache-Control", "no-store");
+        return res.json({ rows });
+    }
+    catch (error) {
+        return res.status(500).json({ error: "Send history could not be read." });
+    }
+});
+// WhatsApp Master: send the same PDF again (a failed or a past send).
+app.post("/api/whatsapp-reports/log/:id/resend", requireAuth, async (req, res) => {
+    const user = await getRequestUser(req).catch(() => null);
+    if (!user || !canManageMasterRecords(user) || !hasPermission(user, "/masters/whatsapp"))
+        return res.status(403).json({ status: "Failed", error: "Forbidden" });
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(503).json({ status: "Failed", error: "Database unavailable." });
+        const [rows] = await db.query("SELECT * FROM `whatsapp_report_sends` WHERE id = ? LIMIT 1", [String(req.params.id || "")]);
+        const previous = rows[0];
+        if (!previous)
+            return res.status(404).json({ status: "Failed", error: "Send not found." });
+        const report = previous.report;
+        const config = await getWhatsappReportConfig(db, report);
+        if (!whatsappReportConfigUsable(config))
+            return res.json({ status: "Not Configured", error: `No active WhatsApp setup for ${WHATSAPP_REPORT_TITLES[report] || report}.` });
+        const sendId = crypto.randomUUID();
+        const now = new Date().toISOString();
+        await db.query("INSERT INTO `whatsapp_report_sends` (`id`, `report`, `source`, `reportDate`, `slot`, `label`, `fileName`, `status`, `attempts`, `startedAt`, `sentBy`, `createdAt`) VALUES (?, ?, 'Resend', ?, ?, ?, ?, 'Sending', 1, ?, ?, ?)", [sendId, report, previous.reportDate, previous.slot, previous.label, previous.fileName, now, String(user.name || user.email || ""), now]);
+        const fileName = String(previous.fileName || "");
+        if (!fileName || !fs.existsSync(path.join(process.cwd(), "uploads", fileName))) {
+            // No PDF kept (the first try failed before it was made): build it again now.
+            return res.json(await runWhatsappReportSend(db, sendId, report, config));
+        }
+        const message = String(previous.message || "");
+        const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message };
+        const result = message
+            ? await sendWhatsappReportMessage(senderConfig, message, whatsappReportPdfUrl(fileName))
+            : { status: "Failed", error: "No message was saved for this send." };
+        const status = result.status === "Sent" ? "Sent" : "Failed";
+        await db.query("UPDATE `whatsapp_report_sends` SET status = ?, error = ?, sentAt = ?, startedAt = NULL, message = ? WHERE id = ?", [status, status === "Sent" ? null : String(result.error || "").slice(0, 500), status === "Sent" ? (result.sentAt || now) : null, message, sendId]);
+        return res.json(status === "Sent" ? { status } : { status, error: result.error || "WhatsApp message could not be sent." });
+    }
+    catch (error) {
+        console.error("[whatsapp-reports resend]", error);
+        return res.status(500).json({ status: "Failed", error: "WhatsApp message could not be sent." });
+    }
+});
 async function getQcScoreWhatsappConfig(db) {
     const [rows] = await db.query("SELECT loginId, pass, groupId, message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC, id DESC LIMIT 1", [QC_SCORE_MENU]);
     const config = rows[0];
@@ -11237,6 +11531,16 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
         if (!config.loginId || !config.pass || config.pass === "********" || !config.groupId)
             return res.json({ status: "Not Configured", error: "This WhatsApp configuration does not have valid credentials." });
         const menu = String(config.menu || "").trim();
+        const reportKey = whatsappReportKeyOfMenu(menu);
+        if (reportKey) {
+            // Production Plan / Dispatch Plan / Pending Loading: build the PDF now and send it.
+            const [fullRows] = await db.query("SELECT id, loginId, pass, groupId, message, sendTimes, reportFirmId FROM `whatsapp_configs` WHERE id = ? LIMIT 1", [configId]);
+            const sendId = crypto.randomUUID();
+            const now = new Date().toISOString();
+            await db.query("INSERT INTO `whatsapp_report_sends` (`id`, `report`, `source`, `status`, `attempts`, `startedAt`, `sentBy`, `createdAt`) VALUES (?, ?, 'Send Now', 'Sending', 1, ?, ?, ?)", [sendId, reportKey, now, String(user.name || user.email || ""), now]);
+            const result = await runWhatsappReportSend(db, sendId, reportKey, fullRows[0] || config);
+            return res.json(result.status === "Sent" ? { status: "Sent", attachmentsSent: true } : { status: "Failed", error: result.error });
+        }
         const messageTemplate = String(config.message || "");
         let message = "";
         let hasCurrentData = true;
@@ -19476,36 +19780,7 @@ app.get("/api/job-work-at-worker", async (req, res) => {
         const db = await getPool();
         if (!db)
             return res.status(503).json({ error: "DB connection not available" });
-        const [passes] = await db.query("SELECT id, productionId, `lines`, clearOffReason, clearedOffAt FROM `gate_passes` WHERE gatePassType = 'Returnable' AND purpose = 'Job Work'");
-        const passRows = passes.filter((row) => !(String(row.clearOffReason || "").trim() && String(row.clearedOffAt || "").trim()));
-        const byJob = {};
-        if (passRows.length) {
-            const [receipts] = await db.query("SELECT sourceGatePassId, `lines`, status FROM `material_in` WHERE mrrType = 'Job Work Return' AND sourceGatePassId IN (?)", [passRows.map((row) => row.id)]);
-            const parse = (value) => { try {
-                const parsed = typeof value === "string" ? JSON.parse(value) : value;
-                return Array.isArray(parsed) ? parsed : [];
-            }
-            catch {
-                return [];
-            } };
-            const returnLines = receipts
-                .filter((row) => !["cancelled", "canceled"].includes(String(row.status || "").trim().toLowerCase()))
-                .flatMap((row) => parse(row.lines).map((line) => ({ ...line, passId: String(row.sourceGatePassId || "") })));
-            for (const pass of passRows) {
-                for (const line of parse(pass.lines)) {
-                    const jobId = String(line.productionId || pass.productionId || "").trim();
-                    if (!jobId)
-                        continue;
-                    const mine = returnLines.filter((entry) => entry.passId === String(pass.id) && String(entry.sourceGatePassLineId || "") === String(line.id || ""));
-                    if (mine.some((entry) => entry.jobWorkStatus === "Complete"))
-                        continue;
-                    const returned = mine.reduce((sum, entry) => sum + Number(entry.actualQty ?? entry.qty ?? 0), 0);
-                    const pending = Math.round((Number(line.qty || 0) - returned) * 100) / 100;
-                    if (pending > 0)
-                        byJob[jobId] = Math.round(((byJob[jobId] || 0) + pending) * 100) / 100;
-                }
-            }
-        }
+        const byJob = await loadQtyAtJobWorkerByJob(db);
         res.setHeader("Cache-Control", "no-store");
         return res.json({ byJob });
     }
@@ -19695,6 +19970,7 @@ async function startServer() {
         setInterval(() => {
             void retryPendingWhatsappComplaints();
             void retryPrintingShiftReports();
+            void runWhatsappReportSchedules();
         }, 60_000);
         void retryPrintingShiftReports();
         // Add missing filter/join indexes only at night (1-5 AM India time) so the

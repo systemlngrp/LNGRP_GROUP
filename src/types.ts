@@ -1869,6 +1869,10 @@ export interface WhatsappConfig {
   menu: string;
   message: string;
   active?: "Yes" | "No";
+  /** Production Plan / Dispatch Plan / Pending Loading: times (HH:MM, India) to send the PDF, comma-separated. */
+  sendTimes?: string;
+  /** Production Plan: firm of the timed PDF (blank = all firms). */
+  reportFirmId?: string;
   updatedBy?: string;
   updateTimestamp?: string;
 }
