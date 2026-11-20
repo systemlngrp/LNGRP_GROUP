@@ -35,6 +35,8 @@ export function shiftEndAt(shiftDate, shift) {
 export function shiftDueAt(shiftDate, shift) {
     return new Date(shiftEndAt(shiftDate, shift).getTime() + 30 * 60_000);
 }
+/** A shift report is sent only on the day it falls due and within this time after it (no old dates later). */
+export const PRINTING_SHIFT_SEND_WINDOW_MS = 3 * 3_600_000;
 export function duePrintingShifts(activatedAt, now) {
     const due = [];
     const first = new Date(activatedAt.getTime() - 36 * 3_600_000);
@@ -44,7 +46,13 @@ export function duePrintingShifts(activatedAt, now) {
         const shiftDate = new Date(day).toISOString().slice(0, 10);
         for (const shift of ["Day", "Night"]) {
             const end = shiftEndAt(shiftDate, shift);
-            if (end.getTime() > activatedAt.getTime() && shiftDueAt(shiftDate, shift).getTime() <= now.getTime()) {
+            const dueAt = shiftDueAt(shiftDate, shift);
+            // Only today's reports: due today (India time) and not more than 3 hours ago.
+            // A send that kept failing is no longer retried for an older day.
+            if (end.getTime() > activatedAt.getTime() &&
+                dueAt.getTime() <= now.getTime() &&
+                now.getTime() - dueAt.getTime() <= PRINTING_SHIFT_SEND_WINDOW_MS &&
+                indiaNowParts(dueAt).date === indiaNowParts(now).date) {
                 due.push({ shiftDate, shift });
             }
         }

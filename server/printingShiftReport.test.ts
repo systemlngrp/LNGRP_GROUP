@@ -64,3 +64,10 @@ test("machine-wise template groups jobs by printer with totals", () => {
   assert.match(message, /\*Bobst Printer:\* 3000\n\*Big Printer:\* 1200\n\*Small Printer:\* 0/);
   assert.match(message, /\*Total Qty in Shift:\* 4300/);
 });
+
+test("only today's shift reports are sent, never an older date", () => {
+  // Activated two days ago; now 25 Oct 08:00 India (02:30Z): only the 24 Oct night shift (due 07:30 today) is due.
+  assert.deepEqual(duePrintingShifts(new Date("2026-10-23T00:00:00Z"), new Date("2026-10-25T02:30:00Z")), [{ shiftDate: "2026-10-24", shift: "Night" }]);
+  // Same shift 4 hours after it fell due: no longer sent.
+  assert.deepEqual(duePrintingShifts(new Date("2026-10-23T00:00:00Z"), new Date("2026-10-25T06:30:00Z")), []);
+});
