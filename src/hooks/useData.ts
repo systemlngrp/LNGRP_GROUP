@@ -4,6 +4,11 @@ import { REALTIME_DATA_CHANGE_EVENT } from "./useRealtimeDataSync";
 import { DataLoadingContext } from "../components/DataLoadingBoundary";
 import { CollectionHttpError, endpointChangeAffects, loadCollection, realtimeChangeAffects } from "../lib/collectionLoader";
 
+/** Shortest time between two reloads of one list caused by other users' changes. */
+const REALTIME_RELOAD_GAP_MS = 20_000;
+/** Loads taking longer than this are noted in the browser console. */
+const SLOW_LOAD_WARN_MS = 3_000;
+
 type UseDataOptions = {
   enabled?: boolean;
   cacheToLocalStorage?: boolean;
@@ -94,6 +99,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   const requestGenerationRef = useRef(0);
   const lastFetchAtRef = useRef(0);
   const forbiddenUntilRef = useRef(0);
+  const realtimeTimerRef = useRef<number | null>(null);
 
   const isItemAlias = entity === "items" && !options?.endpointOverride;
   const resolvedEntity = isItemAlias ? "npd" : entity;
@@ -168,8 +174,10 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       setError(null);
       lastFetchAtRef.current = Date.now();
       const elapsedMs = Math.round(performance.now() - startedAt);
-      if (elapsedMs >= 1000) {
-        console.warn(`[useData:${entity}] slow load`, { endpoint, elapsedMs, rows: finalData.length });
+      // Only loads a user would notice (a page asks for many lists at once, so
+      // small ones often wait ~1 s in the browser's queue; that is not a problem).
+      if (elapsedMs >= SLOW_LOAD_WARN_MS) {
+        console.warn(`[useData:${entity}] slow load ${(elapsedMs / 1000).toFixed(1)} s, ${finalData.length} rows`, { endpoint, elapsedMs, rows: finalData.length });
       }
       // Large lists are never stored (see safeSetLocalStorage), so do not
       // spend time converting them to text first.
@@ -247,9 +255,19 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       const affected = options?.endpointOverride
         ? endpointChangeAffects(entities, options.endpointOverride, [entity, resolvedEntity], true)
         : realtimeChangeAffects(entities, [entity, resolvedEntity], false);
-      if (affected) {
+      if (!affected) return;
+      // Changes saved by other users: reload at most once per REALTIME_RELOAD_GAP_MS
+      // (a busy day reloaded big lists every poll and froze screens that redraw them).
+      if (realtimeTimerRef.current !== null) return;
+      const wait = REALTIME_RELOAD_GAP_MS - (Date.now() - lastFetchAtRef.current);
+      if (wait <= 0) {
         fetchData({ background: true, force: true });
+        return;
       }
+      realtimeTimerRef.current = window.setTimeout(() => {
+        realtimeTimerRef.current = null;
+        fetchData({ background: true, force: true });
+      }, wait);
     };
 
     window.addEventListener(syncEvent, handleSync);
@@ -264,6 +282,10 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       window.removeEventListener(syncEvent, handleSync);
       window.removeEventListener("active-firm-changed", handleFirmChange);
       window.removeEventListener(REALTIME_DATA_CHANGE_EVENT, handleRealtimeDataChange);
+      if (realtimeTimerRef.current !== null) {
+        window.clearTimeout(realtimeTimerRef.current);
+        realtimeTimerRef.current = null;
+      }
     };
   }, [enabled, fetchData, syncEvent]);
 

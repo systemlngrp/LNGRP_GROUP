@@ -6,6 +6,8 @@ const CHANNEL_NAME = "lngrp-realtime-data-sync";
 type RealtimeMessage = {
   type?: string;
   entities?: string[];
+  /** Server change version the message is for (tabs skip a change they already have). */
+  version?: number;
 };
 
 export function useRealtimeDataSync(enabled = true) {
@@ -25,17 +27,24 @@ export function useRealtimeDataSync(enabled = true) {
         const changedEntities = Array.from(pendingEntitiesRef.current);
         pendingEntitiesRef.current.clear();
         window.dispatchEvent(new CustomEvent(REALTIME_DATA_CHANGE_EVENT, { detail: { entities: changedEntities } }));
-        if (broadcast) channel?.postMessage({ type: "data-changed", entities: changedEntities });
+        if (broadcast) channel?.postMessage({ type: "data-changed", entities: changedEntities, version: lastVersion ?? undefined });
       }, 200);
     };
 
     const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(CHANNEL_NAME) : null;
-    channel?.addEventListener("message", (event: MessageEvent<RealtimeMessage>) => {
-      if (event.data?.type === "data-changed") emit(event.data);
-    });
-
     let pollTimer: number | null = null;
     let lastVersion: number | null = null;
+    channel?.addEventListener("message", (event: MessageEvent<RealtimeMessage>) => {
+      if (event.data?.type !== "data-changed") return;
+      // Another tab already read this change from the server: use it once and
+      // move this tab's version on, so its own next poll does not reload it again.
+      const version = Number(event.data.version);
+      if (Number.isFinite(version) && lastVersion !== null) {
+        if (version <= lastVersion) return;
+        lastVersion = version;
+      }
+      emit(event.data);
+    });
     let disposed = false;
 
     const poll = async () => {
