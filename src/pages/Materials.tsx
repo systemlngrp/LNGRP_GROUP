@@ -195,6 +195,7 @@ export function Materials() {
   const [sizeFilter, setSizeFilter] = useState("All");
   const [gsmFilter, setGsmFilter] = useState("All");
   const [colorFilter, setColorFilter] = useState("All");
+  const [groupFilter, setGroupFilter] = useState("All");
   const [sortKey, setSortKey] = useState<MaterialSortKey>("updated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [fromDate, setFromDate] = useState("");
@@ -417,7 +418,8 @@ export function Materials() {
         const matchesColor =
           colorFilter === "All" ||
           (colorFilter === "Blank" ? normalizedColor === "" : normalizedColor === colorFilter);
-        return matchesType && matchesSize && matchesGsm && matchesColor;
+        const matchesGroup = groupFilter === "All" || String(material.materialGroupId || "") === groupFilter;
+        return matchesType && matchesSize && matchesGsm && matchesColor && matchesGroup;
       })
       .sort((a, b) => {
         let compare = 0;
@@ -439,7 +441,7 @@ export function Materials() {
 
         return sortDirection === "asc" ? compare : -compare;
       });
-  }, [colorFilter, gsmFilter, materialDisplayRows, sizeFilter, sortDirection, sortKey, typeFilter]);
+  }, [colorFilter, gsmFilter, groupFilter, materialDisplayRows, sizeFilter, sortDirection, sortKey, typeFilter]);
 
   const getMaterialStockValues = (material: MaterialDisplayRow, firmId?: string) => {
     const movement = movementSummaryMap.get(`${material.id}::${String(firmId || "")}`) || { openingQty: 0, openingRate: 0, openingValue: 0, receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 };
@@ -795,7 +797,7 @@ export function Materials() {
 
   useEffect(() => {
     setPage(1);
-  }, [colorFilter, gsmFilter, searchTerm, setPage, sizeFilter, sortDirection, sortKey, typeFilter]);
+  }, [colorFilter, gsmFilter, groupFilter, searchTerm, setPage, sizeFilter, sortDirection, sortKey, typeFilter]);
 
   function resetForm(nextMaterials = materials, nextReelGroupId = reelGroup?.id || "") {
     setFormData(createInitialFormState(nextMaterials, nextReelGroupId, reelErpStartNumber));
@@ -1273,6 +1275,20 @@ export function Materials() {
     return values.sort((a, b) => Number(a) - Number(b));
   }, [materials]);
 
+  // Groups that have at least one material of the selected type.
+  const groupFilterOptions = useMemo(() => {
+    const usedGroupIds = new Set(
+      materials
+        .filter((material) => typeFilter === "All" || material.type === typeFilter)
+        .map((material) => String(material.materialGroupId || ""))
+        .filter(Boolean)
+    );
+    return materialGroups
+      .filter((group) => usedGroupIds.has(String(group.id)))
+      .map((group) => ({ value: String(group.id), label: group.name }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
+  }, [materialGroups, materials, typeFilter]);
+
   const colorFilterOptions = useMemo(() => {
     const values = Array.from(
       new Set(
@@ -1687,6 +1703,7 @@ export function Materials() {
     setSizeFilter("All");
     setGsmFilter("All");
     setColorFilter("All");
+    setGroupFilter("All");
     setFromDate("");
     setToDate("");
   }
@@ -2226,10 +2243,11 @@ export function Materials() {
           <ReportFilterBox
             search={searchTerm}
             onSearch={setSearchTerm}
-            hasFilters={Boolean(searchTerm.trim() || typeFilter !== "Reel" || sizeFilter !== "All" || gsmFilter !== "All" || colorFilter !== "All" || fromDate || toDate)}
+            hasFilters={Boolean(searchTerm.trim() || typeFilter !== "Reel" || sizeFilter !== "All" || gsmFilter !== "All" || colorFilter !== "All" || groupFilter !== "All" || fromDate || toDate)}
             onClear={clearFilters}
           >
-            <SelectFilter label="Material Type" value={typeFilter === "All" ? "" : typeFilter} onChange={(value) => setTypeFilter(value || "All")} options={TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label || option.value }))} />
+            <SelectFilter label="Material Type" value={typeFilter === "All" ? "" : typeFilter} onChange={(value) => { setTypeFilter(value || "All"); setGroupFilter("All"); }} options={TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label || option.value }))} />
+            {typeFilter !== "Reel" ? <SelectFilter label="Group" value={groupFilter === "All" ? "" : groupFilter} onChange={(value) => setGroupFilter(value || "All")} options={groupFilterOptions} /> : null}
             {typeFilter !== "Other" ? <SelectFilter label="Size" value={sizeFilter === "All" ? "" : sizeFilter} onChange={(value) => setSizeFilter(value || "All")} options={sizeOptions.map((value) => ({ value: String(value), label: String(value) }))} /> : null}
             {typeFilter !== "Other" ? <SelectFilter label="GSM" value={gsmFilter === "All" ? "" : gsmFilter} onChange={(value) => setGsmFilter(value || "All")} options={gsmOptions.map((value) => ({ value: String(value), label: String(value) }))} /> : null}
             {typeFilter !== "Other" ? <SelectFilter label="Color" value={colorFilter === "All" ? "" : colorFilter} onChange={(value) => setColorFilter(value || "All")} options={colorFilterOptions.map((value) => ({ value: String(value), label: String(value) }))} /> : null}
