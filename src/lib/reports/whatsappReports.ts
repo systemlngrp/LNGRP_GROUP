@@ -301,13 +301,15 @@ export function computeDispatchPlanDayRows(
         cancelled,
         pending: planned - invoiced - cancelled,
       };
-    });
+    })
+    // Only plan lines still to dispatch (page and WhatsApp PDF alike).
+    .filter((row) => row.pending > 0.0001);
 }
 
 export const sortDispatchPlanDayRows = (rows: DispatchPlanDayRow[]) =>
   [...rows].sort((a, b) => s(a.plan.planNo).localeCompare(s(b.plan.planNo), undefined, { numeric: true, sensitivity: "base" }));
 
-export const DISPATCH_PLAN_HEADERS = ["Sr.", "Plan No", "Firm", "Company", "Order No", "Item", "Truck", "Planned", "Invoice Qty", "Cancl", "Pending", "Status"];
+export const DISPATCH_PLAN_HEADERS = ["Sr.", "Plan No", "Firm", "Company", "Order No", "Item", "Planned", "Invoice Qty", "Cancl", "Pending", "Status"];
 
 export function dispatchPlanPdfSpec(rows: DispatchPlanDayRow[], date: string): ReportPdfSpec {
   const totals = rows.reduce((sum, row) => ({
@@ -322,10 +324,10 @@ export function dispatchPlanPdfSpec(rows: DispatchPlanDayRow[], date: string): R
     subtitle: `Date: ${formatDate(date)}`,
     head: DISPATCH_PLAN_HEADERS,
     body: rows.map((row, index) => [
-      String(index + 1), s(row.plan.planNo), row.firmName, row.companyName, row.orderNo, row.itemName, row.truckNo,
+      String(index + 1), s(row.plan.planNo), row.firmName, row.companyName, row.orderNo, row.itemName,
       qtyText(row.planned), qtyText(row.invoiced), qtyText(row.cancelled), qtyText(row.pending), s(row.plan.status),
     ]),
-    foot: ["TOTAL", "", "", "", "", "", "", qtyText(totals.planned), qtyText(totals.invoiced), qtyText(totals.cancelled), qtyText(totals.pending), ""],
+    foot: ["TOTAL", "", "", "", "", "", qtyText(totals.planned), qtyText(totals.invoiced), qtyText(totals.cancelled), qtyText(totals.pending), ""],
     values: {
       date: formatDate(date),
       plans: String(rows.length),
@@ -527,7 +529,7 @@ export function buildReportPdf(spec: ReportPdfSpec): jsPDF {
     });
     return doc;
   }
-  const qtyColumns = spec.report === "dispatch-plan" ? [7, 8, 9, 10] : spec.report === "pending-loading" ? [8, 9, 10]
+  const qtyColumns = spec.report === "dispatch-plan" ? [6, 7, 8, 9] : spec.report === "pending-loading" ? [8, 9, 10]
     : spec.report === "php-production-plan" || spec.report === "plate-production-plan" ? [8, 9, 10] : [9, 10, 11, 12, 13];
   const groups = new Set(spec.groupRows || []);
   autoTable(doc, {

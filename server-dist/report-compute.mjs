@@ -3449,10 +3449,10 @@ function computeDispatchPlanDayRows(lists, resolveOrderItem, date) {
       cancelled,
       pending: planned - invoiced - cancelled
     };
-  });
+  }).filter((row) => row.pending > 1e-4);
 }
 var sortDispatchPlanDayRows = (rows2) => [...rows2].sort((a, b) => s4(a.plan.planNo).localeCompare(s4(b.plan.planNo), void 0, { numeric: true, sensitivity: "base" }));
-var DISPATCH_PLAN_HEADERS = ["Sr.", "Plan No", "Firm", "Company", "Order No", "Item", "Truck", "Planned", "Invoice Qty", "Cancl", "Pending", "Status"];
+var DISPATCH_PLAN_HEADERS = ["Sr.", "Plan No", "Firm", "Company", "Order No", "Item", "Planned", "Invoice Qty", "Cancl", "Pending", "Status"];
 function dispatchPlanPdfSpec(rows2, date) {
   const totals = rows2.reduce((sum, row) => ({
     planned: sum.planned + row.planned,
@@ -3472,14 +3472,13 @@ function dispatchPlanPdfSpec(rows2, date) {
       row.companyName,
       row.orderNo,
       row.itemName,
-      row.truckNo,
       qtyText(row.planned),
       qtyText(row.invoiced),
       qtyText(row.cancelled),
       qtyText(row.pending),
       s4(row.plan.status)
     ]),
-    foot: ["TOTAL", "", "", "", "", "", "", qtyText(totals.planned), qtyText(totals.invoiced), qtyText(totals.cancelled), qtyText(totals.pending), ""],
+    foot: ["TOTAL", "", "", "", "", "", qtyText(totals.planned), qtyText(totals.invoiced), qtyText(totals.cancelled), qtyText(totals.pending), ""],
     values: {
       date: formatDate4(date),
       plans: String(rows2.length),
@@ -3664,7 +3663,7 @@ function buildReportPdf(spec) {
     });
     return doc;
   }
-  const qtyColumns = spec.report === "dispatch-plan" ? [7, 8, 9, 10] : spec.report === "pending-loading" ? [8, 9, 10] : spec.report === "php-production-plan" || spec.report === "plate-production-plan" ? [8, 9, 10] : [9, 10, 11, 12, 13];
+  const qtyColumns = spec.report === "dispatch-plan" ? [6, 7, 8, 9] : spec.report === "pending-loading" ? [8, 9, 10] : spec.report === "php-production-plan" || spec.report === "plate-production-plan" ? [8, 9, 10] : [9, 10, 11, 12, 13];
   const groups = new Set(spec.groupRows || []);
   autoTable(doc, {
     startY: 22,

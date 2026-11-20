@@ -67,7 +67,7 @@ export function DispatchPlanByDate() {
       (!firmFilter || row.firmId === firmFilter) &&
       (!companyFilter || row.companyName === companyFilter) &&
       (!itemFilter || row.itemKey === itemFilter) &&
-      matchesTableSearch(rowSearchText([row.plan.planNo, row.firmName, row.companyName, row.orderNo, row.itemName, row.truckNo, row.planned, row.invoiced, row.cancelled, row.pending, row.plan.status]), words)
+      matchesTableSearch(rowSearchText([row.plan.planNo, row.firmName, row.companyName, row.orderNo, row.itemName, row.planned, row.invoiced, row.cancelled, row.pending, row.plan.status]), words)
     );
   }, [companyFilter, dayRows, firmFilter, itemFilter, searchTerm]);
 
@@ -78,7 +78,6 @@ export function DispatchPlanByDate() {
       case "companyName": return row.companyName;
       case "orderNo": return row.orderNo;
       case "itemName": return row.itemName;
-      case "truckNo": return row.truckNo;
       case "planned": return row.planned;
       case "invoiced": return row.invoiced;
       case "cancelled": return row.cancelled;
@@ -95,12 +94,12 @@ export function DispatchPlanByDate() {
     pending: sum.pending + row.pending,
   }), { planned: 0, invoiced: 0, cancelled: 0, pending: 0 }), [rows]);
 
-  const HEADERS = ["Sr.", "Plan No", "Firm", "Company", "Order No", "Item", "Truck", "Planned", "Invoice Qty", "Cancl", "Pending", "Status"];
+  const HEADERS = ["Sr.", "Plan No", "Firm", "Company", "Order No", "Item", "Planned", "Invoice Qty", "Cancl", "Pending", "Status"];
   const exportRows = () => rows.map((row, index) => [
-    index + 1, row.plan.planNo || "", row.firmName, row.companyName, row.orderNo, row.itemName, row.truckNo,
+    index + 1, row.plan.planNo || "", row.firmName, row.companyName, row.orderNo, row.itemName,
     row.planned, row.invoiced, row.cancelled, row.pending, row.plan.status || "",
   ]);
-  const totalRow = ["TOTAL", "", "", "", "", "", "", totals.planned, totals.invoiced, totals.cancelled, totals.pending, ""];
+  const totalRow = ["TOTAL", "", "", "", "", "", totals.planned, totals.invoiced, totals.cancelled, totals.pending, ""];
 
   const handleExcel = async () => {
     const XLSX = await import("xlsx-js-style");
@@ -153,7 +152,7 @@ export function DispatchPlanByDate() {
       <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
         <div className="relative w-full">
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input type="text" placeholder="Search plan no, company, order, item, truck..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
+          <input type="text" placeholder="Search plan no, company, order, item..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
         </div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
           <div className="min-w-0"><span className={LABEL}>Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={options.firms} placeholder="All" /></div>
@@ -185,7 +184,6 @@ export function DispatchPlanByDate() {
               <th className={TH}><SortHeader label="Company" sortKey="companyName" sort={sort} onToggle={toggle} /></th>
               <th className={TH}><SortHeader label="Order No" sortKey="orderNo" sort={sort} onToggle={toggle} /></th>
               <th className={TH}><SortHeader label="Item" sortKey="itemName" sort={sort} onToggle={toggle} /></th>
-              <th className={TH}><SortHeader label="Truck" sortKey="truckNo" sort={sort} onToggle={toggle} /></th>
               <th className={TH}><SortHeader label="Planned" sortKey="planned" sort={sort} onToggle={toggle} align="right" /></th>
               <th className={TH}><SortHeader label="Invoice Qty" sortKey="invoiced" sort={sort} onToggle={toggle} align="right" /></th>
               <th className={TH}><SortHeader label="Cancl" sortKey="cancelled" sort={sort} onToggle={toggle} align="right" /></th>
@@ -195,9 +193,9 @@ export function DispatchPlanByDate() {
           </thead>
           <tbody>
             {plansLoading && !plans.length ? (
-              <tr><td colSpan={12} className="p-8 text-center"><Spinner size={28} className="inline-block text-indigo-600" /></td></tr>
+              <tr><td colSpan={11} className="p-8 text-center"><Spinner size={28} className="inline-block text-indigo-600" /></td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={12} className="p-8 text-center text-sm font-medium text-black">No dispatch plans for {formatDate(selectedDate)}.</td></tr>
+              <tr><td colSpan={11} className="p-8 text-center text-sm font-medium text-black">No pending dispatch plans for {formatDate(selectedDate)}.</td></tr>
             ) : rows.map((row, index) => (
               <tr key={row.plan.id} className="hover:bg-slate-50">
                 <td className={`${TD} text-center`}>{index + 1}</td>
@@ -206,7 +204,6 @@ export function DispatchPlanByDate() {
                 <td className={TD}>{row.companyName || "-"}</td>
                 <td className={`${TD} whitespace-nowrap font-bold`}>{row.orderNo || "-"}</td>
                 <td className={TD}>{row.itemName || "-"}</td>
-                <td className={`${TD} whitespace-nowrap`}>{row.truckNo || "-"}</td>
                 <td className={`${TD} whitespace-nowrap text-right font-bold`}>{qty(row.planned)}</td>
                 <td className={`${TD} whitespace-nowrap text-right font-bold`}>{qty(row.invoiced)}</td>
                 <td className={`${TD} whitespace-nowrap text-right font-bold`}>{qty(row.cancelled)}</td>
@@ -220,7 +217,7 @@ export function DispatchPlanByDate() {
           {rows.length ? (
             <tfoot>
               <tr className="bg-slate-100 font-black">
-                <td className={`${TD} font-black`} colSpan={7}>TOTAL</td>
+                <td className={`${TD} font-black`} colSpan={6}>TOTAL</td>
                 <td className={`${TD} text-right font-black`}>{qty(totals.planned)}</td>
                 <td className={`${TD} text-right font-black`}>{qty(totals.invoiced)}</td>
                 <td className={`${TD} text-right font-black`}>{qty(totals.cancelled)}</td>
