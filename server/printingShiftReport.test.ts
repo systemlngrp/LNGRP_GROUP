@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildPrintingShiftSummary, DEFAULT_PRINTING_SHIFT_MESSAGE, PREVIOUS_PRINTING_SHIFT_MESSAGE, duePrintingShifts, renderPrintingShiftMessage, shiftDueAt } from "./printingShiftReport";
+import { buildPrintingShiftSummary, DEFAULT_PRINTING_SHIFT_MESSAGE, PREVIOUS_PRINTING_SHIFT_MESSAGE, PREVIOUS_MACHINE_PRINTING_SHIFT_MESSAGE, duePrintingShifts, todaysDuePrintingShifts, latestFinishedPrintingShift, renderPrintingShiftMessage, shiftDueAt } from "./printingShiftReport";
 import { sendWhatsappTextMessage } from "./whatsappSender";
 
 test("formats the supplied 24 October Printing report and hourly rate", () => {
@@ -52,7 +52,7 @@ test("sends the shift report to the configured group without exposing credential
 });
 
 test("machine-wise template groups jobs by printer with totals", () => {
-  const message = renderPrintingShiftMessage(DEFAULT_PRINTING_SHIFT_MESSAGE, "2026-11-20", "Day", [
+  const message = renderPrintingShiftMessage(PREVIOUS_MACHINE_PRINTING_SHIFT_MESSAGE, "2026-11-20", "Day", [
     { jobNo: "101", itemName: "Box", qty: 1200, printingMachine: "Big Printer" },
     { jobNo: "100", itemName: "Carton", qty: 2400, printingMachine: "Bobst Printer" },
     { jobNo: "102", itemName: "Tray", qty: 600, printingMachine: "Bobst Printer" },
@@ -70,4 +70,20 @@ test("only today's shift reports are sent, never an older date", () => {
   assert.deepEqual(duePrintingShifts(new Date("2026-10-23T00:00:00Z"), new Date("2026-10-25T02:30:00Z")), [{ shiftDate: "2026-10-24", shift: "Night" }]);
   // Same shift 4 hours after it fell due: no longer sent.
   assert.deepEqual(duePrintingShifts(new Date("2026-10-23T00:00:00Z"), new Date("2026-10-25T06:30:00Z")), []);
+});
+
+test("only today's shifts are due; the night report carries today's date and last night's hours", () => {
+  const activated = new Date("2026-01-01T00:00:00Z");
+  // 20/11 08:00 IST: last night's shift is due, today's Day shift is not yet.
+  assert.deepEqual(todaysDuePrintingShifts(activated, new Date("2026-11-20T02:30:00Z")), [{ shiftDate: "2026-11-19", shift: "Night" }]);
+  // 20/11 20:00 IST: both of today's.
+  assert.deepEqual(todaysDuePrintingShifts(activated, new Date("2026-11-20T14:30:00Z")), [{ shiftDate: "2026-11-19", shift: "Night" }, { shiftDate: "2026-11-20", shift: "Day" }]);
+  // 21/11 01:00 IST: nothing (yesterday's are old now).
+  assert.deepEqual(todaysDuePrintingShifts(activated, new Date("2026-11-20T19:30:00Z")), []);
+  const night = renderPrintingShiftMessage(DEFAULT_PRINTING_SHIFT_MESSAGE, "2026-11-19", "Night", []);
+  assert.match(night, /^\*Printing Report – Night Shift 20\/11\/2026\*\n\(19\/11 7 PM – 20\/11 7 AM\)/);
+  const day = renderPrintingShiftMessage(DEFAULT_PRINTING_SHIFT_MESSAGE, "2026-11-20", "Day", []);
+  assert.match(day, /^\*Printing Report – Day Shift 20\/11\/2026\*\n\(7 AM – 7 PM\)/);
+  assert.deepEqual(latestFinishedPrintingShift(new Date("2026-11-20T06:30:00Z")), { shiftDate: "2026-11-19", shift: "Night" });
+  assert.deepEqual(latestFinishedPrintingShift(new Date("2026-11-20T14:00:00Z")), { shiftDate: "2026-11-20", shift: "Day" });
 });

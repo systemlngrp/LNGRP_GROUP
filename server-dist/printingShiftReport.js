@@ -6,7 +6,19 @@ export const PREVIOUS_PRINTING_SHIFT_MESSAGE = `*Printing Report ({{shiftHours}}
 
 *Total Qty in Shift:* {{totalQty}}
 *Boxes Per Hour:* {{boxesPerHour}}`;
-export const DEFAULT_PRINTING_SHIFT_MESSAGE = `*Printing Report ({{shiftHours}}) {{date}}*
+/** Machine-wise template before the send-date header (kept to update saved copies of it). */
+export const PREVIOUS_MACHINE_PRINTING_SHIFT_MESSAGE = `*Printing Report ({{shiftHours}}) {{date}}*
+
+{{machineLines}}
+
+*Bobst Printer:* {{bobstQty}}
+*Big Printer:* {{bigQty}}
+*Small Printer:* {{smallQty}}
+
+*Total Qty in Shift:* {{totalQty}}
+*Boxes Per Hour:* {{boxesPerHour}}`;
+export const DEFAULT_PRINTING_SHIFT_MESSAGE = `*Printing Report – {{shift}} Shift {{sendDate}}*
+({{shiftPeriod}})
 
 {{machineLines}}
 
@@ -59,6 +71,32 @@ export function duePrintingShifts(activatedAt, now) {
     }
     return due;
 }
+const addDays = (date, days) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+/** Date the report is sent (India): the shift date for Day, the next day for Night. */
+export const printingShiftSendDate = (shiftDate, shift) => (shift === "Night" ? addDays(shiftDate, 1) : shiftDate);
+/**
+ * Only today's reports: last night's shift (sent 7:30 AM) and today's Day shift
+ * (sent 7:30 PM), once due. Older shifts are never sent (a failed one retries
+ * only until midnight).
+ */
+export function todaysDuePrintingShifts(activatedAt, now) {
+    const today = indiaNowParts(now).date;
+    const candidates = [
+        { shiftDate: addDays(today, -1), shift: "Night" },
+        { shiftDate: today, shift: "Day" },
+    ];
+    return candidates.filter(({ shiftDate, shift }) => shiftEndAt(shiftDate, shift).getTime() > activatedAt.getTime() && shiftDueAt(shiftDate, shift).getTime() <= now.getTime());
+}
+/** Last finished shift (WhatsApp Master "Send current"). */
+export function latestFinishedPrintingShift(now) {
+    const today = indiaNowParts(now).date;
+    const candidates = [
+        { shiftDate: today, shift: "Day" },
+        { shiftDate: addDays(today, -1), shift: "Night" },
+        { shiftDate: addDays(today, -1), shift: "Day" },
+    ];
+    return candidates.find(({ shiftDate, shift }) => shiftEndAt(shiftDate, shift).getTime() <= now.getTime()) || candidates[2];
+}
 export function buildPrintingShiftSummary(rows) {
     const jobs = new Map();
     for (const row of rows) {
@@ -99,9 +137,15 @@ export function buildPrintingShiftByMachine(rows) {
 export function renderPrintingShiftMessage(template, shiftDate, shift, rows) {
     const summary = buildPrintingShiftSummary(rows);
     const [year, month, day] = shiftDate.split("-");
+    const ddmm = (date) => { const [y, m, d] = date.split("-"); return { short: `${d}/${m}`, full: `${d}/${m}/${y}` }; };
+    const sendDate = printingShiftSendDate(shiftDate, shift);
     const values = {
         date: `${day}/${month}/${year}`,
         shiftHours: shift === "Day" ? "7 AM - 7 PM" : "7 PM - 7 AM",
+        shift,
+        // Sent date (today) in the header; the period shows which day's hours it covers.
+        sendDate: ddmm(sendDate).full,
+        shiftPeriod: shift === "Day" ? "7 AM – 7 PM" : `${ddmm(shiftDate).short} 7 PM – ${ddmm(sendDate).short} 7 AM`,
         jobLines: summary.jobs.length ? summary.jobs.map((job, index) => `${index + 1}. ${job.jobNo} | ${job.itemName} | ${qtyText(job.qty)}`).join("\n") : "No printing output recorded.",
         totalQty: qtyText(summary.totalQty),
         boxesPerHour: amount(summary.boxesPerHour, 2),
@@ -118,5 +162,5 @@ export function renderPrintingShiftMessage(template, shiftDate, shift, rows) {
     values.bobstQty = machineQty("Bobst Printer");
     values.bigQty = machineQty("Big Printer");
     values.smallQty = machineQty("Small Printer");
-    return template.replace(/\{\{\s*(date|shiftHours|jobLines|machineLines|bobstQty|bigQty|smallQty|totalQty|boxesPerHour)\s*\}\}/g, (_, key) => values[key]);
+    return template.replace(/\{\{\s*(date|shiftHours|shift|sendDate|shiftPeriod|jobLines|machineLines|bobstQty|bigQty|smallQty|totalQty|boxesPerHour)\s*\}\}/g, (_, key) => values[key]);
 }

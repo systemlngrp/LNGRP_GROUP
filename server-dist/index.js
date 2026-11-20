@@ -20,7 +20,7 @@ import { ensurePerformanceIndexes } from "./performanceIndexes.js";
 import { getChangesSince, getTrackedChanges, instrumentPool, onSchemaChange, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
 import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappReportMessage, sendWhatsappTextMessage, sendWhatsappGateEntryMessage, resolveWhatsappGateEntryTemplate, DEFAULT_GATE_ENTRY_MESSAGE, WHATSAPP_GATE_ENTRY_MENU } from "./whatsappSender.js";
 import { writeGateEntryPdf } from "./gateEntryWhatsappPdf.js";
-import { DEFAULT_PRINTING_SHIFT_MESSAGE, PREVIOUS_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt } from "./printingShiftReport.js";
+import { DEFAULT_PRINTING_SHIFT_MESSAGE, PREVIOUS_PRINTING_SHIFT_MESSAGE, PREVIOUS_MACHINE_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, todaysDuePrintingShifts, latestFinishedPrintingShift, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
 import { writeLoadingSlipPdf } from "./loadingSlipPdf.js";
 import { writeMrrWhatsappPdfs } from "./mrrWhatsappPdf.js";
@@ -10099,7 +10099,7 @@ async function initDb(retries = 5) {
                 const [shiftRows] = await db.query("SELECT id, message FROM `whatsapp_configs` WHERE menu = ?", [PRINTING_SHIFT_MENU]);
                 const normalize = (value) => String(value || "").replace(/\r\n/g, "\n").trim();
                 for (const row of shiftRows) {
-                    if (normalize(row.message) === normalize(PREVIOUS_PRINTING_SHIFT_MESSAGE)) {
+                    if ([PREVIOUS_PRINTING_SHIFT_MESSAGE, PREVIOUS_MACHINE_PRINTING_SHIFT_MESSAGE].some((old) => normalize(row.message) === normalize(old))) {
                         await db.query("UPDATE `whatsapp_configs` SET message = ? WHERE id = ?", [DEFAULT_PRINTING_SHIFT_MESSAGE, row.id]);
                         console.log(`[DB] Printing shift WhatsApp template ${row.id} updated to the machine-wise template.`);
                     }
@@ -11325,7 +11325,12 @@ async function retryPrintingShiftReports() {
         const activatedAt = new Date(String(settings[0]?.activatedAt || ""));
         if (Number.isNaN(activatedAt.getTime()))
             return;
-        const due = duePrintingShifts(activatedAt, new Date());
+        const now = new Date();
+        const due = todaysDuePrintingShifts(activatedAt, now);
+        // Older shifts never go out: unsent ones are marked "Skipped – old" (also the backlog
+        // left while the WhatsApp login was failing).
+        const keepIds = due.map(({ shiftDate, shift }) => `${shiftDate}-${shift}`);
+        await db.query(`UPDATE \`printing_shift_reports\` SET whatsappSendStatus = 'Skipped – old', whatsappSendStartedAt = NULL WHERE COALESCE(TRIM(whatsappSentAt), '') = '' AND COALESCE(whatsappSendStatus, '') <> 'Skipped – old'${keepIds.length ? " AND id NOT IN (?)" : ""} AND shiftDate <= ?`, keepIds.length ? [keepIds, indiaNowParts(now).date] : [indiaNowParts(now).date]);
         for (const { shiftDate, shift } of due)
             await processPrintingShiftReport(db, shiftDate, shift);
     }
@@ -11940,13 +11945,10 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
             }
         }
         else if (menu === PRINTING_SHIFT_MENU) {
-            const [sentRows] = await db.query("SELECT shiftDate, shift FROM `printing_shift_reports` WHERE shiftDate = ? AND COALESCE(TRIM(whatsappSentAt), '') <> '' ORDER BY whatsappSentAt DESC LIMIT 1", [currentDate]);
-            const sent = sentRows[0];
-            hasCurrentData = Boolean(sent);
-            if (sent) {
-                const output = await getPrintingShiftOutput(db, currentDate, String(sent.shift) === "Night" ? "Night" : "Day");
-                message = renderPrintingShiftMessage(messageTemplate, currentDate, String(sent.shift) === "Night" ? "Night" : "Day", output);
-            }
+            // The last finished shift (last night's before 7 PM, today's Day shift after).
+            const { shiftDate, shift } = latestFinishedPrintingShift(new Date());
+            const output = await getPrintingShiftOutput(db, shiftDate, shift);
+            message = renderPrintingShiftMessage(messageTemplate, shiftDate, shift, output);
         }
         else if (menu === QC_SCORE_MENU) {
             const previousDate = new Date(Date.parse(`${currentDate}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
