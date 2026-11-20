@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { friendlyWhatsappError } from "../lib/whatsappErrorText";
 import { MessageCircle } from "lucide-react";
 import { getDataAuthHeaders } from "../hooks/useData";
 import { buildReportPdf, type ReportPdfSpec, type WhatsappReportKey } from "../lib/reports/whatsappReports";
@@ -26,7 +27,7 @@ export function SendReportWhatsappButton({ report, buildSpec, disabled }: { repo
       });
       const result = await response.json().catch(() => ({}));
       if (response.ok && result.status === "Sent") setStatus({ kind: "sent", text: "Sent on WhatsApp" });
-      else setStatus({ kind: "failed", text: String(result.error || "WhatsApp message could not be sent.") });
+      else setStatus({ kind: "failed", text: result.status === "Not Configured" ? String(result.error || "") : friendlyWhatsappError(result.error, spec.title) });
     } catch {
       setStatus({ kind: "failed", text: "WhatsApp message could not be sent." });
     }
@@ -44,7 +45,7 @@ export function SendReportWhatsappButton({ report, buildSpec, disabled }: { repo
         <span>{status?.kind === "sending" ? "Sending…" : "WhatsApp"}</span>
       </button>
       {status && status.kind !== "sending" ? (
-        <span role="status" className={`max-w-[220px] text-xs font-bold ${status.kind === "sent" ? "text-green-700" : "text-red-600"}`}>
+        <span role="status" className={`max-w-[320px] text-xs font-bold ${status.kind === "sent" ? "text-green-700" : "text-red-600"}`}>
           {status.text}
           <button type="button" onClick={() => setStatus(null)} aria-label="Dismiss" className="ml-1 text-slate-500 hover:text-black">×</button>
         </span>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { friendlyWhatsappError } from "../lib/whatsappErrorText";
 import { RefreshCw, Send } from "lucide-react";
 import { getDataAuthHeaders } from "../hooks/useData";
 
@@ -105,7 +106,7 @@ export function WhatsappReportSendHistory() {
                 <td className="px-4 py-3 text-xs">{row.label || "-"}</td>
                 <td className="px-4 py-3">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-black ${row.status === "Sent" ? "bg-emerald-100 text-emerald-800" : row.status === "Failed" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}`}>{row.status || "-"}</span>
-                  {row.status !== "Sent" && row.error ? <div className="mt-1 max-w-[260px] text-xs text-red-600">{row.error}</div> : null}
+                  {row.status !== "Sent" && row.error ? <div className="mt-1 max-w-[260px] text-xs text-red-600">{friendlyWhatsappError(row.error, REPORT_LABELS[row.report] || row.report)}</div> : null}
                   {row.source === "Scheduled" && Number(row.attempts || 0) > 1 ? <div className="mt-1 text-xs text-slate-500">Tries: {row.attempts}</div> : null}
                 </td>
                 <td className="px-4 py-3">{row.fileName ? <a href={`/uploads/${encodeURIComponent(row.fileName)}`} target="_blank" rel="noreferrer" className="font-bold text-indigo-700 underline">Open</a> : "-"}</td>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { friendlyWhatsappError } from "../lib/whatsappErrorText";
 import { CheckCircle2, Eye, EyeOff, FileText, Filter, LockKeyhole, MessageCircle, Plus, Search, Send, ShieldCheck, X, XCircle, Zap } from "lucide-react";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { MasterHeader } from "../components/MasterHeader";
@@ -412,7 +413,7 @@ export function WhatsappMaster() {
       else if (status === "Sent") setSendResult({ kind: "success", menuLabel, message: "Message sent successfully." });
       else if (status === "No Current Data") setSendResult({ kind: "no-current-data", menuLabel, message: "No current data is available for this template." });
       else if (status === "Not Configured") setSendResult({ kind: "not-configured", menuLabel, message: "No active WhatsApp configuration or valid credentials found." });
-      else setSendResult({ kind: "failure", menuLabel, message: result.error || "Message sending failed." });
+      else setSendResult({ kind: "failure", menuLabel, message: friendlyWhatsappError(result.error || "Message sending failed.", menuLabel) });
     } catch {
       setSendResult({ kind: "failure", menuLabel, message: "Message sending failed. Please try again." });
     } finally {

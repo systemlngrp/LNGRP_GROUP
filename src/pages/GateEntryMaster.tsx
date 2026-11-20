@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { friendlyWhatsappError } from "../lib/whatsappErrorText";
 import { useNavigate } from "react-router-dom";
 import { Eye, Pencil, Plus, Search, X, XCircle } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
@@ -50,7 +51,7 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
       });
       const result = await response.json().catch(() => ({}));
       setWhatsappStatusById((prev) => ({ ...prev, [gateEntryId]: String(result.status || "Failed") }));
-      if (result.status !== "Sent") alert(result.error || "WhatsApp message could not be sent.");
+      if (result.status !== "Sent") alert(friendlyWhatsappError(result.error, "Gate Entry"));
     } catch {
       setWhatsappStatusById((prev) => ({ ...prev, [gateEntryId]: "Failed" }));
     }
