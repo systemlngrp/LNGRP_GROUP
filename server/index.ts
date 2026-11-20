@@ -3196,7 +3196,37 @@ async function fetchNpdFullRowsWithoutStock(db: mysql.Pool, options: { search?: 
   return { rows: (rows as any[]).map((row) => normalizeNpdRowForItemConsumers(row)), total: Number((countRows as any[])[0]?.total || 0) };
 }
 
+// Whole NPD catalog per status, kept in memory until an NPD item changes (or 5 min).
+// Every page of /api/npd/catalog used to run 3 queries (columns, rows, count).
+const npdCatalogCache = new Map<string, { rows: any[]; version: number; globalVersion: number; builtAt: number }>();
+const npdCatalogInflight = new Map<string, Promise<any[]>>();
+async function getNpdCatalogAllRows(db: mysql.Pool, status: string) {
+  const version = snapshotRawTableVersions.get("npd") || 0;
+  const cached = npdCatalogCache.get(status);
+  if (cached && cached.version === version && cached.globalVersion === snapshotGlobalVersion && Date.now() - cached.builtAt < SNAPSHOT_MAX_AGE_MS) return cached.rows;
+  const pending = npdCatalogInflight.get(status);
+  if (pending) return pending;
+  const globalVersion = snapshotGlobalVersion;
+  const load = fetchNpdCatalogItemsFromDb(db, { status, limit: 1_000_000, offset: 0 })
+    .then(({ rows }) => {
+      npdCatalogCache.set(status, { rows, version, globalVersion, builtAt: Date.now() });
+      return rows;
+    })
+    .finally(() => npdCatalogInflight.delete(status));
+  npdCatalogInflight.set(status, load);
+  return load;
+}
+
 async function fetchNpdCatalogItems(db: mysql.Pool, options: { search?: string; limit: number; offset: number; status?: string }) {
+  const status = String(options.status || "active").trim().toLowerCase();
+  if (!String(options.search || "").trim()) {
+    const rows = await getNpdCatalogAllRows(db, status === "removed" || status === "all" ? status : "active");
+    return { rows: rows.slice(options.offset, options.offset + options.limit), total: rows.length };
+  }
+  return fetchNpdCatalogItemsFromDb(db, options);
+}
+
+async function fetchNpdCatalogItemsFromDb(db: mysql.Pool, options: { search?: string; limit: number; offset: number; status?: string }) {
   const status = String(options.status || "active").trim().toLowerCase();
   const where: string[] = [];
   const params: any[] = [];

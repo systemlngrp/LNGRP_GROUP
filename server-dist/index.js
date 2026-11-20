@@ -3006,7 +3006,37 @@ async function fetchNpdFullRowsWithoutStock(db, options) {
     const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM \`npd\` n ${whereSql}`, params);
     return { rows: rows.map((row) => normalizeNpdRowForItemConsumers(row)), total: Number(countRows[0]?.total || 0) };
 }
+// Whole NPD catalog per status, kept in memory until an NPD item changes (or 5 min).
+// Every page of /api/npd/catalog used to run 3 queries (columns, rows, count).
+const npdCatalogCache = new Map();
+const npdCatalogInflight = new Map();
+async function getNpdCatalogAllRows(db, status) {
+    const version = snapshotRawTableVersions.get("npd") || 0;
+    const cached = npdCatalogCache.get(status);
+    if (cached && cached.version === version && cached.globalVersion === snapshotGlobalVersion && Date.now() - cached.builtAt < SNAPSHOT_MAX_AGE_MS)
+        return cached.rows;
+    const pending = npdCatalogInflight.get(status);
+    if (pending)
+        return pending;
+    const globalVersion = snapshotGlobalVersion;
+    const load = fetchNpdCatalogItemsFromDb(db, { status, limit: 1_000_000, offset: 0 })
+        .then(({ rows }) => {
+        npdCatalogCache.set(status, { rows, version, globalVersion, builtAt: Date.now() });
+        return rows;
+    })
+        .finally(() => npdCatalogInflight.delete(status));
+    npdCatalogInflight.set(status, load);
+    return load;
+}
 async function fetchNpdCatalogItems(db, options) {
+    const status = String(options.status || "active").trim().toLowerCase();
+    if (!String(options.search || "").trim()) {
+        const rows = await getNpdCatalogAllRows(db, status === "removed" || status === "all" ? status : "active");
+        return { rows: rows.slice(options.offset, options.offset + options.limit), total: rows.length };
+    }
+    return fetchNpdCatalogItemsFromDb(db, options);
+}
+async function fetchNpdCatalogItemsFromDb(db, options) {
     const status = String(options.status || "active").trim().toLowerCase();
     const where = [];
     const params = [];
