@@ -30,6 +30,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { cn } from "../lib/utils";
+import { userDashboardName } from "../lib/dashboardName";
 import { useSummarySheetUserColumns } from "../hooks/useSummarySheetUserColumns";
 
 interface SidebarProps {
@@ -494,7 +495,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
       const renameEntries = (entries: NavEntry[]): NavEntry[] => entries.flatMap<NavEntry>((entry) => {
         if (isNavSubGroup(entry)) return [{ ...entry, items: renameEntries(entry.items) }];
         if (entry.href !== "/reports/summary-sheet") return [entry];
-        return summarySheetSetup.columns ? [{ ...entry, name: "Dashboard" }] : [];
+        return summarySheetSetup.columns ? [{ ...entry, name: userDashboardName(user) }] : [];
       });
       return NAVIGATION_FOR_STANDARD_USERS.map((group) => ({ ...group, items: renameEntries(group.items) }));
     }
@@ -520,7 +521,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
         ],
       },
     ];
-  }, [user?.role, summarySheetSetup.columns]);
+  }, [user?.role, user?.name, user?.email, summarySheetSetup.columns]);
 
   const getVisibleEntries = useCallback(
     (entries: NavEntry[]): NavEntry[] =>

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Download, Eye, EyeOff, FileText, Search } from "lucide-react";
+import { userDashboardName } from "../lib/dashboardName";
 import { downloadSummaryExcel, downloadSummaryPdf, type SummaryExportInput } from "../lib/summarySheetExport";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
@@ -110,6 +111,13 @@ export function SummarySheetReport() {
   // Admin sees the full Summary Sheet. Everyone else sees it as "Dashboard": only the
   // filters and the table, with the columns Admin chose for them (no tiles, no column menu).
   const { user } = useAuth();
+  // Users see their shared view as "<first name> Dashboard"; Admin sees the Summary Sheet.
+  const pageTitle = user?.role === "Admin" ? "Summary Sheet" : userDashboardName(user);
+  useEffect(() => {
+    const previous = document.title;
+    document.title = pageTitle;
+    return () => { document.title = previous; };
+  }, [pageTitle]);
   const isAdmin = user?.role === "Admin";
   const userSetup = useSummarySheetUserColumns(!isAdmin);
   const userColumnNames = isAdmin ? null : userSetup.columns;
@@ -445,7 +453,7 @@ export function SummarySheetReport() {
     const label = (value: string) => value || "All";
     const range = from || to ? `${from ? displayDate(from) : "start"} to ${to ? displayDate(to) : "today"}` : "All dates";
     return {
-      title: isAdmin ? "Summary Sheet" : "Dashboard",
+      title: pageTitle,
       fileLabel: (from || to ? `${from || "start"}_to_${to || localDayKey(0)}` : `all_${localDayKey(0)}`).replace(/\//g, "-"),
       subtitle: [
         `Dates: ${range}`,
@@ -493,15 +501,15 @@ export function SummarySheetReport() {
   const toggleColumn = (columnIndex: number) => setVisibleColumns((current) => current.includes(columnIndex) ? current.filter((index) => index !== columnIndex) : [...current, columnIndex].sort((a, b) => a - b));
   if (!isAdmin && (userSetup.loaded && !userColumnNames || serverReport.failed)) {
     return <div className="space-y-4 pb-8">
-      <h2 className="border-b border-black pb-3 text-xl font-bold uppercase">Dashboard</h2>
+      <h2 className="border-b border-black pb-3 text-xl font-bold uppercase">{pageTitle}</h2>
       <div className="rounded border-2 border-black bg-amber-50 p-6 text-center text-sm font-bold text-amber-900">
-        {serverReport.failed && userColumnNames ? "Dashboard could not be loaded. Please try again in a minute." : "Dashboard is not set up for you yet. Please contact Admin."}
+        {serverReport.failed && userColumnNames ? `${pageTitle} could not be loaded. Please try again in a minute.` : `${pageTitle} is not set up for you yet. Please contact Admin.`}
       </div>
     </div>;
   }
   return <div className="space-y-4 pb-8">
     <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black pb-3">
-      <h2 className="text-xl font-bold uppercase">{isAdmin ? "Summary Sheet" : "Dashboard"}</h2>
+      <h2 className="text-xl font-bold uppercase">{pageTitle}</h2>
       <div data-header-action="true" className="grid w-full grid-cols-2 items-end gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
         <label className="min-w-0 text-[10px] font-black uppercase tracking-wide text-slate-600">From Date<input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} className="mt-0.5 block h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
         <label className="min-w-0 text-[10px] font-black uppercase tracking-wide text-slate-600">To Date<input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} className="mt-0.5 block h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
