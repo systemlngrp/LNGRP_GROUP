@@ -10,7 +10,7 @@ import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSear
 import { SortHeader, useTableSort } from "../lib/tableSort";
 import { getFirmOptions } from "../lib/firmDisplay";
 import { exportsAllowed } from "../lib/exportPolicy";
-import { buildReportPdf, computeDispatchPlanDayRows, dispatchPlanPdfSpec, type DispatchPlanDayRow } from "../lib/reports/whatsappReports";
+import { buildReportPdf, computeDispatchPlanDayRows, dispatchPlanColumns, dispatchPlanPdfSpec, dispatchPlanRangeLabel, type DispatchPlanDayRow } from "../lib/reports/whatsappReports";
 import { SendReportWhatsappButton } from "../components/SendReportWhatsappButton";
 
 const localDay = (value: unknown) => {
@@ -24,12 +24,13 @@ const qty = (value: unknown) => Number(value || 0).toLocaleString("en-IN");
 type PlanRow = DispatchPlanDayRow;
 
 /**
- * Dispatch Plan for one date (Quick Access), in the Production Plan pattern:
- * pick a date, see that day's dispatch plans with totals, download Excel / PDF.
- * Columns follow the Dispatch Plans Master (read-only here).
+ * Dispatch Plan (Quick Access): pending plan lines from one date to another,
+ * with totals, Excel / PDF and WhatsApp. Invoice Qty / Cancl show only when
+ * some row has one.
  */
 export function DispatchPlanByDate() {
-  const [selectedDate, setSelectedDate] = useState(todayKey);
+  const [fromDate, setFromDate] = useState(todayKey);
+  const [toDate, setToDate] = useState(todayKey);
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
@@ -45,8 +46,8 @@ export function DispatchPlanByDate() {
 
   // Same rows as the WhatsApp PDF the server sends for this date.
   const dayRows = useMemo<PlanRow[]>(
-    () => computeDispatchPlanDayRows({ plans, orders, companies, schedules, trucks, firms }, resolveOrderItem, selectedDate),
-    [companies, firms, orders, plans, resolveOrderItem, schedules, selectedDate, trucks]
+    () => computeDispatchPlanDayRows({ plans, orders, companies, schedules, trucks, firms }, resolveOrderItem, fromDate, toDate),
+    [companies, firms, fromDate, orders, plans, resolveOrderItem, schedules, toDate, trucks]
   );
 
   const options = useMemo(() => {
@@ -67,12 +68,13 @@ export function DispatchPlanByDate() {
       (!firmFilter || row.firmId === firmFilter) &&
       (!companyFilter || row.companyName === companyFilter) &&
       (!itemFilter || row.itemKey === itemFilter) &&
-      matchesTableSearch(rowSearchText([row.plan.planNo, row.firmName, row.companyName, row.orderNo, row.itemName, row.planned, row.invoiced, row.cancelled, row.pending, row.plan.status]), words)
+      matchesTableSearch(rowSearchText([formatDate(row.planDate), row.plan.planNo, row.firmName, row.companyName, row.orderNo, row.itemName, row.planned, row.invoiced, row.cancelled, row.pending]), words)
     );
   }, [companyFilter, dayRows, firmFilter, itemFilter, searchTerm]);
 
   const { sorted: rows, sort, toggle } = useTableSort(filteredRows, (row, key) => {
     switch (key) {
+      case "planDate": return row.planDate;
       case "planNo": return row.plan.planNo || "";
       case "firmName": return row.firmName;
       case "companyName": return row.companyName;
@@ -82,10 +84,9 @@ export function DispatchPlanByDate() {
       case "invoiced": return row.invoiced;
       case "cancelled": return row.cancelled;
       case "pending": return row.pending;
-      case "status": return row.plan.status || "";
       default: return "";
     }
-  }, [], { key: "planNo", direction: "asc" });
+  }, [], { key: "planDate", direction: "asc" });
 
   const totals = useMemo(() => rows.reduce((sum, row) => ({
     planned: sum.planned + row.planned,
@@ -94,25 +95,31 @@ export function DispatchPlanByDate() {
     pending: sum.pending + row.pending,
   }), { planned: 0, invoiced: 0, cancelled: 0, pending: 0 }), [rows]);
 
-  const HEADERS = ["Sr.", "Plan No", "Firm", "Company", "Order No", "Item", "Planned", "Invoice Qty", "Cancl", "Pending", "Status"];
-  const exportRows = () => rows.map((row, index) => [
-    index + 1, row.plan.planNo || "", row.firmName, row.companyName, row.orderNo, row.itemName,
-    row.planned, row.invoiced, row.cancelled, row.pending, row.plan.status || "",
-  ]);
-  const totalRow = ["TOTAL", "", "", "", "", "", totals.planned, totals.invoiced, totals.cancelled, totals.pending, ""];
+  const { cols } = useMemo(() => dispatchPlanColumns(rows), [rows]);
+  const rangeLabel = dispatchPlanRangeLabel(fromDate, toDate);
+  const fileStem = fromDate === toDate ? `Dispatch_Plan_${fromDate}` : `Dispatch_Plan_${fromDate}_to_${toDate}`;
+  const HEADERS = cols.map((col) => col.label);
+  const exportRows = () => rows.map((row, index) => cols.map((col) => col.cell(row, index)));
+  const totalRow = cols.map((col, index) => (col.total ? col.total(rows) : index === 0 ? "TOTAL" : ""));
+  const labelSpan = cols.findIndex((col) => col.qty);
+  const setRange = (nextFrom: string, nextTo: string) => {
+    const from = nextFrom || todayKey();
+    setFromDate(from);
+    setToDate(nextTo && nextTo >= from ? nextTo : from);
+  };
 
   const handleExcel = async () => {
     const XLSX = await import("xlsx-js-style");
-    const aoa = [["Dispatch Plan"], [`Date: ${formatDate(selectedDate)}`], HEADERS, ...exportRows(), totalRow];
+    const aoa = [["Dispatch Plan"], [fromDate === toDate ? `Date: ${rangeLabel}` : rangeLabel], HEADERS, ...exportRows(), totalRow];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: HEADERS.length - 1 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: HEADERS.length - 1 } }];
     ws["!cols"] = HEADERS.map((header) => ({ wch: header === "Item" ? 40 : header === "Company" ? 28 : Math.max(8, header.length + 2) }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Dispatch Plan");
-    XLSX.writeFile(wb, `Dispatch_Plan_${selectedDate}.xlsx`);
+    XLSX.writeFile(wb, `${fileStem}.xlsx`);
   };
   const handlePdf = () => {
-    buildReportPdf(dispatchPlanPdfSpec(rows, selectedDate)).save(`Dispatch_Plan_${selectedDate}.pdf`);
+    buildReportPdf(dispatchPlanPdfSpec(rows, fromDate, toDate)).save(`${fileStem}.pdf`);
   };
 
   const LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
@@ -126,12 +133,21 @@ export function DispatchPlanByDate() {
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">Dispatch Plan</h2>
         <div data-header-action="true" className="flex flex-wrap items-center justify-end gap-3">
           <div className="flex items-center gap-2">
-            <label className="text-sm font-bold uppercase text-black" htmlFor="dispatch-plan-date">Plan Date:</label>
+            <label className="text-sm font-bold uppercase text-black" htmlFor="dispatch-plan-from">From:</label>
             <input
-              id="dispatch-plan-date"
+              id="dispatch-plan-from"
               type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value || todayKey())}
+              value={fromDate}
+              onChange={(e) => setRange(e.target.value, toDate)}
+              className="rounded border-2 border-black p-1 text-sm focus:border-indigo-600 focus:outline-none"
+            />
+            <label className="text-sm font-bold uppercase text-black" htmlFor="dispatch-plan-to">To:</label>
+            <input
+              id="dispatch-plan-to"
+              type="date"
+              value={toDate}
+              min={fromDate}
+              onChange={(e) => setRange(fromDate, e.target.value || fromDate)}
               className="rounded border-2 border-black p-1 text-sm focus:border-indigo-600 focus:outline-none"
             />
           </div>
@@ -145,7 +161,7 @@ export function DispatchPlanByDate() {
               </button>
             </>
           ) : null}
-          <SendReportWhatsappButton report="dispatch-plan" title="Dispatch Plan" loading={plansLoading} disabled={!rows.length} buildRequest={() => ({ date: selectedDate, filters: { firm: firmFilter, company: companyFilter, item: itemFilter }, label: formatDate(selectedDate) })} />
+          <SendReportWhatsappButton report="dispatch-plan" title="Dispatch Plan" loading={plansLoading} disabled={!rows.length} buildRequest={() => ({ date: fromDate, filters: { firm: firmFilter, company: companyFilter, item: itemFilter, toDate }, label: rangeLabel })} />
         </div>
       </div>
 
@@ -169,7 +185,7 @@ export function DispatchPlanByDate() {
       <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs font-bold text-slate-700">
         <span>Plans: <span className="text-indigo-700">{rows.length}</span></span>
         <span>Planned: <span className="text-indigo-700">{qty(totals.planned)}</span></span>
-        <span>Invoiced: <span className="text-indigo-700">{qty(totals.invoiced)}</span></span>
+        {totals.invoiced ? <span>Invoiced: <span className="text-indigo-700">{qty(totals.invoiced)}</span></span> : null}
         <span>Pending: <span className="text-indigo-700">{qty(totals.pending)}</span></span>
       </div>
 
@@ -178,51 +194,33 @@ export function DispatchPlanByDate() {
         <table className="w-full min-w-[1100px] border-collapse">
           <thead className="bg-slate-100">
             <tr>
-              <th className={TH}>Sr.</th>
-              <th className={TH}><SortHeader label="Plan No" sortKey="planNo" sort={sort} onToggle={toggle} /></th>
-              <th className={TH}><SortHeader label="Firm" sortKey="firmName" sort={sort} onToggle={toggle} /></th>
-              <th className={TH}><SortHeader label="Company" sortKey="companyName" sort={sort} onToggle={toggle} /></th>
-              <th className={TH}><SortHeader label="Order No" sortKey="orderNo" sort={sort} onToggle={toggle} /></th>
-              <th className={TH}><SortHeader label="Item" sortKey="itemName" sort={sort} onToggle={toggle} /></th>
-              <th className={TH}><SortHeader label="Planned" sortKey="planned" sort={sort} onToggle={toggle} align="right" /></th>
-              <th className={TH}><SortHeader label="Invoice Qty" sortKey="invoiced" sort={sort} onToggle={toggle} align="right" /></th>
-              <th className={TH}><SortHeader label="Cancl" sortKey="cancelled" sort={sort} onToggle={toggle} align="right" /></th>
-              <th className={TH}><SortHeader label="Pending" sortKey="pending" sort={sort} onToggle={toggle} align="right" /></th>
-              <th className={TH}><SortHeader label="Status" sortKey="status" sort={sort} onToggle={toggle} align="center" /></th>
+              {cols.map((col) => col.key === "sr"
+                ? <th key={col.key} className={TH}>Sr.</th>
+                : <th key={col.key} className={TH}><SortHeader label={col.label} sortKey={col.key} sort={sort} onToggle={toggle} align={col.qty ? "right" : undefined} /></th>)}
             </tr>
           </thead>
           <tbody>
             {plansLoading && !plans.length ? (
-              <tr><td colSpan={11} className="p-8 text-center"><Spinner size={28} className="inline-block text-indigo-600" /></td></tr>
+              <tr><td colSpan={cols.length} className="p-8 text-center"><Spinner size={28} className="inline-block text-indigo-600" /></td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={11} className="p-8 text-center text-sm font-medium text-black">No pending dispatch plans for {formatDate(selectedDate)}.</td></tr>
+              <tr><td colSpan={cols.length} className="p-8 text-center text-sm font-medium text-black">No pending dispatch plans for {rangeLabel}.</td></tr>
             ) : rows.map((row, index) => (
               <tr key={row.plan.id} className="hover:bg-slate-50">
-                <td className={`${TD} text-center`}>{index + 1}</td>
-                <td className={`${TD} whitespace-nowrap font-bold`}>{row.plan.planNo || "-"}</td>
-                <td className={`${TD} whitespace-nowrap`}>{row.firmName || "-"}</td>
-                <td className={TD}>{row.companyName || "-"}</td>
-                <td className={`${TD} whitespace-nowrap font-bold`}>{row.orderNo || "-"}</td>
-                <td className={TD}>{row.itemName || "-"}</td>
-                <td className={`${TD} whitespace-nowrap text-right font-bold`}>{qty(row.planned)}</td>
-                <td className={`${TD} whitespace-nowrap text-right font-bold`}>{qty(row.invoiced)}</td>
-                <td className={`${TD} whitespace-nowrap text-right font-bold`}>{qty(row.cancelled)}</td>
-                <td className={`${TD} whitespace-nowrap text-right font-black`}>{qty(row.pending)}</td>
-                <td className={`${TD} text-center`}>
-                  <span className={`inline-block whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${row.plan.status === "Dispatched" ? "border-emerald-900 bg-emerald-100 text-emerald-900" : "border-amber-900 bg-amber-100 text-amber-900"}`}>{row.plan.status || "-"}</span>
-                </td>
+                {cols.map((col) => {
+                  const value = col.cell(row, index);
+                  if (col.qty) return <td key={col.key} className={`${TD} whitespace-nowrap text-right ${col.key === "pending" ? "font-black" : "font-bold"}`}>{qty(value)}</td>;
+                  const bold = col.key === "planNo" || col.key === "orderNo";
+                  const nowrap = col.key !== "companyName" && col.key !== "itemName";
+                  return <td key={col.key} className={`${TD} ${col.key === "sr" ? "text-center" : ""} ${nowrap ? "whitespace-nowrap" : ""} ${bold ? "font-bold" : ""}`}>{value === "" ? "-" : value}</td>;
+                })}
               </tr>
             ))}
           </tbody>
           {rows.length ? (
             <tfoot>
               <tr className="bg-slate-100 font-black">
-                <td className={`${TD} font-black`} colSpan={6}>TOTAL</td>
-                <td className={`${TD} text-right font-black`}>{qty(totals.planned)}</td>
-                <td className={`${TD} text-right font-black`}>{qty(totals.invoiced)}</td>
-                <td className={`${TD} text-right font-black`}>{qty(totals.cancelled)}</td>
-                <td className={`${TD} text-right font-black`}>{qty(totals.pending)}</td>
-                <td className={TD}></td>
+                <td className={`${TD} font-black`} colSpan={labelSpan}>TOTAL</td>
+                {cols.slice(labelSpan).map((col) => <td key={col.key} className={`${TD} text-right font-black`}>{qty(col.total ? col.total(rows) : 0)}</td>)}
               </tr>
             </tfoot>
           ) : null}

@@ -3278,7 +3278,9 @@ var DEFAULT_WHATSAPP_REPORT_MESSAGES = {
 \u{1F4C4} Pending Plate Planning PDF attached.`
 };
 function renderWhatsappReportMessage(template, values) {
-  return String(template || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key5) => values[key5] ?? "");
+  const hidden = String(values.__hide || "").split(",").map((key5) => key5.trim()).filter(Boolean);
+  const text5 = hidden.length ? String(template || "").split("\n").filter((line) => !hidden.some((key5) => new RegExp(`\\{\\{\\s*${key5}\\s*\\}\\}`).test(line))).join("\n") : String(template || "");
+  return text5.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key5) => values[key5] ?? "");
 }
 var qtyText = (value) => Number(value || 0).toLocaleString("en-IN");
 var money2 = (value) => value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3421,12 +3423,17 @@ function productionPlanPdfSpec(rows2, date, firmLabel = "") {
     fileName: `Production_Plan_${date}.pdf`
   };
 }
-function computeDispatchPlanDayRows(lists, resolveOrderItem, date) {
+function computeDispatchPlanDayRows(lists, resolveOrderItem, date, toDate) {
+  const from = date;
+  const to = toDate && toDate >= date ? toDate : date;
   const orderById = new Map(lists.orders.map((order) => [order.id, order]));
   const companyById = new Map(lists.companies.map((company) => [company.id, company]));
   const scheduleFirm = new Map(lists.schedules.map((row) => [row.id, row.firmId]));
   const truckById = new Map(lists.trucks.map((truck) => [truck.id, truck]));
-  return lists.plans.filter((plan) => localDay(plan.date) === date).map((plan) => {
+  return lists.plans.filter((plan) => {
+    const day = localDay(plan.date);
+    return day >= from && day <= to;
+  }).map((plan) => {
     const order = orderById.get(plan.orderId);
     const item = resolveOrderItem(order);
     const itemName = s4(item?.name);
@@ -3443,6 +3450,7 @@ function computeDispatchPlanDayRows(lists, resolveOrderItem, date) {
       orderNo: String(order?.orderNo || ""),
       itemName: itemName && itemErp && !itemName.toLowerCase().includes(itemErp.toLowerCase()) ? `${itemName} - ${itemErp}` : itemName || itemErp,
       itemKey: `${itemName}::${itemErp}`,
+      planDate: localDay(plan.date),
       truckNo: String(truckById.get(String(plan.truckId || ""))?.truckNo || plan.truckNo || ""),
       planned,
       invoiced,
@@ -3451,43 +3459,50 @@ function computeDispatchPlanDayRows(lists, resolveOrderItem, date) {
     };
   }).filter((row) => row.pending > 1e-4);
 }
-var sortDispatchPlanDayRows = (rows2) => [...rows2].sort((a, b) => s4(a.plan.planNo).localeCompare(s4(b.plan.planNo), void 0, { numeric: true, sensitivity: "base" }));
-var DISPATCH_PLAN_HEADERS = ["Sr.", "Plan No", "Firm", "Company", "Order No", "Item", "Planned", "Invoice Qty", "Cancl", "Pending", "Status"];
-function dispatchPlanPdfSpec(rows2, date) {
-  const totals = rows2.reduce((sum, row) => ({
-    planned: sum.planned + row.planned,
-    invoiced: sum.invoiced + row.invoiced,
-    cancelled: sum.cancelled + row.cancelled,
-    pending: sum.pending + row.pending
-  }), { planned: 0, invoiced: 0, cancelled: 0, pending: 0 });
+var sortDispatchPlanDayRows = (rows2) => [...rows2].sort((a, b) => a.planDate.localeCompare(b.planDate) || s4(a.plan.planNo).localeCompare(s4(b.plan.planNo), void 0, { numeric: true, sensitivity: "base" }));
+var dispatchPlanRangeLabel = (from, to) => !to || to === from ? formatDate4(from) : `From ${formatDate4(from)} To ${formatDate4(to)}`;
+function dispatchPlanColumns(rows2) {
+  const showInvoiced = rows2.some((row) => Math.abs(row.invoiced) > 1e-4);
+  const showCancelled = rows2.some((row) => Math.abs(row.cancelled) > 1e-4);
+  const sum = (pick) => (list) => list.reduce((total, row) => total + pick(row), 0);
+  const cols = [
+    { key: "sr", label: "Sr.", cell: (_row, index) => index + 1 },
+    { key: "planDate", label: "Plan Date", cell: (row) => formatDate4(row.planDate) },
+    { key: "planNo", label: "Plan No", cell: (row) => s4(row.plan.planNo) },
+    { key: "firmName", label: "Firm", cell: (row) => row.firmName },
+    { key: "companyName", label: "Company", cell: (row) => row.companyName },
+    { key: "orderNo", label: "Order No", cell: (row) => row.orderNo },
+    { key: "itemName", label: "Item", cell: (row) => row.itemName },
+    { key: "planned", label: "Planned", qty: true, cell: (row) => row.planned, total: sum((row) => row.planned) },
+    ...showInvoiced ? [{ key: "invoiced", label: "Invoice Qty", qty: true, cell: (row) => row.invoiced, total: sum((row) => row.invoiced) }] : [],
+    ...showCancelled ? [{ key: "cancelled", label: "Cancl", qty: true, cell: (row) => row.cancelled, total: sum((row) => row.cancelled) }] : [],
+    { key: "pending", label: "Pending", qty: true, cell: (row) => row.pending, total: sum((row) => row.pending) }
+  ];
+  return { cols, showInvoiced, showCancelled };
+}
+function dispatchPlanPdfSpec(rows2, date, toDate) {
+  const to = toDate && toDate >= date ? toDate : date;
+  const { cols, showInvoiced } = dispatchPlanColumns(rows2);
+  const totalOf = (key5) => cols.find((col) => col.key === key5)?.total?.(rows2) || 0;
+  const rangeLabel = dispatchPlanRangeLabel(date, to);
   return {
     report: "dispatch-plan",
     title: "Dispatch Plan",
-    subtitle: `Date: ${formatDate4(date)}`,
-    head: DISPATCH_PLAN_HEADERS,
-    body: rows2.map((row, index) => [
-      String(index + 1),
-      s4(row.plan.planNo),
-      row.firmName,
-      row.companyName,
-      row.orderNo,
-      row.itemName,
-      qtyText(row.planned),
-      qtyText(row.invoiced),
-      qtyText(row.cancelled),
-      qtyText(row.pending),
-      s4(row.plan.status)
-    ]),
-    foot: ["TOTAL", "", "", "", "", "", qtyText(totals.planned), qtyText(totals.invoiced), qtyText(totals.cancelled), qtyText(totals.pending), ""],
+    subtitle: to === date ? `Date: ${rangeLabel}` : rangeLabel,
+    head: cols.map((col) => col.label),
+    body: rows2.map((row, index) => cols.map((col) => col.qty ? qtyText(col.cell(row, index)) : s4(col.cell(row, index)))),
+    foot: cols.map((col, index) => col.total ? qtyText(col.total(rows2)) : index === 0 ? "TOTAL" : ""),
+    rightColumns: cols.map((col, index) => col.qty ? index : -1).filter((index) => index >= 0),
     values: {
-      date: formatDate4(date),
+      date: rangeLabel,
       plans: String(rows2.length),
-      planned: qtyText(totals.planned),
-      invoiced: qtyText(totals.invoiced),
-      cancelled: qtyText(totals.cancelled),
-      pending: qtyText(totals.pending)
+      planned: qtyText(totalOf("planned")),
+      invoiced: qtyText(rows2.reduce((total, row) => total + row.invoiced, 0)),
+      cancelled: qtyText(rows2.reduce((total, row) => total + row.cancelled, 0)),
+      pending: qtyText(totalOf("pending")),
+      ...showInvoiced ? {} : { __hide: "invoiced" }
     },
-    fileName: `Dispatch_Plan_${date}.pdf`
+    fileName: to === date ? `Dispatch_Plan_${date}.pdf` : `Dispatch_Plan_${date}_to_${to}.pdf`
   };
 }
 function pendingLoadingRowsFromProjections(projections, firms) {
@@ -3663,7 +3678,7 @@ function buildReportPdf(spec) {
     });
     return doc;
   }
-  const qtyColumns = spec.report === "dispatch-plan" ? [6, 7, 8, 9] : spec.report === "pending-loading" ? [8, 9, 10] : spec.report === "php-production-plan" || spec.report === "plate-production-plan" ? [8, 9, 10] : [9, 10, 11, 12, 13];
+  const qtyColumns = spec.rightColumns ? spec.rightColumns : spec.report === "pending-loading" ? [8, 9, 10] : spec.report === "php-production-plan" || spec.report === "plate-production-plan" ? [8, 9, 10] : [9, 10, 11, 12, 13];
   const groups = new Set(spec.groupRows || []);
   autoTable(doc, {
     startY: 22,
@@ -4200,10 +4215,12 @@ REPORT_DEFINITIONS["wa-dispatch-plan"] = {
   compute: (lists, params, helpers) => {
     const { resolveOrderItem } = catalogFrom(helpers);
     const filters = params.filters || {};
-    const rows2 = sortDispatchPlanDayRows(computeDispatchPlanDayRows(lists, resolveOrderItem, String(params.date || "")).filter(
+    const fromDate = String(params.date || "");
+    const toDate = /^\d{4}-\d{2}-\d{2}$/.test(String(filters.toDate || "")) ? String(filters.toDate) : fromDate;
+    const rows2 = sortDispatchPlanDayRows(computeDispatchPlanDayRows(lists, resolveOrderItem, fromDate, toDate).filter(
       (row) => (!filters.firm || row.firmId === String(filters.firm)) && (!filters.company || row.companyName === String(filters.company)) && (!filters.item || row.itemKey === String(filters.item))
     ));
-    return dispatchPlanPdfSpec(rows2, String(params.date || ""));
+    return dispatchPlanPdfSpec(rows2, fromDate, toDate);
   }
 };
 REPORT_DEFINITIONS["wa-pending-loading"] = {

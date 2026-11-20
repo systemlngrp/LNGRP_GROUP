@@ -110,7 +110,12 @@ export const DEFAULT_WHATSAPP_REPORT_MESSAGES: Record<WhatsappReportKey, string>
 };
 
 export function renderWhatsappReportMessage(template: string, values: Record<string, string>) {
-  return String(template || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
+  // values.__hide = "a,b": drop template lines that use {{a}} or {{b}} (e.g. Invoiced when 0).
+  const hidden = String(values.__hide || "").split(",").map((key) => key.trim()).filter(Boolean);
+  const text = hidden.length
+    ? String(template || "").split("\n").filter((line) => !hidden.some((key) => new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`).test(line))).join("\n")
+    : String(template || "");
+  return text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
 }
 
 export type ReportPdfSpec = {
@@ -124,6 +129,8 @@ export type ReportPdfSpec = {
   highlightRows?: number[];
   /** Body rows shown as a grey bold heading / sub-total (PHP / Plate Production Plan shifts). */
   groupRows?: number[];
+  /** Body columns aligned right (quantities); defaults per report when absent. */
+  rightColumns?: number[];
   /** Values for the WhatsApp message template. */
   values: Record<string, string>;
   fileName: string;
@@ -263,6 +270,7 @@ export type DispatchPlanDayRow = {
   orderNo: string;
   itemName: string;
   itemKey: string;
+  planDate: string;
   truckNo: string;
   planned: number;
   invoiced: number;
@@ -274,13 +282,19 @@ export function computeDispatchPlanDayRows(
   lists: { plans: any[]; orders: any[]; companies: any[]; schedules: any[]; trucks: any[]; firms: any[] },
   resolveOrderItem: (order?: any) => { name?: string; erp?: string } | undefined,
   date: string,
+  toDate?: string,
 ): DispatchPlanDayRow[] {
+  const from = date;
+  const to = toDate && toDate >= date ? toDate : date;
   const orderById = new Map(lists.orders.map((order) => [order.id, order]));
   const companyById = new Map(lists.companies.map((company) => [company.id, company]));
   const scheduleFirm = new Map(lists.schedules.map((row) => [row.id, row.firmId]));
   const truckById = new Map(lists.trucks.map((truck) => [truck.id, truck]));
   return lists.plans
-    .filter((plan) => localDay(plan.date) === date)
+    .filter((plan) => {
+      const day = localDay(plan.date);
+      return day >= from && day <= to;
+    })
     .map((plan) => {
       const order = orderById.get(plan.orderId);
       const item = resolveOrderItem(order);
@@ -298,6 +312,7 @@ export function computeDispatchPlanDayRows(
         orderNo: String(order?.orderNo || ""),
         itemName: itemName && itemErp && !itemName.toLowerCase().includes(itemErp.toLowerCase()) ? `${itemName} - ${itemErp}` : itemName || itemErp,
         itemKey: `${itemName}::${itemErp}`,
+        planDate: localDay(plan.date),
         truckNo: String(truckById.get(String(plan.truckId || ""))?.truckNo || plan.truckNo || ""),
         planned,
         invoiced,
@@ -310,36 +325,58 @@ export function computeDispatchPlanDayRows(
 }
 
 export const sortDispatchPlanDayRows = (rows: DispatchPlanDayRow[]) =>
-  [...rows].sort((a, b) => s(a.plan.planNo).localeCompare(s(b.plan.planNo), undefined, { numeric: true, sensitivity: "base" }));
+  [...rows].sort((a, b) => a.planDate.localeCompare(b.planDate) || s(a.plan.planNo).localeCompare(s(b.plan.planNo), undefined, { numeric: true, sensitivity: "base" }));
 
-export const DISPATCH_PLAN_HEADERS = ["Sr.", "Plan No", "Firm", "Company", "Order No", "Item", "Planned", "Invoice Qty", "Cancl", "Pending", "Status"];
+/** "20-11-2026" or "From 20-11-2026 To 22-11-2026". */
+export const dispatchPlanRangeLabel = (from: string, to?: string) =>
+  !to || to === from ? formatDate(from) : `From ${formatDate(from)} To ${formatDate(to)}`;
 
-export function dispatchPlanPdfSpec(rows: DispatchPlanDayRow[], date: string): ReportPdfSpec {
-  const totals = rows.reduce((sum, row) => ({
-    planned: sum.planned + row.planned,
-    invoiced: sum.invoiced + row.invoiced,
-    cancelled: sum.cancelled + row.cancelled,
-    pending: sum.pending + row.pending,
-  }), { planned: 0, invoiced: 0, cancelled: 0, pending: 0 });
+/** Columns of the Dispatch Plan (page, Excel, PDF): Invoice Qty / Cancl only when some row has one. */
+export function dispatchPlanColumns(rows: DispatchPlanDayRow[]) {
+  const showInvoiced = rows.some((row) => Math.abs(row.invoiced) > 0.0001);
+  const showCancelled = rows.some((row) => Math.abs(row.cancelled) > 0.0001);
+  type Col = { key: string; label: string; qty?: boolean; cell: (row: DispatchPlanDayRow, index: number) => string | number; total?: (rows: DispatchPlanDayRow[]) => number };
+  const sum = (pick: (row: DispatchPlanDayRow) => number) => (list: DispatchPlanDayRow[]) => list.reduce((total, row) => total + pick(row), 0);
+  const cols: Col[] = [
+    { key: "sr", label: "Sr.", cell: (_row, index) => index + 1 },
+    { key: "planDate", label: "Plan Date", cell: (row) => formatDate(row.planDate) },
+    { key: "planNo", label: "Plan No", cell: (row) => s(row.plan.planNo) },
+    { key: "firmName", label: "Firm", cell: (row) => row.firmName },
+    { key: "companyName", label: "Company", cell: (row) => row.companyName },
+    { key: "orderNo", label: "Order No", cell: (row) => row.orderNo },
+    { key: "itemName", label: "Item", cell: (row) => row.itemName },
+    { key: "planned", label: "Planned", qty: true, cell: (row) => row.planned, total: sum((row) => row.planned) },
+    ...(showInvoiced ? [{ key: "invoiced", label: "Invoice Qty", qty: true, cell: (row: DispatchPlanDayRow) => row.invoiced, total: sum((row) => row.invoiced) }] : []),
+    ...(showCancelled ? [{ key: "cancelled", label: "Cancl", qty: true, cell: (row: DispatchPlanDayRow) => row.cancelled, total: sum((row) => row.cancelled) }] : []),
+    { key: "pending", label: "Pending", qty: true, cell: (row) => row.pending, total: sum((row) => row.pending) },
+  ];
+  return { cols, showInvoiced, showCancelled };
+}
+
+
+export function dispatchPlanPdfSpec(rows: DispatchPlanDayRow[], date: string, toDate?: string): ReportPdfSpec {
+  const to = toDate && toDate >= date ? toDate : date;
+  const { cols, showInvoiced } = dispatchPlanColumns(rows);
+  const totalOf = (key: string) => cols.find((col) => col.key === key)?.total?.(rows) || 0;
+  const rangeLabel = dispatchPlanRangeLabel(date, to);
   return {
     report: "dispatch-plan",
     title: "Dispatch Plan",
-    subtitle: `Date: ${formatDate(date)}`,
-    head: DISPATCH_PLAN_HEADERS,
-    body: rows.map((row, index) => [
-      String(index + 1), s(row.plan.planNo), row.firmName, row.companyName, row.orderNo, row.itemName,
-      qtyText(row.planned), qtyText(row.invoiced), qtyText(row.cancelled), qtyText(row.pending), s(row.plan.status),
-    ]),
-    foot: ["TOTAL", "", "", "", "", "", qtyText(totals.planned), qtyText(totals.invoiced), qtyText(totals.cancelled), qtyText(totals.pending), ""],
+    subtitle: to === date ? `Date: ${rangeLabel}` : rangeLabel,
+    head: cols.map((col) => col.label),
+    body: rows.map((row, index) => cols.map((col) => col.qty ? qtyText(col.cell(row, index)) : s(col.cell(row, index)))),
+    foot: cols.map((col, index) => col.total ? qtyText(col.total(rows)) : index === 0 ? "TOTAL" : ""),
+    rightColumns: cols.map((col, index) => (col.qty ? index : -1)).filter((index) => index >= 0),
     values: {
-      date: formatDate(date),
+      date: rangeLabel,
       plans: String(rows.length),
-      planned: qtyText(totals.planned),
-      invoiced: qtyText(totals.invoiced),
-      cancelled: qtyText(totals.cancelled),
-      pending: qtyText(totals.pending),
+      planned: qtyText(totalOf("planned")),
+      invoiced: qtyText(rows.reduce((total, row) => total + row.invoiced, 0)),
+      cancelled: qtyText(rows.reduce((total, row) => total + row.cancelled, 0)),
+      pending: qtyText(totalOf("pending")),
+      ...(showInvoiced ? {} : { __hide: "invoiced" }),
     },
-    fileName: `Dispatch_Plan_${date}.pdf`,
+    fileName: to === date ? `Dispatch_Plan_${date}.pdf` : `Dispatch_Plan_${date}_to_${to}.pdf`,
   };
 }
 
@@ -532,7 +569,7 @@ export function buildReportPdf(spec: ReportPdfSpec): jsPDF {
     });
     return doc;
   }
-  const qtyColumns = spec.report === "dispatch-plan" ? [6, 7, 8, 9] : spec.report === "pending-loading" ? [8, 9, 10]
+  const qtyColumns = spec.rightColumns ? spec.rightColumns : spec.report === "pending-loading" ? [8, 9, 10]
     : spec.report === "php-production-plan" || spec.report === "plate-production-plan" ? [8, 9, 10] : [9, 10, 11, 12, 13];
   const groups = new Set(spec.groupRows || []);
   autoTable(doc, {

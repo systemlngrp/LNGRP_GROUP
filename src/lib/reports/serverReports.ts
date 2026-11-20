@@ -326,12 +326,14 @@ REPORT_DEFINITIONS["wa-dispatch-plan"] = {
     const { resolveOrderItem } = catalogFrom(helpers);
     // Page dropdowns: firm (id), company (name), item (name::erp).
     const filters = params.filters || {};
-    const rows = sortDispatchPlanDayRows(computeDispatchPlanDayRows(lists as any, resolveOrderItem as any, String(params.date || "")).filter((row) =>
+    const fromDate = String(params.date || "");
+    const toDate = /^\d{4}-\d{2}-\d{2}$/.test(String(filters.toDate || "")) ? String(filters.toDate) : fromDate;
+    const rows = sortDispatchPlanDayRows(computeDispatchPlanDayRows(lists as any, resolveOrderItem as any, fromDate, toDate).filter((row) =>
       (!filters.firm || row.firmId === String(filters.firm)) &&
       (!filters.company || row.companyName === String(filters.company)) &&
       (!filters.item || row.itemKey === String(filters.item))
     ));
-    return dispatchPlanPdfSpec(rows, String(params.date || ""));
+    return dispatchPlanPdfSpec(rows, fromDate, toDate);
   },
 };
 
