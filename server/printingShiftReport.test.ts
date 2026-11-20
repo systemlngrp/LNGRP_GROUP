@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildPrintingShiftSummary, DEFAULT_PRINTING_SHIFT_MESSAGE, duePrintingShifts, renderPrintingShiftMessage, shiftDueAt } from "./printingShiftReport";
+import { buildPrintingShiftSummary, DEFAULT_PRINTING_SHIFT_MESSAGE, PREVIOUS_PRINTING_SHIFT_MESSAGE, duePrintingShifts, renderPrintingShiftMessage, shiftDueAt } from "./printingShiftReport";
 import { sendWhatsappTextMessage } from "./whatsappSender";
 
 test("formats the supplied 24 October Printing report and hourly rate", () => {
@@ -9,7 +9,7 @@ test("formats the supplied 24 October Printing report and hourly rate", () => {
   const summary = buildPrintingShiftSummary(rows);
   assert.equal(summary.totalQty, 38409);
   assert.equal(summary.boxesPerHour, 3200.75);
-  const message = renderPrintingShiftMessage(DEFAULT_PRINTING_SHIFT_MESSAGE, "2026-10-24", "Day", rows);
+  const message = renderPrintingShiftMessage(PREVIOUS_PRINTING_SHIFT_MESSAGE, "2026-10-24", "Day", rows);
   assert.match(message, /^\*Printing Report \(7 AM - 7 PM\) 24\/10\/2026\*/);
   assert.match(message, /11\. 10617 \| Item 11 \| 520/);
   assert.match(message, /\*Total Qty in Shift:\* 38409/);
@@ -17,7 +17,7 @@ test("formats the supplied 24 October Printing report and hourly rate", () => {
 });
 
 test("combines duplicate jobs and sorts by job number", () => {
-  const message = renderPrintingShiftMessage(DEFAULT_PRINTING_SHIFT_MESSAGE, "2026-10-24", "Night", [
+  const message = renderPrintingShiftMessage(PREVIOUS_PRINTING_SHIFT_MESSAGE, "2026-10-24", "Night", [
     { jobNo: "10612", itemName: "Box", qty: 50 },
     { jobNo: "10562", itemName: "Carton", qty: 10 },
     { jobNo: "10612", itemName: "Box", qty: 25 },
@@ -49,4 +49,18 @@ test("sends the shift report to the configured group without exposing credential
   assert.deepEqual(JSON.parse(String(request?.body)), { recipientIds: ["group@g.us"], message: ["Printing report"] });
   assert.equal((request?.headers as Record<string, string>).Authorization, `Basic ${Buffer.from("shift-user:private-pass").toString("base64")}`);
   assert.doesNotMatch(JSON.stringify(result), /private-pass|shift-user|Basic/);
+});
+
+test("machine-wise template groups jobs by printer with totals", () => {
+  const message = renderPrintingShiftMessage(DEFAULT_PRINTING_SHIFT_MESSAGE, "2026-11-20", "Day", [
+    { jobNo: "101", itemName: "Box", qty: 1200, printingMachine: "Big Printer" },
+    { jobNo: "100", itemName: "Carton", qty: 2400, printingMachine: "Bobst Printer" },
+    { jobNo: "102", itemName: "Tray", qty: 600, printingMachine: "Bobst Printer" },
+    { jobNo: "99", itemName: "Old", qty: 100 },
+  ]);
+  assert.match(message, /\*🖨️ Bobst Printer\* — 3000 \(250\.00\/hr\)\n1\. 100 \| Carton \| 2400\n2\. 102 \| Tray \| 600/);
+  assert.match(message, /\*🖨️ Big Printer\* — 1200 \(100\.00\/hr\)/);
+  assert.match(message, /\*🖨️ Printer not selected\* — 100/);
+  assert.match(message, /\*Bobst Printer:\* 3000\n\*Big Printer:\* 1200\n\*Small Printer:\* 0/);
+  assert.match(message, /\*Total Qty in Shift:\* 4300/);
 });

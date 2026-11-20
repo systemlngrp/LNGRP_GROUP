@@ -1,13 +1,29 @@
 export const PRINTING_SHIFT_MENU = "/reports/printing-shift";
-export const DEFAULT_PRINTING_SHIFT_MESSAGE = `*Printing Report ({{shiftHours}}) {{date}}*
+/** Template before the machine-wise report (kept to update saved copies of it). */
+export const PREVIOUS_PRINTING_SHIFT_MESSAGE = `*Printing Report ({{shiftHours}}) {{date}}*
 
 {{jobLines}}
 
 *Total Qty in Shift:* {{totalQty}}
 *Boxes Per Hour:* {{boxesPerHour}}`;
 
+export const DEFAULT_PRINTING_SHIFT_MESSAGE = `*Printing Report ({{shiftHours}}) {{date}}*
+
+{{machineLines}}
+
+*Bobst Printer:* {{bobstQty}}
+*Big Printer:* {{bigQty}}
+*Small Printer:* {{smallQty}}
+
+*Total Qty in Shift:* {{totalQty}}
+*Boxes Per Hour:* {{boxesPerHour}}`;
+
+/** Printers of a Printing report, in message order. */
+export const PRINTING_MACHINES = ["Bobst Printer", "Big Printer", "Small Printer"] as const;
+const NO_PRINTER = "Printer not selected";
+
 export type PrintingShift = "Day" | "Night";
-export type PrintingOutput = { jobNo: unknown; itemName: unknown; qty: unknown };
+export type PrintingOutput = { jobNo: unknown; itemName: unknown; qty: unknown; printingMachine?: unknown };
 export type PrintingShiftJob = { jobNo: string; itemName: string; qty: number };
 
 const indiaDateParts = new Intl.DateTimeFormat("en-GB", {
@@ -67,6 +83,20 @@ export function buildPrintingShiftSummary(rows: readonly PrintingOutput[]) {
 function amount(value: number, decimals = 0) {
   return value.toFixed(decimals);
 }
+const qtyText = (value: number) => amount(value, Number.isInteger(value) ? 0 : 2);
+
+/** Output per printer (Bobst / Big / Small; reports saved before the printer was asked: "Printer not selected"). */
+export function buildPrintingShiftByMachine(rows: readonly PrintingOutput[]) {
+  const groups = new Map<string, PrintingOutput[]>();
+  for (const row of rows) {
+    const name = String(row.printingMachine ?? "").trim();
+    const machine = (PRINTING_MACHINES as readonly string[]).includes(name) ? name : NO_PRINTER;
+    groups.set(machine, [...(groups.get(machine) || []), row]);
+  }
+  return [...PRINTING_MACHINES, NO_PRINTER]
+    .filter((machine) => groups.has(machine))
+    .map((machine) => ({ machine, ...buildPrintingShiftSummary(groups.get(machine) || []) }));
+}
 
 export function renderPrintingShiftMessage(template: string, shiftDate: string, shift: PrintingShift, rows: readonly PrintingOutput[]) {
   const summary = buildPrintingShiftSummary(rows);
@@ -74,9 +104,21 @@ export function renderPrintingShiftMessage(template: string, shiftDate: string, 
   const values: Record<string, string> = {
     date: `${day}/${month}/${year}`,
     shiftHours: shift === "Day" ? "7 AM - 7 PM" : "7 PM - 7 AM",
-    jobLines: summary.jobs.length ? summary.jobs.map((job, index) => `${index + 1}. ${job.jobNo} | ${job.itemName} | ${amount(job.qty, Number.isInteger(job.qty) ? 0 : 2)}`).join("\n") : "No printing output recorded.",
-    totalQty: amount(summary.totalQty, Number.isInteger(summary.totalQty) ? 0 : 2),
+    jobLines: summary.jobs.length ? summary.jobs.map((job, index) => `${index + 1}. ${job.jobNo} | ${job.itemName} | ${qtyText(job.qty)}`).join("\n") : "No printing output recorded.",
+    totalQty: qtyText(summary.totalQty),
     boxesPerHour: amount(summary.boxesPerHour, 2),
   };
-  return template.replace(/\{\{\s*(date|shiftHours|jobLines|totalQty|boxesPerHour)\s*\}\}/g, (_, key: string) => values[key]);
+  // Machine-wise: one block per printer with its jobs, total and boxes per hour.
+  const byMachine = buildPrintingShiftByMachine(rows);
+  values.machineLines = byMachine.length
+    ? byMachine.map((group) => [
+      `*🖨️ ${group.machine}* — ${qtyText(group.totalQty)} (${amount(group.boxesPerHour, 2)}/hr)`,
+      ...group.jobs.map((job, index) => `${index + 1}. ${job.jobNo} | ${job.itemName} | ${qtyText(job.qty)}`),
+    ].join("\n")).join("\n\n")
+    : "No printing output recorded.";
+  const machineQty = (machine: string) => qtyText(byMachine.find((group) => group.machine === machine)?.totalQty || 0);
+  values.bobstQty = machineQty("Bobst Printer");
+  values.bigQty = machineQty("Big Printer");
+  values.smallQty = machineQty("Small Printer");
+  return template.replace(/\{\{\s*(date|shiftHours|jobLines|machineLines|bobstQty|bigQty|smallQty|totalQty|boxesPerHour)\s*\}\}/g, (_, key: string) => values[key]);
 }

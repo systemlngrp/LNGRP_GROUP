@@ -97,10 +97,18 @@ const DEFAULT_GATE_ENTRY_MESSAGE = `🚛 *GATE ENTRY*
 📄 Gate Entry PDF attached.`;
 const DEFAULT_PRINTING_SHIFT_MESSAGE = `*Printing Report ({{shiftHours}}) {{date}}*
 
-{{jobLines}}
+{{machineLines}}
+
+*Bobst Printer:* {{bobstQty}}
+*Big Printer:* {{bigQty}}
+*Small Printer:* {{smallQty}}
 
 *Total Qty in Shift:* {{totalQty}}
 *Boxes Per Hour:* {{boxesPerHour}}`;
+/** Messages for screens that are not in the menu (sent by the server on a timer). */
+const EXTRA_MENU_OPTIONS: MenuOption[] = [
+  { label: "Production / Printing Reporting – Shift Report (Machine-wise)", value: PRINTING_SHIFT_MENU },
+];
 const DEFAULT_LOADING_SLIP_MESSAGE = `🚚 *LOADING SLIP*
 
 *Slip No.:* {{slipNo}}
@@ -210,6 +218,7 @@ function collectMenuOptions(groups: NavGroup[]): MenuOption[] {
     options.push({ label: `${section} / ${entry.name}`, value: entry.href });
   };
   groups.forEach((group) => group.items.forEach((entry) => visit(entry, group.section)));
+  EXTRA_MENU_OPTIONS.forEach((option) => { if (!seen.has(option.value)) { seen.add(option.value); options.push(option); } });
   return options.sort((a, b) => a.label.localeCompare(b.label));
 }
 
@@ -449,6 +458,9 @@ export function WhatsappMaster() {
             <label className="space-y-2"><span className="text-blue-700 font-bold">Menu <span className="text-red-500">*</span></span><select value={menu} onChange={(e) => { const nextMenu = e.target.value; setMenu(nextMenu); if (!editingId) setMessage(defaultMessageForMenu(nextMenu)); }} required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Select menu</option>{menuOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
             <label className="space-y-2 md:col-span-2"><span className="text-blue-700 font-bold">Auto-message template <span className="text-red-500">*</span></span><textarea value={message} onChange={(e) => setMessage(e.target.value)} required rows={5} className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /></label>
             <label className="space-y-2"><span className="text-blue-700 font-bold">Status</span><select value={active} onChange={(e) => setActive(e.target.value === "No" ? "No" : "Yes")} className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="Yes">Active</option><option value="No">Inactive</option></select></label>
+            {menu === PRINTING_SHIFT_MENU ? (
+              <div className="md:col-span-2 text-xs font-semibold text-slate-500">Sent after each shift (7 AM–7 PM and 7 PM–7 AM). Message fields: {"{{date}} {{shiftHours}} {{machineLines}} (jobs grouped by Bobst / Big / Small Printer) {{bobstQty}} {{bigQty}} {{smallQty}} {{totalQty}} {{boxesPerHour}} {{jobLines}} (all jobs in one list)"}</div>
+            ) : null}
             {formReportKey ? (
               <>
                 <label className="space-y-2"><span className="text-blue-700 font-bold">Send Times (India time)</span><input value={sendTimes} onChange={(e) => setSendTimes(e.target.value)} placeholder="09:00, 14:00, 18:00" className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /><span className="block text-xs font-semibold text-slate-500">{!formReportDated ? "PDF as on that time." : `PDF of ${reportDay.toLowerCase()}'s plan.`} Leave blank for no timed sends; the page's WhatsApp button still works.</span></label>

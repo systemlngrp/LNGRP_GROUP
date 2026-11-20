@@ -20,7 +20,7 @@ import { ensurePerformanceIndexes } from "./performanceIndexes.js";
 import { getChangesSince, getTrackedChanges, instrumentPool, onSchemaChange, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
 import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappReportMessage, sendWhatsappTextMessage, sendWhatsappGateEntryMessage, resolveWhatsappGateEntryTemplate, DEFAULT_GATE_ENTRY_MESSAGE, WHATSAPP_GATE_ENTRY_MENU, type WhatsappSendStage } from "./whatsappSender.js";
 import { writeGateEntryPdf } from "./gateEntryWhatsappPdf.js";
-import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt, type PrintingShift } from "./printingShiftReport.js";
+import { DEFAULT_PRINTING_SHIFT_MESSAGE, PREVIOUS_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt, type PrintingShift } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
 import { writeLoadingSlipPdf } from "./loadingSlipPdf.js";
 import { writeMrrWhatsappPdfs } from "./mrrWhatsappPdf.js";
@@ -10653,6 +10653,20 @@ await db.query(`
       } catch (error) {
         console.warn("[DB] Could not update Printing QC WhatsApp message template:", (error as Error).message);
       }
+      // Printing shift report: the old one-list template becomes the machine-wise one
+      // (a template the user changed is left as it is).
+      try {
+        const [shiftRows] = await db.query("SELECT id, message FROM `whatsapp_configs` WHERE menu = ?", [PRINTING_SHIFT_MENU]);
+        const normalize = (value: unknown) => String(value || "").replace(/\r\n/g, "\n").trim();
+        for (const row of shiftRows as any[]) {
+          if (normalize(row.message) === normalize(PREVIOUS_PRINTING_SHIFT_MESSAGE)) {
+            await db.query("UPDATE `whatsapp_configs` SET message = ? WHERE id = ?", [DEFAULT_PRINTING_SHIFT_MESSAGE, row.id]);
+            console.log(`[DB] Printing shift WhatsApp template ${row.id} updated to the machine-wise template.`);
+          }
+        }
+      } catch (error) {
+        console.warn("[DB] Could not update the printing shift WhatsApp template:", (error as Error).message);
+      }
 
       try {
         const [loadingWhatsappRows] = await db.query(
@@ -11907,7 +11921,7 @@ async function retryPendingWhatsappComplaints() {
 
 async function getPrintingShiftOutput(db: mysql.Pool, shiftDate: string, shift: PrintingShift) {
   const [rows] = await db.query(`
-    SELECT pp.jobNo, COALESCE(NULLIF(TRIM(n.itemName), ''), NULLIF(TRIM(pm.itemName), ''), NULLIF(TRIM(plm.itemName), ''), '') AS itemName, pp.qty
+    SELECT pp.jobNo, COALESCE(NULLIF(TRIM(n.itemName), ''), NULLIF(TRIM(pm.itemName), ''), NULLIF(TRIM(plm.itemName), ''), '') AS itemName, pp.qty, pp.printingMachine
     FROM \`production_processing\` pp
     LEFT JOIN \`productions\` p ON p.id = pp.productionId
     LEFT JOIN \`npd\` n ON n.id = p.itemId AND COALESCE(p.itemSource, 'FG') = 'FG'
@@ -11916,7 +11930,7 @@ async function getPrintingShiftOutput(db: mysql.Pool, shiftDate: string, shift: 
     WHERE LEFT(pp.date, 10) = ? AND COALESCE(NULLIF(TRIM(pp.shift), ''), 'Day') = ?
       AND LOWER(TRIM(pp.machineName)) = 'printing'
   `, [shiftDate, shift]);
-  return rows as { jobNo: unknown; itemName: unknown; qty: unknown }[];
+  return rows as { jobNo: unknown; itemName: unknown; qty: unknown; printingMachine: unknown }[];
 }
 
 async function getPrintingShiftConfig(db: mysql.Pool) {
