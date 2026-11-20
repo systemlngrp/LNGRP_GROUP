@@ -190,7 +190,7 @@ function defaultMessageForMenu(menu: string) {
   if (menu === LOADING_SLIP_MENU) return DEFAULT_LOADING_SLIP_MESSAGE;
   if (menu === MRR_MENU) return DEFAULT_MRR_MESSAGE;
   if (menu === REEL_RETURN_MENU) return DEFAULT_REEL_RETURN_MESSAGE;
-  if (menu === GATE_ENTRY_MENU) return DEFAULT_GATE_ENTRY_MESSAGE;
+  if (menu === GATE_ENTRY_MENU || menu === "/gate-entry/form") return DEFAULT_GATE_ENTRY_MESSAGE;
   if (menu === BOARDLINE_QC_MENU) return DEFAULT_BOARDLINE_QC_MESSAGE;
   if (menu === PRINTING_QC_MENU) return DEFAULT_PRINTING_QC_MESSAGE;
   return DEFAULT_QC_COMPLAINT_MESSAGE;

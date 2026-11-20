@@ -10929,7 +10929,7 @@ async function processLoadingSlipWhatsappDelivery(db, tableName, slipId) {
 }
 // Gate Entry WhatsApp: message + Gate Entry PDF (details and photos) + each photo.
 async function getGateEntryWhatsappConfig(db) {
-    const [rows] = await db.query("SELECT loginId, pass, groupId, message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC, id DESC LIMIT 1", [WHATSAPP_GATE_ENTRY_MENU]);
+    const [rows] = await db.query("SELECT loginId, pass, groupId, message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu IN (?, ?) ORDER BY updateTimestamp DESC, id DESC LIMIT 1", [WHATSAPP_GATE_ENTRY_MENU, "/gate-entry/form"]);
     const config = rows[0];
     return config && config.loginId && config.pass && config.pass !== "********" && config.groupId ? config : null;
 }
@@ -11701,7 +11701,7 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
         if (!config.loginId || !config.pass || config.pass === "********" || !config.groupId)
             return res.json({ status: "Not Configured", error: "This WhatsApp configuration does not have valid credentials." });
         const menu = String(config.menu || "").trim();
-        if (menu === WHATSAPP_GATE_ENTRY_MENU) {
+        if (menu === WHATSAPP_GATE_ENTRY_MENU || menu === "/gate-entry/form") {
             // Latest Gate Entry with its PDF and photos (its own send status is not changed).
             const [latest] = await db.query("SELECT id FROM `gate_entries` WHERE COALESCE(status, 'Active') <> 'Cancelled' ORDER BY COALESCE(updateTimestamp, '') DESC LIMIT 1");
             const latestId = String(latest[0]?.id || "");
