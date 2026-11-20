@@ -278,13 +278,38 @@ const MAX_MEASURED_ROWS = 1500;
 const columnMinimums = new WeakMap<HTMLTableElement, number[]>();
 let measureContext: CanvasRenderingContext2D | null = null;
 
-function measureText(text: string, style: CSSStyleDeclaration) {
+// Text style read once from getComputedStyle (reading a live computed style
+// after the page changed makes the browser recalculate every cell's style, and
+// setting the canvas font parses it each time: both made a big table take
+// seconds to measure).
+type TextStyle = { font: string; upper: boolean; spacing: number; padding: number };
+function readTextStyle(element: Element): TextStyle {
+  const style = getComputedStyle(element);
+  return {
+    font: `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`,
+    upper: style.textTransform === "uppercase",
+    spacing: Number.parseFloat(style.letterSpacing) || 0,
+    padding: horizontalPadding(style),
+  };
+}
+
+let measureFont = "";
+const measuredWidths = new Map<string, number>();
+function measureText(text: string, style: TextStyle) {
   if (!measureContext) measureContext = document.createElement("canvas").getContext("2d");
   if (!measureContext || !text) return 0;
-  measureContext.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-  const shown = style.textTransform === "uppercase" ? text.toUpperCase() : text;
-  const spacing = Number.parseFloat(style.letterSpacing) || 0;
-  return measureContext.measureText(shown).width + spacing * shown.length;
+  const shown = style.upper ? text.toUpperCase() : text;
+  const cacheKey = `${style.font}\u0001${shown}`;
+  const cached = measuredWidths.get(cacheKey);
+  if (cached !== undefined) return cached + style.spacing * shown.length;
+  if (measureFont !== style.font) {
+    measureContext.font = style.font;
+    measureFont = style.font;
+  }
+  const width = measureContext.measureText(shown).width;
+  if (measuredWidths.size > 50_000) measuredWidths.clear();
+  measuredWidths.set(cacheKey, width);
+  return width + style.spacing * shown.length;
 }
 
 // Narrowest width at which these words (measured widths) wrap into at most
@@ -341,7 +366,10 @@ function applyColumnContentRules(table: HTMLTableElement, count: number, actionC
     if (end - start === 1) headersByColumn[start].push(cell);
   });
 
+  // Read everything first (text and styles), then change the cells at the end:
+  // changing a cell between two reads made the browser redo the table's styles.
   const minimums: number[] = [];
+  const writes: Array<{ cells: HTMLTableCellElement[]; kind: string; isFile: boolean }> = [];
   for (let column = 0; column < count; column += 1) {
     if (actionColumns.has(column)) {
       minimums.push(0);
@@ -350,9 +378,9 @@ function applyColumnContentRules(table: HTMLTableElement, count: number, actionC
     // Longest header word: the column is never narrower, so header words do not split.
     let headerMin = 0;
     headersByColumn[column].forEach((header) => {
-      const style = getComputedStyle(header);
+      const style = readTextStyle(header);
       const longestWord = cellText(header).split(" ").reduce((max, word) => Math.max(max, measureText(word, style)), 0);
-      headerMin = Math.max(headerMin, Math.ceil(longestWord + horizontalPadding(style) + 14));
+      headerMin = Math.max(headerMin, Math.ceil(longestWord + style.padding + 14));
     });
 
     const cells = byColumn[column].filter((cell) => !cell.querySelector("input, select, textarea"));
@@ -363,13 +391,7 @@ function applyColumnContentRules(table: HTMLTableElement, count: number, actionC
     const codeCount = counted.filter(isCodeLikeText).length;
     const isCode = !isFile && counted.length > 0 && codeCount >= counted.length * 0.8;
     const kind = isFile ? "file" : isCode ? "code" : "text";
-    byColumn[column].forEach((cell) => {
-      if (cell.dataset.cellKind !== kind) cell.dataset.cellKind = kind;
-      if (isFile) {
-        const full = cellText(cell);
-        if (full && cell.title !== full) cell.title = full;
-      }
-    });
+    writes.push({ cells: byColumn[column], kind, isFile });
     if (isFile) {
       minimums.push(Math.max(MIN_COLUMN_WIDTH, headerMin, FILE_COLUMN_WIDTH));
       continue;
@@ -377,8 +399,8 @@ function applyColumnContentRules(table: HTMLTableElement, count: number, actionC
 
     let contentMin = 0;
     if (cells.length) {
-      const style = getComputedStyle(cells[0]);
-      const padding = horizontalPadding(style) + 4;
+      const style = readTextStyle(cells[0]);
+      const padding = style.padding + 4;
       let widest = 0;
       let twoLine = 0;
       const spaceWidth = measureText("a a", style) - measureText("aa", style);
@@ -394,6 +416,13 @@ function applyColumnContentRules(table: HTMLTableElement, count: number, actionC
     }
     minimums.push(Math.max(MIN_COLUMN_WIDTH, headerMin, contentMin));
   }
+  writes.forEach(({ cells, kind, isFile }) => cells.forEach((cell) => {
+    if (cell.dataset.cellKind !== kind) cell.dataset.cellKind = kind;
+    if (isFile) {
+      const full = cellText(cell);
+      if (full && cell.title !== full) cell.title = full;
+    }
+  }));
   columnMinimums.set(table, minimums);
   return minimums;
 }
