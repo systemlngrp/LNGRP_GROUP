@@ -108,7 +108,7 @@ export async function downloadSummaryExcel(input: SummaryExportInput) {
   for (let c = 0; c <= lastCol; c += 1) set(4 + input.rowCount, c, style({ bold: true, fill: "EAF2F8", align: c === 0 ? "left" : "right" }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, input.title.slice(0, 31));
-  XLSX.writeFile(wb, `${input.title.replace(/\s+/g, "_")}_${input.fileLabel}.xlsx`);
+  XLSX.writeFile(wb, `${input.title.replace(/'/g, "").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "")}_${input.fileLabel}.xlsx`);
 }
 
 /** Up to this many columns the PDF is one table; more are split into section pages. */
@@ -166,5 +166,5 @@ export async function downloadSummaryPdf(input: SummaryExportInput) {
       },
     });
   });
-  doc.save(`${input.title.replace(/\s+/g, "_")}_${input.fileLabel}.pdf`);
+  doc.save(`${input.title.replace(/'/g, "").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "")}_${input.fileLabel}.pdf`);
 }
