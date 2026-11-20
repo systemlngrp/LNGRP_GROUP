@@ -1876,6 +1876,8 @@ export interface WhatsappConfig {
   sendTimes?: string;
   /** Production Plan: firm of the timed PDF (blank = all firms). */
   reportFirmId?: string;
+  /** Production Plan / Dispatch Plan: which day's plan the timed PDF sends. */
+  reportDay?: "Yesterday" | "Today" | "Tomorrow" | string;
   updatedBy?: string;
   updateTimestamp?: string;
 }

@@ -9352,6 +9352,7 @@ async function initDb(retries = 5) {
                 { table: "whatsapp_configs", column: "updateTimestamp", type: "VARCHAR(255)" },
                 { table: "whatsapp_configs", column: "sendTimes", type: "VARCHAR(255)" },
                 { table: "whatsapp_configs", column: "reportFirmId", type: "VARCHAR(64)" },
+                { table: "whatsapp_configs", column: "reportDay", type: "VARCHAR(20)" },
                 { table: "material_in", column: "transactionNo", type: "VARCHAR(100) NOT NULL" },
                 { table: "material_in", column: "mrrType", type: "VARCHAR(50)" },
                 { table: "material_in", column: "mrrSubType", type: "VARCHAR(50)" },
@@ -11332,7 +11333,7 @@ const addIndiaDays = (date, days) => {
     return value.toISOString().slice(0, 10);
 };
 async function getWhatsappReportConfig(db, report) {
-    const [rows] = await db.query("SELECT id, loginId, pass, groupId, message, sendTimes, reportFirmId FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC, id DESC LIMIT 1", [WHATSAPP_REPORT_MENU_BY_KEY[report]]);
+    const [rows] = await db.query("SELECT id, loginId, pass, groupId, message, sendTimes, reportFirmId, reportDay FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC, id DESC LIMIT 1", [WHATSAPP_REPORT_MENU_BY_KEY[report]]);
     return rows[0];
 }
 const whatsappReportConfigUsable = (config) => Boolean(config && config.loginId && config.pass && config.pass !== "********" && config.groupId);
@@ -11371,6 +11372,11 @@ async function loadQtyAtJobWorkerByJob(db) {
     return byJob;
 }
 /** Build the report on the server (same code as the page) and write its PDF to /uploads. */
+/** Plan date of a timed / Send-now PDF: Yesterday, Today or Tomorrow (default) in India time. */
+function whatsappReportPlanDate(config) {
+    const day = String(config.reportDay || "Tomorrow").trim().toLowerCase();
+    return addIndiaDays(indiaNowParts(new Date()).date, day === "yesterday" ? -1 : day === "today" ? 0 : 1);
+}
 async function buildWhatsappReportPdfFile(db, report, config) {
     const module = await loadReportModule();
     const name = `wa-${report}`;
@@ -11379,7 +11385,6 @@ async function buildWhatsappReportPdfFile(db, report, config) {
         throw new Error(`Report ${name} is not available.`);
     const [adminRows] = await db.query("SELECT id FROM `users` WHERE role = 'Admin' ORDER BY id LIMIT 1");
     const authUserId = String(adminRows[0]?.id || "");
-    const today = indiaNowParts(new Date()).date;
     const firmId = report === "production-plan" ? String(config.reportFirmId || "").trim() : "";
     let firmLabel = "";
     if (firmId) {
@@ -11388,7 +11393,7 @@ async function buildWhatsappReportPdfFile(db, report, config) {
     }
     const params = report === "pending-loading"
         ? { asOf: new Date().toISOString(), atJobWorkerByJobId: await loadQtyAtJobWorkerByJob(db) }
-        : { date: addIndiaDays(today, 1), firmLabel };
+        : { date: whatsappReportPlanDate(config), firmLabel };
     const spec = await buildServerReport(module, name, definition, firmId, authUserId, params, JSON.stringify([name, firmId, params, Date.now()]), db);
     const fileName = await writeWhatsappReportPdf(module, spec);
     return { spec, fileName, rows: Array.isArray(spec?.body) ? spec.body.length : 0 };
@@ -11422,7 +11427,7 @@ async function deliverWhatsappReport(db, sendId, report, config, fileName, value
 async function runWhatsappReportSend(db, sendId, report, config) {
     try {
         const { spec, fileName } = await buildWhatsappReportPdfFile(db, report, config);
-        await db.query("UPDATE `whatsapp_report_sends` SET label = ?, reportDate = ? WHERE id = ?", [String(spec?.subtitle || "").slice(0, 255), report === "pending-loading" ? indiaNowParts(new Date()).date : addIndiaDays(indiaNowParts(new Date()).date, 1), sendId]);
+        await db.query("UPDATE `whatsapp_report_sends` SET label = ?, reportDate = ? WHERE id = ?", [String(spec?.subtitle || "").slice(0, 255), report === "pending-loading" ? indiaNowParts(new Date()).date : whatsappReportPlanDate(config), sendId]);
         return await deliverWhatsappReport(db, sendId, report, config, fileName, spec?.values || {});
     }
     catch (error) {
@@ -11708,7 +11713,7 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
         const reportKey = whatsappReportKeyOfMenu(menu);
         if (reportKey) {
             // Production Plan / Dispatch Plan / Pending Loading: build the PDF now and send it.
-            const [fullRows] = await db.query("SELECT id, loginId, pass, groupId, message, sendTimes, reportFirmId FROM `whatsapp_configs` WHERE id = ? LIMIT 1", [configId]);
+            const [fullRows] = await db.query("SELECT id, loginId, pass, groupId, message, sendTimes, reportFirmId, reportDay FROM `whatsapp_configs` WHERE id = ? LIMIT 1", [configId]);
             const sendId = crypto.randomUUID();
             const now = new Date().toISOString();
             await db.query("INSERT INTO `whatsapp_report_sends` (`id`, `report`, `source`, `status`, `attempts`, `startedAt`, `sentBy`, `createdAt`) VALUES (?, ?, 'Send Now', 'Sending', 1, ?, ?, ?)", [sendId, reportKey, now, String(user.name || user.email || ""), now]);
@@ -12499,7 +12504,7 @@ const createHandlers = (tableName) => {
                     return res.json(sanitized);
                 }
                 if (tableName === "whatsapp_configs") {
-                    const [whatsappRows] = await db.query("SELECT id, loginId, groupId, menu, message, active, updatedBy, updateTimestamp, CASE WHEN pass IS NULL OR pass = '' THEN '' ELSE '********' END AS pass, CASE WHEN pass IS NULL OR TRIM(pass) = '' OR TRIM(pass) = '********' THEN 'No' ELSE 'Yes' END AS passSaved FROM `whatsapp_configs` ORDER BY updateTimestamp DESC, loginId ASC");
+                    const [whatsappRows] = await db.query("SELECT id, loginId, groupId, menu, message, active, sendTimes, reportFirmId, reportDay, updatedBy, updateTimestamp, CASE WHEN pass IS NULL OR pass = '' THEN '' ELSE '********' END AS pass, CASE WHEN pass IS NULL OR TRIM(pass) = '' OR TRIM(pass) = '********' THEN 'No' ELSE 'Yes' END AS passSaved FROM `whatsapp_configs` ORDER BY updateTimestamp DESC, loginId ASC");
                     return res.json(whatsappRows.map((row) => normalizeFetchedRow(tableName, row)));
                 }
                 if (tableName === "materials" && requestFirmId) {
