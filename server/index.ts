@@ -16139,15 +16139,16 @@ app.post("/api/materials/other-materials/bulk", async (req, res) => {
       const hsnCode = String(raw?.["HSN/SAC"] ?? "").trim().slice(0, 20);
       const openingStock = Number(rawOpeningStock);
       const openingRate = Number(rawOpeningRate);
-      if (!firmName) fail(`Row ${rowNumber}: Firm Name or Short Name is required.`);
-      const firm = firmByName.get(normalizeKey(firmName));
-      if (!firm) fail(`Row ${rowNumber}: Firm Name or Short Name ${firmName} was not found.`);
+      // Firm is optional: blank = material only (no opening stock row).
+      const firm = firmName ? firmByName.get(normalizeKey(firmName)) : null;
+      if (firmName && !firm) fail(`Row ${rowNumber}: Firm Name or Short Name ${firmName} was not found.`);
       if (!/^\d{8}$/.test(rawErp)) fail(`Row ${rowNumber}: ERP Code must be exactly 8 digits for Other materials.`);
       if (!itemName) fail(`Row ${rowNumber}: Item Name is required.`);
       if (!itemGroup) fail(`Row ${rowNumber}: Item Group is required.`);
       if (!unit) fail(`Row ${rowNumber}: Unit is required.`);
-      if (!rawOpeningStock || !Number.isFinite(openingStock) || openingStock < 0) fail(`Row ${rowNumber}: Opening Stock must be zero or greater.`);
-      if (!rawOpeningRate || !Number.isFinite(openingRate) || openingRate < 0) fail(`Row ${rowNumber}: Opening Rate must be zero or greater.`);
+      if (!firm && (rawOpeningStock || rawOpeningRate) && (Number(rawOpeningStock || 0) !== 0 || Number(rawOpeningRate || 0) !== 0)) fail(`Row ${rowNumber}: Enter a Firm Name or Short Name to give Opening Stock.`);
+      if (firm && (!rawOpeningStock || !Number.isFinite(openingStock) || openingStock < 0)) fail(`Row ${rowNumber}: Opening Stock must be zero or greater.`);
+      if (firm && (!rawOpeningRate || !Number.isFinite(openingRate) || openingRate < 0)) fail(`Row ${rowNumber}: Opening Rate must be zero or greater.`);
       const erpCode = rawErp;
       const nameKey = normalizeKey(itemName);
       const masterSignature = JSON.stringify({ erpCode, itemName: nameKey, itemGroup: normalizeKey(itemGroup), unit: normalizeKey(unit) });
@@ -16158,13 +16159,15 @@ app.post("/api/materials/other-materials/bulk", async (req, res) => {
       }
       masterSignatureByErp.set(erpCode, masterSignature);
       masterSignatureByName.set(nameKey, masterSignature);
-      const normalizedRow = { rowNumber, firmId: String(firm.id), firmName, erpCode, itemName, itemGroup, unit, openingStock: Number(openingStock.toFixed(2)), openingRate: Number(openingRate.toFixed(2)), hsnCode };
-      const openingKey = `${erpCode}::${normalizedRow.firmId}`;
-      const priorOpeningRow = openingRowByKey.get(openingKey);
-      if (priorOpeningRow && (priorOpeningRow.openingStock !== normalizedRow.openingStock || priorOpeningRow.openingRate !== normalizedRow.openingRate)) {
-        fail(`Row ${rowNumber}: Repeated material and firm must use the same Opening Stock and Opening Rate.`);
+      const normalizedRow = { rowNumber, firmId: firm ? String(firm.id) : "", firmName, erpCode, itemName, itemGroup, unit, openingStock: firm ? Number(openingStock.toFixed(2)) : 0, openingRate: firm ? Number(openingRate.toFixed(2)) : 0, hsnCode };
+      if (normalizedRow.firmId) {
+        const openingKey = `${erpCode}::${normalizedRow.firmId}`;
+        const priorOpeningRow = openingRowByKey.get(openingKey);
+        if (priorOpeningRow && (priorOpeningRow.openingStock !== normalizedRow.openingStock || priorOpeningRow.openingRate !== normalizedRow.openingRate)) {
+          fail(`Row ${rowNumber}: Repeated material and firm must use the same Opening Stock and Opening Rate.`);
+        }
+        openingRowByKey.set(openingKey, normalizedRow);
       }
-      openingRowByKey.set(openingKey, normalizedRow);
       normalizedRows.push(normalizedRow);
     });
 

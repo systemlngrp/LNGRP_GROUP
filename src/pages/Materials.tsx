@@ -707,6 +707,32 @@ export function Materials() {
     }];
   };
 
+  const [firmOpeningDrafts, setFirmOpeningDrafts] = useState<Record<string, { qty: string; rate: string }>>({});
+  const firmOpeningTouchedRef = useRef(false);
+  const firmOpeningFormKeyRef = useRef("");
+  useEffect(() => {
+    if (!isFormOpen) {
+      firmOpeningFormKeyRef.current = "";
+      return;
+    }
+    const key = editingId || "new";
+    if (firmOpeningFormKeyRef.current !== key) {
+      firmOpeningFormKeyRef.current = key;
+      firmOpeningTouchedRef.current = false;
+    } else if (firmOpeningTouchedRef.current) {
+      return;
+    }
+    const next: Record<string, { qty: string; rate: string }> = {};
+    if (editingId) {
+      materialFirmOpenings
+        .filter((row) => row.materialId === editingId)
+        .forEach((row) => {
+          next[String(row.firmId)] = { qty: formatOptionalNumber(row.openingQty), rate: formatOptionalNumber(row.openingRate) };
+        });
+    }
+    setFirmOpeningDrafts(next);
+  }, [editingId, isFormOpen, materialFirmOpenings]);
+
   useEffect(() => {
     if (!isFormOpen || !editingId) return;
     const material = materials.find((row) => row.id === editingId);
@@ -951,7 +977,22 @@ export function Materials() {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const normalizedType = formData.type;
-    const firmId = normalizedType === "Reel" ? String(unitOneFirm?.id || "") : String(formData.firmId || "").trim();
+    // Other materials keep opening stock per firm in the Opening Stock table;
+    // only Reel uses the single Unit-I firm below.
+    const firmId = normalizedType === "Reel" ? String(unitOneFirm?.id || "") : "";
+    const firmOpeningRows = normalizedType === "Other"
+      ? visibleFirms.map((firm) => {
+          const draft = firmOpeningDrafts[String(firm.id)] || { qty: "", rate: "" };
+          return { firmId: String(firm.id), firmName: getFirmDisplayName(firm), qtyText: String(draft.qty || "").trim(), rateText: String(draft.rate || "").trim() };
+        })
+      : [];
+    const badOpening = firmOpeningRows.find((row) =>
+      [row.qtyText, row.rateText].some((text) => text !== "" && (!Number.isFinite(Number(text)) || Number(text) < 0))
+    );
+    if (badOpening) {
+      alert(`Opening Qty and Opening Rate for ${badOpening.firmName} must be zero or greater.`);
+      return;
+    }
     if (normalizedType === "Reel" && !firmId) {
       alert("Unit-I is not configured in Firm Master. Reel opening stock cannot be saved.");
       return;
@@ -1135,6 +1176,32 @@ export function Materials() {
       };
       const nextMaterials = editingId ? materials.map((material) => (material.id === editingId ? nextMaterial : material)) : [nextMaterial, ...materials];
       await setMaterials(nextMaterials);
+      if (normalizedType === "Other") {
+        const changedOpenings: MaterialFirmOpening[] = [];
+        firmOpeningRows.forEach((row) => {
+          const existingOpening = materialFirmOpenings.find((opening) => opening.materialId === materialId && String(opening.firmId || "") === row.firmId);
+          if (!existingOpening && row.qtyText === "" && row.rateText === "") return;
+          const qty = row.qtyText === "" ? 0 : round2(Number(row.qtyText));
+          const rate = row.rateText === "" ? 0 : round2(Number(row.rateText));
+          const value = round2(qty * rate);
+          if (existingOpening && Number(existingOpening.openingQty || 0) === qty && Number(existingOpening.openingRate || 0) === rate && Number(existingOpening.openingValue || 0) === value) return;
+          changedOpenings.push({
+            ...(existingOpening || {}),
+            id: existingOpening?.id || crypto.randomUUID(),
+            materialId,
+            firmId: row.firmId,
+            openingQty: qty,
+            openingRate: rate,
+            openingValue: value,
+            updatedBy: "System User",
+            updateTimestamp: timestamp,
+          });
+        });
+        if (changedOpenings.length > 0) {
+          const changedIds = new Set(changedOpenings.map((row) => row.id));
+          await setMaterialFirmOpenings([...materialFirmOpenings.filter((row) => !changedIds.has(row.id)), ...changedOpenings]);
+        }
+      }
       if (firmId) {
         const existingOpening = materialFirmOpenings.find((row) => row.materialId === materialId && String(row.firmId || "") === firmId);
         const nextOpening: MaterialFirmOpening = {
@@ -1534,20 +1601,18 @@ export function Materials() {
         const workbook = XLSX.read(event.target?.result, { type: "binary" });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const headerRow = (XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" })[0] || []) as unknown[];
-        const expectedHeaders = ["Firm Name / Short Name", "ERP Code", "Item Name", "Item Group", "Unit", "Opening Stock", "Opening Rate"];
-        const optionalHeaders = ["HSN/SAC"];
+        const expectedHeaders = ["ERP Code", "Item Name", "Item Group", "Unit"];
+        const optionalHeaders = ["Firm Name / Short Name", "Opening Stock", "Opening Rate", "HSN/SAC"];
         const legacyFirmHeader = "Firm Name";
         const uploadedHeaders = headerRow.map((value) => String(value).trim()).filter(Boolean);
         const unsupportedHeaders = uploadedHeaders.filter((header) => !expectedHeaders.includes(header) && !optionalHeaders.includes(header) && header !== legacyFirmHeader);
-        const missingHeaders = expectedHeaders.filter((header) => header === "Firm Name / Short Name"
-          ? !uploadedHeaders.includes(header) && !uploadedHeaders.includes(legacyFirmHeader)
-          : !uploadedHeaders.includes(header));
+        const missingHeaders = expectedHeaders.filter((header) => !uploadedHeaders.includes(header));
         if (unsupportedHeaders.length > 0 || missingHeaders.length > 0) {
           throw new Error(`Use the Other Material template only. ${unsupportedHeaders.length ? `Unsupported column(s): ${unsupportedHeaders.join(", ")}. ` : ""}${missingHeaders.length ? `Missing column(s): ${missingHeaders.join(", ")}.` : ""}`.trim());
         }
         const parsedRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: "" })
           .map((row, index) => ({ ...row, rowNumber: index + 2 }))
-          .filter((row) => expectedHeaders.some((header) => String(row[header] ?? "").trim() !== "") || String(row[legacyFirmHeader] ?? "").trim() !== "");
+          .filter((row) => [...expectedHeaders, ...optionalHeaders].some((header) => String(row[header] ?? "").trim() !== "") || String(row[legacyFirmHeader] ?? "").trim() !== "");
         if (parsedRows.length === 0) throw new Error("Enter at least one Other material row.");
 
         setIsUploading(true);
@@ -1650,25 +1715,8 @@ export function Materials() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-7">
+            <h3 className="border-b-2 border-black pb-1 text-sm font-black uppercase tracking-wider text-indigo-700">Item Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-blue-700 font-bold">Firm</label>
-                {formData.type === "Reel" ? (
-                  <div className="w-full rounded border-2 border-indigo-400 bg-indigo-50 px-4 py-3 font-bold text-indigo-900">
-                    {unitOneFirm?.firmName || "Unit-I firm is not configured"}
-                  </div>
-                ) : (
-                  <select
-                    value={formData.firmId}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, firmId: e.target.value }))}
-                    className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-                  >
-                    <option value="">No firm (material only)</option>
-                    {firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)).map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
-                  </select>
-                )}
-                <p className="text-xs font-semibold text-slate-500">{formData.type === "Reel" ? "Reel opening stock is always posted to Unit-I." : "Select a firm to add or edit opening stock for that firm."}</p>
-              </div>
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">
                   Type <span className="text-red-500">*</span>
@@ -1863,47 +1911,108 @@ export function Materials() {
               )}
             </div>
 
-            {(formData.type === "Other" || (formData.type === "Reel" ? unitOneFirm?.id : formData.firmId)) ? (
-              <>
-            {formData.type === "Other" && !formData.firmId ? (
-              <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
-                Select a firm to enter or edit firm-specific opening stock.
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-blue-700 font-bold">Remarks</label>
+                <input
+                  value={formData.remarks}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, remarks: e.target.value }))}
+                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                />
               </div>
-            ) : null}
+              <div className="space-y-2">
+                <label className="text-blue-700 font-bold">RAPC</label>
+                <input
+                  value={formData.type === "Reel" ? getMaterialRapcFromSize(formData.size) : ""}
+                  readOnly
+                  className="w-full rounded border-2 border-black bg-slate-100 px-4 py-3 text-black focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-blue-700 font-bold">Active</label>
+              <select
+                value={formData.active}
+                onChange={(e) => setFormData((prev) => ({ ...prev, active: e.target.value as ActiveValue }))}
+                className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+              >
+                {ACTIVE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="border-b-2 border-black pb-1 text-sm font-black uppercase tracking-wider text-indigo-700">Opening Stock</h3>
+              {formData.type === "Other" ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full border-2 border-black text-sm">
+                  <thead className="bg-indigo-700 text-white">
+                    <tr className="divide-x divide-indigo-900">
+                      <th className="px-3 py-2 text-left text-[11px] font-black uppercase">Firm</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-black uppercase">Opening Qty{formData.uom ? ` (${formData.uom})` : ""}</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-black uppercase">Opening Rate</th>
+                      <th className="px-3 py-2 text-right text-[11px] font-black uppercase">Opening Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-black">
+                    {visibleFirms.map((firm) => {
+                      const draft = firmOpeningDrafts[String(firm.id)] || { qty: "", rate: "" };
+                      const value = round2(Number(draft.qty || 0) * Number(draft.rate || 0));
+                      const setDraft = (field: "qty" | "rate", next: string) => {
+                        firmOpeningTouchedRef.current = true;
+                        setFirmOpeningDrafts((current) => ({ ...current, [String(firm.id)]: { ...(current[String(firm.id)] || { qty: "", rate: "" }), [field]: next } }));
+                      };
+                      return (
+                        <tr key={`opening-${firm.id}`} className="divide-x divide-black">
+                          <td className="px-3 py-2 font-bold text-black whitespace-nowrap">{getFirmDisplayName(firm)}</td>
+                          <td className="px-2 py-1.5"><input inputMode="decimal" value={draft.qty} onChange={(e) => setDraft("qty", e.target.value)} placeholder="0" className="w-full min-w-[110px] rounded border-2 border-black px-3 py-2 text-black focus:outline-none focus:border-indigo-600" /></td>
+                          <td className="px-2 py-1.5"><input inputMode="decimal" value={draft.rate} onChange={(e) => setDraft("rate", e.target.value)} placeholder="0" className="w-full min-w-[110px] rounded border-2 border-black px-3 py-2 text-black focus:outline-none focus:border-indigo-600" /></td>
+                          <td className="px-3 py-2 text-right font-bold text-black whitespace-nowrap">{value.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <p className="mt-2 text-xs font-semibold text-slate-500">Leave a firm blank if it has no opening stock. Value = Qty × Rate.</p>
+              </div>
+              ) : unitOneFirm?.id ? (
+                <>
+              <p className="text-xs font-semibold text-slate-500">Reel opening stock is always posted to {unitOneFirm.firmName}.</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">Opening Qty</label>
                 <input
                   value={hasOpeningReelRows ? String(openingReelTotals.openingQty) : formData.openingQty}
-                  readOnly={hasOpeningReelRows || (formData.type === "Other" && !formData.firmId)}
-                  disabled={formData.type === "Other" && !formData.firmId}
+                  readOnly={hasOpeningReelRows}
                   onChange={(e) => setFormData((prev) => ({ ...prev, openingQty: e.target.value }))}
-                  className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows || (formData.type === "Other" && !formData.firmId) ? "bg-slate-100" : ""}`}
+                  className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows ? "bg-slate-100" : ""}`}
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">Opening Rate</label>
                 <input
                   value={hasOpeningReelRows ? String(openingReelTotals.openingRate) : formData.openingRate}
-                  readOnly={hasOpeningReelRows || (formData.type === "Other" && !formData.firmId)}
-                  disabled={formData.type === "Other" && !formData.firmId}
+                  readOnly={hasOpeningReelRows}
                   onChange={(e) => setFormData((prev) => ({ ...prev, openingRate: e.target.value }))}
-                  className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows || (formData.type === "Other" && !formData.firmId) ? "bg-slate-100" : ""}`}
+                  className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows ? "bg-slate-100" : ""}`}
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">Opening Value</label>
                 <input
                   value={hasOpeningReelRows ? String(openingReelTotals.openingValue) : formData.openingValue}
-                  readOnly={hasOpeningReelRows || (formData.type === "Other" && !formData.firmId)}
-                  disabled={formData.type === "Other" && !formData.firmId}
+                  readOnly={hasOpeningReelRows}
                   onChange={(e) => setFormData((prev) => ({ ...prev, openingValue: e.target.value }))}
                   placeholder={
                     !hasOpeningReelRows && formData.openingQty && formData.openingRate && !formData.openingValue
                       ? String(Number(formData.openingQty || 0) * Number(formData.openingRate || 0))
                       : ""
                   }
-                  className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows || (formData.type === "Other" && !formData.firmId) ? "bg-slate-100" : ""}`}
+                  className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows ? "bg-slate-100" : ""}`}
                 />
               </div>
             </div>
@@ -2061,47 +2170,10 @@ export function Materials() {
                 ) : null}
               </div>
             ) : null}
-              </>
-            ) : (
-              <div className="rounded border border-indigo-300 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-900">
-                {formData.type === "Reel"
-                  ? "Opening reel stock is maintained by Unit-I and cannot be assigned to another firm."
-                  : "This material can be saved without a firm. Select a firm later to enter opening quantity or value."}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-blue-700 font-bold">Remarks</label>
-                <input
-                  value={formData.remarks}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, remarks: e.target.value }))}
-                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-blue-700 font-bold">RAPC</label>
-                <input
-                  value={formData.type === "Reel" ? getMaterialRapcFromSize(formData.size) : ""}
-                  readOnly
-                  className="w-full rounded border-2 border-black bg-slate-100 px-4 py-3 text-black focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-blue-700 font-bold">Active</label>
-              <select
-                value={formData.active}
-                onChange={(e) => setFormData((prev) => ({ ...prev, active: e.target.value as ActiveValue }))}
-                className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-              >
-                {ACTIVE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+                </>
+              ) : (
+                <div className="rounded border border-indigo-300 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-900">Unit-I firm is not configured, so reel opening stock cannot be entered.</div>
+              )}
             </div>
 
             <div className="pt-2 flex items-center justify-end">
