@@ -78,6 +78,22 @@ const PRINTING_SHIFT_MENU = "/reports/printing-shift";
 const LOADING_SLIP_MENU = "/loading/master";
 const MRR_MENU = "/material-in/master";
 const REEL_RETURN_MENU = "/material-movement/reel-return";
+const GATE_ENTRY_MENU = "/gate-entry/master";
+const DEFAULT_GATE_ENTRY_MESSAGE = `🚛 *GATE ENTRY*
+
+*Gate Entry No.:* {{gateEntryNo}}
+*Date:* {{date}}
+*Firm:* {{firmName}}
+*Purpose:* {{purpose}}
+*Supplier:* {{supplier}}
+*Invoice No.:* {{invoiceNo}}
+*Invoice Value:* ₹{{invoiceValue}}
+*Truck No.:* {{truckNo}}
+*Gate Pass No.:* {{sourceGatePassNo}}
+*Photos:* {{photoCount}}
+
+📷 Gate Entry photos attached.
+📄 Gate Entry PDF attached.`;
 const DEFAULT_PRINTING_SHIFT_MESSAGE = `*Printing Report ({{shiftHours}}) {{date}}*
 
 {{jobLines}}
@@ -174,6 +190,7 @@ function defaultMessageForMenu(menu: string) {
   if (menu === LOADING_SLIP_MENU) return DEFAULT_LOADING_SLIP_MESSAGE;
   if (menu === MRR_MENU) return DEFAULT_MRR_MESSAGE;
   if (menu === REEL_RETURN_MENU) return DEFAULT_REEL_RETURN_MESSAGE;
+  if (menu === GATE_ENTRY_MENU) return DEFAULT_GATE_ENTRY_MESSAGE;
   if (menu === BOARDLINE_QC_MENU) return DEFAULT_BOARDLINE_QC_MESSAGE;
   if (menu === PRINTING_QC_MENU) return DEFAULT_PRINTING_QC_MESSAGE;
   return DEFAULT_QC_COMPLAINT_MESSAGE;

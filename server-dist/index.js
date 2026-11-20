@@ -18,7 +18,8 @@ import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processi
 import { registerSalesOrderSync } from "./salesOrderSync.js";
 import { ensurePerformanceIndexes } from "./performanceIndexes.js";
 import { getChangesSince, getTrackedChanges, instrumentPool, onSchemaChange, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
-import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappReportMessage, sendWhatsappTextMessage } from "./whatsappSender.js";
+import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappReportMessage, sendWhatsappTextMessage, sendWhatsappGateEntryMessage, resolveWhatsappGateEntryTemplate, DEFAULT_GATE_ENTRY_MESSAGE, WHATSAPP_GATE_ENTRY_MENU } from "./whatsappSender.js";
+import { writeGateEntryPdf } from "./gateEntryWhatsappPdf.js";
 import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
 import { writeLoadingSlipPdf } from "./loadingSlipPdf.js";
@@ -9157,6 +9158,11 @@ async function initDb(retries = 5) {
                 { table: "gate_entries", column: "cancelledBy", type: "VARCHAR(255)" },
                 { table: "gate_entries", column: "updatedBy", type: "VARCHAR(255)" },
                 { table: "gate_entries", column: "updateTimestamp", type: "VARCHAR(255)" },
+                { table: "gate_entries", column: "whatsappSendStatus", type: "VARCHAR(30)" },
+                { table: "gate_entries", column: "whatsappSendError", type: "VARCHAR(255)" },
+                { table: "gate_entries", column: "whatsappSentAt", type: "VARCHAR(255)" },
+                { table: "gate_entries", column: "whatsappSendStartedAt", type: "VARCHAR(255)" },
+                { table: "gate_entries", column: "whatsappPdfFilename", type: "VARCHAR(255)" },
                 { table: "gate_entry_photos", column: "gateEntryId", type: "VARCHAR(36) NOT NULL" },
                 { table: "gate_entry_photos", column: "photo", type: "VARCHAR(255) NOT NULL" },
                 { table: "gate_entry_photos", column: "slotNo", type: "INT NOT NULL" },
@@ -10890,6 +10896,105 @@ async function processLoadingSlipWhatsappDelivery(db, tableName, slipId) {
         return delivery;
     }
 }
+// Gate Entry WhatsApp: message + Gate Entry PDF (details and photos) + each photo.
+async function getGateEntryWhatsappConfig(db) {
+    const [rows] = await db.query("SELECT loginId, pass, groupId, message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC, id DESC LIMIT 1", [WHATSAPP_GATE_ENTRY_MENU]);
+    const config = rows[0];
+    return config && config.loginId && config.pass && config.pass !== "********" && config.groupId ? config : null;
+}
+/** Build the PDF and send the Gate Entry; returns the result and the PDF file name. */
+async function sendGateEntryWhatsapp(db, config, gateEntryId) {
+    const [rows] = await db.query("SELECT ge.*, s.name AS supplierName, f.firmName AS masterFirmName FROM `gate_entries` ge LEFT JOIN `suppliers` s ON s.id = ge.supplierId LEFT JOIN `firms` f ON f.id = COALESCE(NULLIF(ge.firmId, ''), ge.destinationFirmId) WHERE ge.id = ? LIMIT 1", [gateEntryId]);
+    const entry = rows[0];
+    if (!entry)
+        return { result: { status: "Failed", error: "Gate Entry not found." }, fileName: "" };
+    const [photoRows] = await db.query("SELECT photo, slotNo FROM `gate_entry_photos` WHERE gateEntryId = ? ORDER BY slotNo", [gateEntryId]);
+    const uploadsDir = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadsDir))
+        fs.mkdirSync(uploadsDir, { recursive: true });
+    const photos = [];
+    for (const row of photoRows) {
+        const filename = String(row.photo || "").replace(/^\/?uploads\//i, "").trim();
+        if (!filename)
+            continue;
+        let data = null;
+        const diskPath = path.join(uploadsDir, path.basename(filename));
+        if (fs.existsSync(diskPath))
+            data = fs.readFileSync(diskPath);
+        else {
+            const [fileRows] = await db.query("SELECT data FROM `uploaded_files` WHERE filename = ? LIMIT 1", [filename]);
+            const stored = fileRows[0]?.data;
+            if (stored)
+                data = Buffer.isBuffer(stored) ? stored : Buffer.from(stored);
+        }
+        if (data)
+            photos.push({ slotNo: Number(row.slotNo || photos.length + 1), data, filename });
+    }
+    const dateText = (() => {
+        const raw = String(entry.date || "").slice(0, 10);
+        const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        return match ? `${match[3]}-${match[2]}-${match[1]}` : String(entry.date || "");
+    })();
+    const values = {
+        gateEntryNo: entry.gateEntryNo,
+        date: dateText,
+        firmName: entry.firmName || entry.masterFirmName,
+        purpose: entry.purpose || "Material Receipt",
+        supplier: entry.supplierName,
+        invoiceNo: entry.invoiceNo,
+        invoiceValue: Number(entry.invoiceValue || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        truckNo: entry.truckNo,
+        sourceGatePassNo: entry.sourceGatePassNo,
+        photoCount: String(photoRows.length),
+    };
+    const fileName = `gate-entry-${String(entry.gateEntryNo || gateEntryId).replace(/[^a-zA-Z0-9_-]/g, "_")}-${crypto.randomUUID().slice(0, 8)}.pdf`;
+    await writeGateEntryPdf({ ...values, supplier: entry.supplierName, invoiceValue: entry.invoiceValue }, photos, path.join(uploadsDir, fileName));
+    const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngrp.in").replace(/\/$/, "");
+    const urls = [`${publicBase}/uploads/${encodeURIComponent(fileName)}`, ...photos.map((photo) => `${publicBase}/uploads/${encodeURIComponent(photo.filename)}`)];
+    const message = resolveWhatsappGateEntryTemplate(String(config.message || DEFAULT_GATE_ENTRY_MESSAGE), values);
+    const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message };
+    let result = await sendWhatsappGateEntryMessage(senderConfig, message, urls);
+    // A photo the sender cannot fetch (424): send the message with the PDF only.
+    if (result.status === "Failed" && result.httpStatus === 424 && urls.length > 1)
+        result = await sendWhatsappGateEntryMessage(senderConfig, message, urls.slice(0, 1));
+    return { result, fileName };
+}
+/** Send once per Gate Entry (saved entries only; claimed so two runs never both send). */
+async function processGateEntryWhatsappDelivery(db, gateEntryId) {
+    const nowIso = new Date().toISOString();
+    const staleBeforeIso = new Date(Date.now() - 120_000).toISOString();
+    try {
+        const [claim] = await db.query("UPDATE `gate_entries` SET whatsappSendStatus = 'Sending', whatsappSendError = NULL, whatsappSendStartedAt = ? WHERE id = ? AND COALESCE(TRIM(whatsappSentAt), '') = '' AND COALESCE(status, 'Active') <> 'Cancelled' AND (COALESCE(whatsappSendStatus, '') <> 'Sending' OR COALESCE(whatsappSendStartedAt, '') < ?)", [nowIso, gateEntryId, staleBeforeIso]);
+        if (!claim.affectedRows) {
+            const [rows] = await db.query("SELECT whatsappSentAt FROM `gate_entries` WHERE id = ? LIMIT 1", [gateEntryId]);
+            const sentAt = String(rows[0]?.whatsappSentAt || "").trim();
+            return sentAt ? { status: "Sent", sentAt } : { status: "Failed", error: "Gate Entry WhatsApp is already being sent." };
+        }
+        const config = await getGateEntryWhatsappConfig(db);
+        if (!config) {
+            const error = "No active Gate Entry WhatsApp configuration with valid credentials was found.";
+            await db.query("UPDATE `gate_entries` SET whatsappSendStatus = 'Not Configured', whatsappSendError = ?, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?", [error, gateEntryId, nowIso]);
+            return { status: "Not Configured", error };
+        }
+        const { result, fileName } = await sendGateEntryWhatsapp(db, config, gateEntryId);
+        if (result.status !== "Sent") {
+            const error = String(result.error || "Gate Entry WhatsApp message could not be sent.").slice(0, 255);
+            await db.query("UPDATE `gate_entries` SET whatsappSendStatus = 'Failed', whatsappSendError = ?, whatsappSendStartedAt = NULL, whatsappPdfFilename = ? WHERE id = ? AND whatsappSendStartedAt = ?", [error, fileName || null, gateEntryId, nowIso]);
+            return { status: "Failed", error };
+        }
+        const sentAt = result.sentAt || new Date().toISOString();
+        await db.query("UPDATE `gate_entries` SET whatsappSendStatus = 'Sent', whatsappSendError = NULL, whatsappSentAt = ?, whatsappSendStartedAt = NULL, whatsappPdfFilename = ? WHERE id = ? AND whatsappSendStartedAt = ?", [sentAt, fileName, gateEntryId, nowIso]);
+        return { status: "Sent", sentAt };
+    }
+    catch (error) {
+        console.warn("[WHATSAPP] gate entry delivery failed:", error.message);
+        try {
+            await db.query("UPDATE `gate_entries` SET whatsappSendStatus = 'Failed', whatsappSendError = 'Gate Entry WhatsApp message could not be sent.', whatsappSendStartedAt = NULL WHERE id = ?", [gateEntryId]);
+        }
+        catch { /* status not stored */ }
+        return { status: "Failed", error: "Gate Entry WhatsApp message could not be sent." };
+    }
+}
 async function processMrrWhatsappDelivery(db, mrrId) {
     if (String(process.env.DISABLE_MRR_WHATSAPP || "").trim().toLowerCase() === "true") {
         return { status: "Disabled", error: "MRR WhatsApp sending is temporarily disabled for migration." };
@@ -11063,6 +11168,15 @@ async function retryPendingWhatsappComplaints() {
                 const result = await processLoadingSlipWhatsappDelivery(db, tableName, String(row.id || "").trim());
                 if (result.status === "Failed" || result.status === "Not Configured")
                     console.warn(`[WHATSAPP] Automatic ${tableName} retry pending for loading slip ${String(row.id || "")}: ${result.status}`);
+            }
+        }
+        {
+            const since = new Date(Date.now() - 2 * 86_400_000).toISOString();
+            const [gateRows] = await db.query("SELECT id FROM `gate_entries` WHERE COALESCE(TRIM(whatsappSentAt), '') = '' AND whatsappSendStatus IN ('Pending', 'Failed', 'Sending') AND COALESCE(updateTimestamp, '') >= ? ORDER BY updateTimestamp ASC LIMIT 20", [since]);
+            for (const row of gateRows) {
+                const result = await processGateEntryWhatsappDelivery(db, String(row.id || "").trim());
+                if (result.status === "Failed")
+                    console.warn(`[WHATSAPP] Automatic Gate Entry retry pending for ${String(row.id || "")}`);
             }
         }
         if (String(process.env.DISABLE_MRR_WHATSAPP || "").trim().toLowerCase() !== "true") {
@@ -11496,6 +11610,27 @@ app.post("/api/material-in/:id/whatsapp", requireAuth, async (req, res) => {
         return res.status(500).json({ status: "Failed", error: "MRR WhatsApp PDF delivery failed." });
     }
 });
+// Gate Entry Form calls this after saving a new entry; Gate Entry Master "Resend" too.
+app.post("/api/gate-entries/:id/whatsapp", requireAuth, async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user || !(hasPermission(user, "/gate-entry/master") || hasPermission(user, "/gate-entry/form")))
+        return res.status(403).json({ error: "Forbidden" });
+    const id = String(req.params.id || "").trim();
+    if (!id)
+        return res.status(400).json({ status: "Failed", error: "Gate Entry ID is required." });
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(503).json({ status: "Failed", error: "Database unavailable." });
+        // Resend: an entry already sent may be sent again on request.
+        if (req.body?.resend === true)
+            await db.query("UPDATE `gate_entries` SET whatsappSentAt = NULL, whatsappSendStatus = 'Pending' WHERE id = ? AND COALESCE(whatsappSendStatus, '') <> 'Sending'", [id]);
+        return res.json(await processGateEntryWhatsappDelivery(db, id));
+    }
+    catch {
+        return res.status(500).json({ status: "Failed", error: "Gate Entry WhatsApp delivery failed." });
+    }
+});
 app.post("/api/material-returns/:id/reel-whatsapp", requireAuth, async (req, res) => {
     const user = await getRequestUser(req);
     if (!user || !hasPermission(user, "/material-movement/reel-return"))
@@ -11531,6 +11666,15 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
         if (!config.loginId || !config.pass || config.pass === "********" || !config.groupId)
             return res.json({ status: "Not Configured", error: "This WhatsApp configuration does not have valid credentials." });
         const menu = String(config.menu || "").trim();
+        if (menu === WHATSAPP_GATE_ENTRY_MENU) {
+            // Latest Gate Entry with its PDF and photos (its own send status is not changed).
+            const [latest] = await db.query("SELECT id FROM `gate_entries` WHERE COALESCE(status, 'Active') <> 'Cancelled' ORDER BY COALESCE(updateTimestamp, '') DESC LIMIT 1");
+            const latestId = String(latest[0]?.id || "");
+            if (!latestId)
+                return res.json({ status: "No Current Data" });
+            const { result } = await sendGateEntryWhatsapp(db, config, latestId);
+            return res.json(result.status === "Sent" ? { status: "Sent", attachmentsSent: true } : { status: "Failed", error: result.error || "WhatsApp message could not be sent." });
+        }
         const reportKey = whatsappReportKeyOfMenu(menu);
         if (reportKey) {
             // Production Plan / Dispatch Plan / Pending Loading: build the PDF now and send it.

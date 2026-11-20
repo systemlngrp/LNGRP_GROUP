@@ -118,6 +118,7 @@ export const WHATSAPP_PRINTING_MENU = "/quality/printing-qc/form";
 export const WHATSAPP_LOADING_MENU = "/loading/master";
 export const WHATSAPP_MRR_MENU = "/material-in/master";
 export const WHATSAPP_REEL_RETURN_MENU = "/material-movement/reel-return";
+export const WHATSAPP_GATE_ENTRY_MENU = "/gate-entry/master";
 export const MESSAGE_AUTO_SENDER_URL = "https://app.messageautosender.com/api/v1/message/create";
 export const DEFAULT_LOADING_SLIP_MESSAGE = `🚚 *LOADING SLIP*
 
@@ -145,6 +146,38 @@ export const DEFAULT_MRR_MESSAGE = `📦 *MATERIAL RECEIPT REPORT (MRR)*
 
 📄 MRR PDF attached.
 📄 QC Reel Labels A4 and A3 attached for Reel MRR.`;
+export const DEFAULT_GATE_ENTRY_MESSAGE = `🚛 *GATE ENTRY*
+
+*Gate Entry No.:* {{gateEntryNo}}
+*Date:* {{date}}
+*Firm:* {{firmName}}
+*Purpose:* {{purpose}}
+*Supplier:* {{supplier}}
+*Invoice No.:* {{invoiceNo}}
+*Invoice Value:* ₹{{invoiceValue}}
+*Truck No.:* {{truckNo}}
+*Gate Pass No.:* {{sourceGatePassNo}}
+*Photos:* {{photoCount}}
+
+📷 Gate Entry photos attached.
+📄 Gate Entry PDF attached.`;
+
+export function resolveWhatsappGateEntryTemplate(template: string, values: Record<string, unknown>) {
+  const map: Record<string, string> = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, text(value) || "-"]));
+  return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => map[key] ?? "");
+}
+
+/** Message with the Gate Entry PDF and photos (one message, several files). */
+export function sendWhatsappGateEntryMessage(
+  config: WhatsappSenderConfig,
+  message: string,
+  fileUrls: string[],
+  options: { endpoint?: string; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+) {
+  const urls = fileUrls.map(text).filter(Boolean);
+  return sendWhatsappPayload(config, { recipientIds: [text(config.groupId)], message: [message], ...(urls.length ? { filePathUrl: urls } : {}) }, { timeoutMs: 30_000, ...options });
+}
+
 export const DEFAULT_REEL_RETURN_MESSAGE = `🔁 *REEL RETURN*
 
 *Return No.:* {{returnNo}}

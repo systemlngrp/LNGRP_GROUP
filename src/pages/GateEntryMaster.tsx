@@ -6,7 +6,7 @@ import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
-import { useData } from "../hooks/useData";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
 import { Company, Firm, GateEntry, GateEntryPhoto, Production, ProductionProcessing, Supplier } from "../types";
 import { hasGateEntryMrr, isGateEntryCancelled } from "../lib/gateEntryState";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
@@ -37,6 +37,24 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
   const canManage = canManageMasterRecords(user?.role);
   const navigate = useNavigate();
   const [gateEntries, setGateEntries] = useData<GateEntry>("gate-entries", [], { firmScope: "all" });
+  // WhatsApp Resend (message, PDF, photos) from this list.
+  const [whatsappStatusById, setWhatsappStatusById] = useState<Record<string, string>>({});
+  const resendWhatsapp = async (gateEntryId: string) => {
+    if (!window.confirm("Send this Gate Entry on WhatsApp again?")) return;
+    setWhatsappStatusById((prev) => ({ ...prev, [gateEntryId]: "Sending" }));
+    try {
+      const response = await fetch(`/api/gate-entries/${encodeURIComponent(gateEntryId)}/whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getDataAuthHeaders() },
+        body: JSON.stringify({ resend: true }),
+      });
+      const result = await response.json().catch(() => ({}));
+      setWhatsappStatusById((prev) => ({ ...prev, [gateEntryId]: String(result.status || "Failed") }));
+      if (result.status !== "Sent") alert(result.error || "WhatsApp message could not be sent.");
+    } catch {
+      setWhatsappStatusById((prev) => ({ ...prev, [gateEntryId]: "Failed" }));
+    }
+  };
   const [gateEntryPhotos] = useData<GateEntryPhoto>("gate-entry-photos", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
@@ -310,7 +328,18 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
                           </div>
                         ) : ""}
                       </td>
-                      <td className="border border-black px-4 py-3 text-sm text-black">{getPhotoCount(entry.id) > 0 ? `${getPhotoCount(entry.id)} Photos` : ""}</td>
+                      <td className="border border-black px-4 py-3 text-sm text-black">
+                        <div>{getPhotoCount(entry.id) > 0 ? `${getPhotoCount(entry.id)} Photos` : ""}</div>
+                        {!cancelled && (entry.whatsappSentAt || entry.whatsappSendStatus) ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px] font-bold">
+                            {(() => {
+                              const status = whatsappStatusById[entry.id] || (entry.whatsappSentAt ? "Sent" : entry.whatsappSendStatus || "");
+                              return <span title={entry.whatsappSendError || ""} className={status === "Sent" ? "text-green-700" : status === "Sending" || status === "Pending" ? "text-amber-700" : "text-red-600"}>WhatsApp: {status}</span>;
+                            })()}
+                            {canManage ? <button type="button" onClick={() => void resendWhatsapp(entry.id)} disabled={whatsappStatusById[entry.id] === "Sending"} className="rounded border border-green-700 px-1.5 text-green-700 hover:bg-green-50 disabled:opacity-40">Resend</button> : null}
+                          </div>
+                        ) : null}
+                      </td>
                       <td className="border border-black px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button

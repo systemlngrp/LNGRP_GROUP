@@ -3,7 +3,7 @@ import { optimizeImageForUpload } from "../lib/imageOptimize";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Camera, Loader2, Trash2 } from "lucide-react";
 import { Select } from "../components/Select";
-import { useData } from "../hooks/useData";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
 import { Company, Firm, GateEntry, GateEntryPhoto, GatePass, Supplier } from "../types";
 import { useAuth } from "../auth/AuthContext";
 import { getPendingQtyForGatePass, hasSavedReturnableReceiptGateEntry, isReturnableGatePass } from "../lib/gatePassState";
@@ -217,8 +217,10 @@ export function GateEntryForm() {
     try {
       const timestamp = new Date().toISOString();
       const gateEntryId = editingEntry?.id || crypto.randomUUID();
+      // WhatsApp send status belongs to the server: never write back a stale copy.
+      const { whatsappSendStatus: _sendStatus, whatsappSendError: _sendError, whatsappSentAt: _sentAt, ...editingFields } = (editingEntry || {}) as GateEntry;
       const nextEntry: GateEntry = {
-        ...(editingEntry || {}),
+        ...editingFields,
         id: gateEntryId,
         date,
         supplierId,
@@ -257,6 +259,16 @@ export function GateEntryForm() {
         ...nextPhotos,
       ]);
 
+      // New entry: send it on WhatsApp (message, PDF, photos). Runs on the server; the
+      // server retries a failed send, so the page does not wait for it.
+      if (!editingEntry) {
+        void fetch(`/api/gate-entries/${encodeURIComponent(gateEntryId)}/whatsapp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...getDataAuthHeaders() },
+          body: "{}",
+          keepalive: true,
+        }).catch(() => undefined);
+      }
       navigate("/gate-entry/master");
     } catch (error) {
       console.error("Failed to save gate entry:", error);

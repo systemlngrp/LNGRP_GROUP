@@ -531,6 +531,9 @@ export interface GateEntry {
   linkedGateEntryId?: string;
   linkedMrrId?: string;
   linkedInvoiceId?: string;
+  whatsappSendStatus?: string;
+  whatsappSendError?: string;
+  whatsappSentAt?: string;
 }
 
 export interface GateEntryPhoto {
