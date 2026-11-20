@@ -15965,9 +15965,10 @@ app.post("/api/invoices/:id/manual-tally", async (req, res) => {
     const user = await getRequestUser(req).catch(() => null);
     if (!user)
         return res.status(401).json({ error: "Unauthorized" });
-    const allowed = user.role === "Admin" || String(user.email || "").trim().toLowerCase() === "pankaj@bizskilledu.com";
+    // Anyone with access to Billing → Pending Tally Posting may post by hand.
+    const allowed = user.role === "Admin" || String(user.email || "").trim().toLowerCase() === "pankaj@bizskilledu.com" || (user.role !== "TruckDriver" && hasPermission(user, "/billing/pending-tally"));
     if (!allowed)
-        return res.status(403).json({ error: "Only Admin can post an invoice to Tally by hand." });
+        return res.status(403).json({ error: "You do not have access to Pending Tally Posting." });
     const invoiceId = String(req.params.id || "").trim();
     const tallyInvNo = String(req.body?.tallyInvNo || "").trim();
     const tallyInvDate = String(req.body?.tallyInvDate || "").trim().slice(0, 10);

@@ -78,8 +78,8 @@ export function BillingPendingTally() {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const currentUserEmail = String(user?.email || "").trim().toLowerCase();
-  // Admin (and Pankaj) can post by hand when the Tally sync missed an invoice.
-  const canPostTally = currentUserEmail === "pankaj@bizskilledu.com" || user?.role === "Admin";
+  // Everyone who can open Pending Tally Posting can post by hand when the Tally sync missed an invoice.
+  const canPostTally = Boolean(user) || currentUserEmail === "pankaj@bizskilledu.com";
   const [postTarget, setPostTarget] = useState<{ id: string; invoiceNo: string; date: string } | null>(null);
   const [manualTallyNo, setManualTallyNo] = useState("");
   const [manualTallyDate, setManualTallyDate] = useState("");
