@@ -3101,7 +3101,9 @@ function getFirmDisplayNameById(firmId, firms, _legacyTransactionName) {
 var WHATSAPP_REPORT_MENUS = {
   "production-plan": "/production/plan",
   "dispatch-plan": "/dispatch/plan",
-  "pending-loading": "/loading/pending"
+  "pending-loading": "/loading/pending",
+  "php-planning": "/production/php/pending-planning",
+  "plate-planning": "/production/plate/pending-planning"
 };
 var whatsappReportKeyForMenu = (menu) => Object.keys(WHATSAPP_REPORT_MENUS).find((key5) => WHATSAPP_REPORT_MENUS[key5] === menu);
 var DEFAULT_WHATSAPP_REPORT_MESSAGES = {
@@ -3132,7 +3134,27 @@ var DEFAULT_WHATSAPP_REPORT_MESSAGES = {
 *Loaded Qty:* {{loaded}}
 *Pending Qty:* {{pending}}
 
-\u{1F4C4} Pending Loading PDF attached.`
+\u{1F4C4} Pending Loading PDF attached.`,
+  "php-planning": `\u{1F5C2}\uFE0F *PENDING PHP PLANNING*
+
+*As on:* {{dateTime}}
+*Firm:* {{firm}}
+*Schedules:* {{schedules}}
+*Required Qty:* {{required}}
+*Already Planned:* {{planned}}
+*Remaining to Plan:* {{remaining}}
+
+\u{1F4C4} Pending PHP Planning PDF attached.`,
+  "plate-planning": `\u{1F5C2}\uFE0F *PENDING PLATE PLANNING*
+
+*As on:* {{dateTime}}
+*Firm:* {{firm}}
+*Schedules:* {{schedules}}
+*Required Qty:* {{required}}
+*Already Planned:* {{planned}}
+*Remaining to Plan:* {{remaining}}
+
+\u{1F4C4} Pending Plate Planning PDF attached.`
 };
 function renderWhatsappReportMessage(template, values) {
   return String(template || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key5) => values[key5] ?? "");
@@ -3396,6 +3418,44 @@ function pendingLoadingPdfSpec(rows2, asOf) {
     fileName: `Pending_Loading_${stamp}.pdf`
   };
 }
+function planningPdfSpec(report, rows2, asOf, firmLabel = "") {
+  const source = report === "php-planning" ? "PHP" : "Plate";
+  const totals = rows2.reduce((sum, row) => ({ required: sum.required + row.requiredQty, planned: sum.planned + row.alreadyPlannedQty, remaining: sum.remaining + row.remainingQty }), { required: 0, planned: 0, remaining: 0 });
+  const dateTime = asOf.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
+  const stamp = asOf.toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).slice(0, 16).replace(/[: ]/g, "-");
+  return {
+    report,
+    title: `Pending ${source} Planning`,
+    subtitle: `As on: ${dateTime}${firmLabel ? `   Firm: ${firmLabel}` : ""}`,
+    head: ["Sr.", "Sched. Date", "Schedule No", "Firm", "Order No", "Company", "FG Item", "Main ERP", `${source} Item`, "Sched. Qty", "Sets/Pcs", "Required", "Planned", "Remaining"],
+    body: rows2.map((row, index) => [
+      String(index + 1),
+      formatDate4(row.scheduledDate),
+      shortDocNo(row.scheduleNo),
+      row.firmName,
+      shortDocNo(row.orderNo),
+      row.companyName,
+      row.fgItem,
+      row.mainErp,
+      row.linkedItem,
+      qtyText(row.scheduledQty),
+      row.setsPerBox,
+      qtyText(row.requiredQty),
+      qtyText(row.alreadyPlannedQty),
+      qtyText(row.remainingQty)
+    ]),
+    foot: ["TOTAL", "", "", "", "", "", "", "", "", "", "", qtyText(totals.required), qtyText(totals.planned), qtyText(totals.remaining)],
+    values: {
+      dateTime,
+      firm: firmLabel || "All firms",
+      schedules: String(rows2.length),
+      required: qtyText(totals.required),
+      planned: qtyText(totals.planned),
+      remaining: qtyText(totals.remaining)
+    },
+    fileName: `Pending_${source}_Planning_${stamp}.pdf`
+  };
+}
 function buildReportPdf(spec) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -3436,7 +3496,7 @@ function buildReportPdf(spec) {
     });
     return doc;
   }
-  const qtyColumns = spec.report === "dispatch-plan" ? [7, 8, 9, 10] : [8, 9, 10];
+  const qtyColumns = spec.report === "dispatch-plan" ? [7, 8, 9, 10] : spec.report === "pending-loading" ? [8, 9, 10] : [9, 10, 11, 12, 13];
   autoTable(doc, {
     startY: 22,
     head: [spec.head],
@@ -3637,6 +3697,75 @@ function getPendingLoadingPlanProjections(args) {
     }];
   });
 }
+
+// src/lib/pendingLinkedPlanning.ts
+var normalizeErpCode = (value) => String(value || "").trim().toLowerCase();
+function toOptionalNumber(value) {
+  const numberValue3 = Number(value);
+  return Number.isFinite(numberValue3) && numberValue3 > 0 ? numberValue3 : void 0;
+}
+var round27 = (value) => parseFloat(value.toFixed(2));
+var getScheduledQty = (schedule) => Math.max(Number(schedule.qty || 0) - Number(schedule.canceledQty || 0), 0);
+function findItemByErp(items, erpCode) {
+  const normalizedErp = normalizeErpCode(erpCode);
+  if (!normalizedErp) return void 0;
+  return items.find((item) => {
+    const raw = item.raw || {};
+    return [item.erp, raw.erpItemCode, raw.masterItemNameErpCode].some((value) => normalizeErpCode(value) === normalizedErp);
+  });
+}
+var getSetsPerBox = (item) => toOptionalNumber((item?.raw || {}).numberOfSetsPerBox);
+function plannedQtyByScheduleId(jobRows) {
+  const map = /* @__PURE__ */ new Map();
+  jobRows.forEach((row) => {
+    if (!row.scheduleId) return;
+    if (row.status === "Cancelled" || row.cancelTimestamp) return;
+    const effectiveQty = Math.max(0, Number(row.plannedQty || row.qty || 0));
+    if (effectiveQty <= 0) return;
+    map.set(row.scheduleId, (map.get(row.scheduleId) || 0) + effectiveQty);
+  });
+  return map;
+}
+function computePendingLinkedPlanningRows(args) {
+  const { source, schedules, sourceItems } = args;
+  const orderById = new Map(args.orders.map((order) => [order.id, order]));
+  const companyById = new Map(args.companies.map((company) => [company.id, company]));
+  const planned = plannedQtyByScheduleId(args.jobRows);
+  return schedules.map((schedule) => {
+    const order = orderById.get(schedule.orderId);
+    const fgItem = args.resolveOrderItem(order);
+    const company = order?.companyId ? companyById.get(order.companyId) : void 0;
+    const scheduledQty = getScheduledQty(schedule);
+    const isDirectSourceOrder = order?.itemSource === source;
+    const scheduleErp = String(order?.erpCode || fgItem?.erp || "").trim();
+    const linkedItem = isDirectSourceOrder ? sourceItems.find((item) => item.id === String(order?.itemId || "").trim()) : findItemByErp(sourceItems, scheduleErp);
+    const setsPerBox = getSetsPerBox(linkedItem);
+    const requiredQty = isDirectSourceOrder ? scheduledQty : linkedItem && setsPerBox ? round27(scheduledQty * setsPerBox) : 0;
+    const alreadyPlannedQty = Number(planned.get(schedule.id) || 0);
+    const remainingQty = Math.max(0, round27(requiredQty - alreadyPlannedQty));
+    let matchStatus = "Ready";
+    let selectable = true;
+    if (!linkedItem) {
+      matchStatus = isDirectSourceOrder ? `No ${source} item found for direct order` : `No ${source} master match for ERP`;
+      selectable = false;
+    } else if (!isDirectSourceOrder && !setsPerBox) {
+      matchStatus = "Sets/Pcs per box missing";
+      selectable = false;
+    } else if (remainingQty <= 0) {
+      matchStatus = "Already fully planned";
+      selectable = false;
+    }
+    return { schedule, order, company, fgItem, linkedItem, isDirectSourceOrder, scheduledQty, setsPerBox, requiredQty, alreadyPlannedQty, remainingQty, selectable, matchStatus };
+  }).filter((row) => {
+    if (row.scheduledQty <= 0 || !row.selectable || !row.linkedItem || row.remainingQty <= 0) return false;
+    return row.isDirectSourceOrder || Boolean(row.setsPerBox);
+  });
+}
+var planningRowItemKey = (row) => {
+  const item = row.linkedItem || row.fgItem;
+  return item?.id || `${item?.name || ""}::${item?.erp || row.order?.erpCode || ""}`;
+};
+var planningRowFirmId = (row) => String(row.schedule.firmId || row.order?.firmId || "");
 
 // src/lib/reports/serverReports.ts
 function catalogFrom(helpers) {
@@ -3937,6 +4066,50 @@ REPORT_DEFINITIONS["wa-pending-loading"] = {
     return pendingLoadingPdfSpec(pendingLoadingRowsFromProjections(filtered, lists.firms), new Date(String(params.asOf || (/* @__PURE__ */ new Date()).toISOString())));
   }
 };
+for (const [name, source, permission] of [["wa-php-planning", "PHP", "/production/php/pending-planning"], ["wa-plate-planning", "PLATE", "/production/plate/pending-planning"]]) {
+  REPORT_DEFINITIONS[name] = {
+    permission,
+    catalog: true,
+    lists: [
+      { key: "schedules", entity: "orders_schedule", scope: "all" },
+      { key: "orders", entity: "orders", scope: "all" },
+      { key: "companies", entity: "companies", scope: "firm" },
+      { key: "firms", entity: "firms", scope: "all" },
+      { key: "jobRows", entity: source === "PHP" ? "php_job_master" : "plate_job_master", scope: "firm" }
+    ],
+    compute: (lists, params, helpers) => {
+      const { resolveOrderItem, itemsBySource } = catalogFrom(helpers);
+      const filters = params.filters || {};
+      const rows2 = computePendingLinkedPlanningRows({
+        source,
+        schedules: lists.schedules,
+        orders: lists.orders,
+        companies: lists.companies,
+        jobRows: lists.jobRows,
+        sourceItems: itemsBySource[source] || [],
+        resolveOrderItem
+      }).filter((row) => {
+        const date = String(row.schedule.scheduledDate || "").slice(0, 10);
+        return (!filters.firm || planningRowFirmId(row) === String(filters.firm)) && (!filters.company || row.company?.id === String(filters.company)) && (!filters.item || planningRowItemKey(row) === String(filters.item)) && (!filters.from || date >= String(filters.from)) && (!filters.to || date <= String(filters.to));
+      }).sort((a, b) => new Date(b.schedule.scheduledDate).getTime() - new Date(a.schedule.scheduledDate).getTime());
+      return planningPdfSpec(name === "wa-php-planning" ? "php-planning" : "plate-planning", rows2.map((row) => ({
+        scheduledDate: String(row.schedule.scheduledDate || ""),
+        scheduleNo: String(row.schedule.scheduleNo || ""),
+        firmName: getFirmDisplayNameById(planningRowFirmId(row), lists.firms),
+        orderNo: String(row.order?.orderNo || ""),
+        companyName: String(row.company?.name || ""),
+        fgItem: row.isDirectSourceOrder ? "Direct Order" : String(row.fgItem?.name || ""),
+        mainErp: String(row.order?.erpCode || row.fgItem?.erp || ""),
+        linkedItem: String(row.linkedItem?.name || ""),
+        scheduledQty: row.scheduledQty,
+        setsPerBox: row.isDirectSourceOrder ? "Direct" : String(row.setsPerBox ?? ""),
+        requiredQty: row.requiredQty,
+        alreadyPlannedQty: row.alreadyPlannedQty,
+        remainingQty: row.remainingQty
+      })), new Date(String(params.asOf || (/* @__PURE__ */ new Date()).toISOString())), String(params.firmLabel || ""));
+    }
+  };
+}
 function runReport(name, lists, params, helpers) {
   const definition = REPORT_DEFINITIONS[name];
   if (!definition) throw new Error(`Unknown report ${name}`);

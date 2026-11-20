@@ -13,29 +13,15 @@ import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { SortHeader } from "../lib/tableSort";
 import type { Company, Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import type { OrderCatalogItem } from "../lib/orderItems";
+import { computePendingLinkedPlanningRows, type PlanningRow, type PlanningSource } from "../lib/pendingLinkedPlanning";
+import { SendReportWhatsappButton } from "../components/SendReportWhatsappButton";
+import { usePageDataStatus } from "../components/DataLoadingBoundary";
 
-type PlanningSource = Extract<OrderItemSource, "PHP" | "PLATE">;
 type SortKey = "scheduledDate" | "orderNo" | "companyName" | "fgItemName" | "linkedItemName" | "remainingQty"
   | "scheduleNo" | "firm" | "mainErp" | "scheduledQty" | "setsPerBox" | "requiredQty" | "alreadyPlannedQty" | "matchStatus";
 
 type PendingLinkedProductionPlanningProps = {
   source: PlanningSource;
-};
-
-type PlanningRow = {
-  schedule: OrderSchedule;
-  order?: Order;
-  company?: Company;
-  fgItem?: OrderCatalogItem;
-  linkedItem?: OrderCatalogItem;
-  isDirectSourceOrder: boolean;
-  scheduledQty: number;
-  setsPerBox?: number;
-  requiredQty: number;
-  alreadyPlannedQty: number;
-  remainingQty: number;
-  selectable: boolean;
-  matchStatus: string;
 };
 
 const getJobMasterEntityName = (source: PlanningSource) =>
@@ -71,34 +57,13 @@ function firstOptionalString(...values: unknown[]) {
   return undefined;
 }
 
-function round2(value: number) {
-  return parseFloat(value.toFixed(2));
-}
 
 function joinPrintingColors(color1?: string, color2?: string) {
   return [color1?.trim(), color2?.trim()].filter(Boolean).join(" / ");
 }
 
-function getScheduledQty(schedule: OrderSchedule) {
-  return Math.max(Number(schedule.qty || 0) - Number(schedule.canceledQty || 0), 0);
-}
 
-function findItemByErp(items: OrderCatalogItem[], erpCode: string) {
-  const normalizedErp = normalizeErpCode(erpCode);
-  if (!normalizedErp) return undefined;
 
-  return items.find((item) => {
-    const raw = item.raw || {};
-    return [item.erp, raw.erpItemCode, raw.masterItemNameErpCode].some(
-      (value) => normalizeErpCode(value) === normalizedErp
-    );
-  });
-}
-
-function getSetsPerBox(item?: OrderCatalogItem) {
-  const raw = item?.raw || {};
-  return toOptionalNumber(raw.numberOfSetsPerBox);
-}
 
 function buildPlannedProduction({
   source,
@@ -197,6 +162,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
   const [sortKey, setSortKey] = useState<SortKey>("scheduledDate");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
+  const { loading: pageLoading } = usePageDataStatus();
   const [fgProductions] = useData<Production>("productions", []);
   const [phpJobMaster, setPhpJobMaster] = useData<Production>(getJobMasterEntityName("PHP"), []);
   const [plateJobMaster, setPlateJobMaster] = useData<Production>(getJobMasterEntityName("PLATE"), []);
@@ -215,73 +181,11 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }, []);
 
-  const plannedQtyByScheduleId = useMemo(() => {
-    const map = new Map<string, number>();
-    jobRows.forEach((row) => {
-      if (!row.scheduleId) return;
-      if (row.status === "Cancelled" || row.cancelTimestamp) return;
-      const effectiveQty = Math.max(0, Number(row.plannedQty || row.qty || 0));
-      if (effectiveQty <= 0) return;
-      map.set(row.scheduleId, (map.get(row.scheduleId) || 0) + effectiveQty);
-    });
-    return map;
-  }, [jobRows]);
-
-  const rows = useMemo<PlanningRow[]>(() => {
-    return schedules
-      .map((schedule) => {
-        const order = orders.find((row) => row.id === schedule.orderId);
-        const fgItem = resolveOrderItem(order);
-        const company = companies.find((row) => row.id === order?.companyId);
-        const scheduledQty = getScheduledQty(schedule);
-        const isDirectSourceOrder = order?.itemSource === source;
-        const scheduleErp = String(order?.erpCode || fgItem?.erp || "").trim();
-        const linkedItem = isDirectSourceOrder
-          ? sourceItems.find((item) => item.id === String(order?.itemId || "").trim())
-          : findItemByErp(sourceItems, scheduleErp);
-        const setsPerBox = getSetsPerBox(linkedItem);
-        const requiredQty = isDirectSourceOrder
-          ? scheduledQty
-          : linkedItem && setsPerBox
-            ? round2(scheduledQty * setsPerBox)
-            : 0;
-        const alreadyPlannedQty = Number(plannedQtyByScheduleId.get(schedule.id) || 0);
-        const remainingQty = Math.max(0, round2(requiredQty - alreadyPlannedQty));
-
-        let matchStatus = "Ready";
-        let selectable = true;
-        if (!linkedItem) {
-          matchStatus = isDirectSourceOrder ? `No ${source} item found for direct order` : `No ${source} master match for ERP`;
-          selectable = false;
-        } else if (!isDirectSourceOrder && !setsPerBox) {
-          matchStatus = "Sets/Pcs per box missing";
-          selectable = false;
-        } else if (remainingQty <= 0) {
-          matchStatus = "Already fully planned";
-          selectable = false;
-        }
-
-        return {
-          schedule,
-          order,
-          company,
-          fgItem,
-          linkedItem,
-          isDirectSourceOrder,
-          scheduledQty,
-          setsPerBox,
-          requiredQty,
-          alreadyPlannedQty,
-          remainingQty,
-          selectable,
-          matchStatus,
-        };
-      })
-      .filter((row) => {
-        if (row.scheduledQty <= 0 || !row.selectable || !row.linkedItem || row.remainingQty <= 0) return false;
-        return row.isDirectSourceOrder || Boolean(row.setsPerBox);
-      });
-  }, [companies, orders, plannedQtyByScheduleId, resolveOrderItem, schedules, source, sourceItems]);
+  // Same rows as the WhatsApp PDF the server sends.
+  const rows = useMemo<PlanningRow[]>(
+    () => computePendingLinkedPlanningRows({ source, schedules, orders, companies, jobRows, sourceItems, resolveOrderItem }),
+    [companies, jobRows, orders, resolveOrderItem, schedules, source, sourceItems]
+  );
 
   const availableCompanies = useMemo(() => {
     const ids = new Set(rows.map((row) => row.company?.id).filter(Boolean));
@@ -514,7 +418,14 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
         <div>
           <h2 className="text-2xl font-black text-black tracking-tight uppercase">{title}</h2>
         </div>
-        <div className="flex items-center gap-3">
+        <div data-header-action="true" className="flex flex-wrap items-center gap-3">
+          <SendReportWhatsappButton
+            report={source === "PHP" ? "php-planning" : "plate-planning"}
+            title={title}
+            loading={pageLoading}
+            disabled={!filteredRows.length}
+            buildRequest={() => ({ filters: { firm: selectedFirmId, company: selectedCompanyId, item: selectedItemId, from: fromDate, to: toDate }, label: "as on now" })}
+          />
           {selectedIds.size > 0 && (
             <button
               onClick={handleSubmit}

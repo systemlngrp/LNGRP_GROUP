@@ -25,6 +25,8 @@ const REPORT_LABELS: Record<string, string> = {
   "production-plan": "Production Plan",
   "dispatch-plan": "Dispatch Plan",
   "pending-loading": "Pending Loading",
+  "php-planning": "Pending PHP Planning",
+  "plate-planning": "Pending Plate Planning",
 };
 const SOURCE_LABELS: Record<string, string> = { Scheduled: "Timed", Page: "Page button", "Send Now": "Send now", Resend: "Resend" };
 
@@ -73,7 +75,7 @@ export function WhatsappReportSendHistory() {
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-5 py-4">
         <div>
           <h3 className="font-black text-slate-900">Report PDF sends</h3>
-          <p className="text-sm font-medium text-slate-500">Production Plan, Dispatch Plan and Pending Loading (latest 100)</p>
+          <p className="text-sm font-medium text-slate-500">Production Plan, Dispatch Plan, Pending Loading, Pending PHP / Plate Planning (latest 100)</p>
         </div>
         <div className="flex items-center gap-2">
           <select value={report} onChange={(e) => setReport(e.target.value)} className="h-[34px] rounded border-2 border-black px-2 text-xs font-semibold">

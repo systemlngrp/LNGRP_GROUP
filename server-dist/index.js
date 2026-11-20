@@ -11321,15 +11321,23 @@ async function retryPrintingShiftReports() {
         printingShiftWorkerRunning = false;
     }
 }
+/** Reports for a plan date (the others are "as on now"). */
+const DATED_WHATSAPP_REPORTS = new Set(["production-plan", "dispatch-plan"]);
+/** Reports for one firm (config Firm for timed sends, the user's firm for the page button). */
+const FIRM_WHATSAPP_REPORTS = new Set(["production-plan", "php-planning", "plate-planning"]);
 const WHATSAPP_REPORT_MENU_BY_KEY = {
     "production-plan": "/production/plan",
     "dispatch-plan": "/dispatch/plan",
     "pending-loading": "/loading/pending",
+    "php-planning": "/production/php/pending-planning",
+    "plate-planning": "/production/plate/pending-planning",
 };
 const WHATSAPP_REPORT_TITLES = {
     "production-plan": "Production Plan",
     "dispatch-plan": "Dispatch Plan",
     "pending-loading": "Pending Loading",
+    "php-planning": "Pending PHP Planning",
+    "plate-planning": "Pending Plate Planning",
 };
 const whatsappReportKeyOfMenu = (menu) => Object.keys(WHATSAPP_REPORT_MENU_BY_KEY).find((key) => WHATSAPP_REPORT_MENU_BY_KEY[key] === menu);
 const WHATSAPP_REPORT_MAX_ATTEMPTS = 3;
@@ -11398,8 +11406,8 @@ function whatsappReportPlanDate(config, baseDate = indiaNowParts(new Date()).dat
     return addIndiaDays(baseDate, day === "yesterday" ? -1 : day === "today" ? 0 : 1);
 }
 const whatsappReportOptionsFromConfig = (report, config, baseDate) => ({
-    firmId: report === "production-plan" ? String(config.reportFirmId || "").trim() : "",
-    planDate: report === "pending-loading" ? undefined : whatsappReportPlanDate(config, baseDate),
+    firmId: FIRM_WHATSAPP_REPORTS.has(report) ? String(config.reportFirmId || "").trim() : "",
+    planDate: DATED_WHATSAPP_REPORTS.has(report) ? whatsappReportPlanDate(config, baseDate) : undefined,
 });
 /** Read the report from the database (same code as the page), make the PDF and store it. */
 async function buildWhatsappReportPdfFile(db, report, options) {
@@ -11413,7 +11421,7 @@ async function buildWhatsappReportPdfFile(db, report, options) {
         const [adminRows] = await db.query("SELECT id FROM `users` WHERE role = 'Admin' ORDER BY id LIMIT 1");
         authUserId = String(adminRows[0]?.id || "");
     }
-    const firmId = report === "production-plan" ? String(options.firmId || "").trim() : "";
+    const firmId = FIRM_WHATSAPP_REPORTS.has(report) ? String(options.firmId || "").trim() : "";
     let firmLabel = "";
     if (firmId) {
         const [firmRows] = await db.query("SELECT firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]);
@@ -11422,10 +11430,12 @@ async function buildWhatsappReportPdfFile(db, report, options) {
     const filters = options.filters || {};
     const params = report === "pending-loading"
         ? { asOf: new Date().toISOString(), atJobWorkerByJobId: await loadQtyAtJobWorkerByJob(db), filters }
-        : { date: options.planDate || whatsappReportPlanDate({}), firmLabel, filters };
+        : DATED_WHATSAPP_REPORTS.has(report)
+            ? { date: options.planDate || whatsappReportPlanDate({}), firmLabel, filters }
+            : { asOf: new Date().toISOString(), firmLabel, filters };
     const spec = await buildServerReport(module, name, definition, firmId, authUserId, params, JSON.stringify([name, firmId, params, Date.now()]), db);
     const fileName = await writeWhatsappReportPdf(module, spec);
-    return { spec, fileName, rows: Array.isArray(spec?.body) ? spec.body.length : 0, reportDate: report === "pending-loading" ? indiaNowParts(new Date()).date : String(params.date) };
+    return { spec, fileName, rows: Array.isArray(spec?.body) ? spec.body.length : 0, reportDate: DATED_WHATSAPP_REPORTS.has(report) ? String(params.date) : indiaNowParts(new Date()).date };
 }
 /** Saved on disk and in the database (uploaded_files), so the PDF and its link survive a redeploy. */
 async function storeUploadedFile(db, fileName, mimeType, buffer) {
@@ -11575,7 +11585,7 @@ app.post("/api/whatsapp-reports/:report/send", requireAuth, async (req, res) => 
     if (user.role === "TruckDriver" || !hasPermission(user, menu))
         return res.status(403).json({ status: "Failed", error: "Forbidden" });
     const date = String(req.body?.date || "").trim();
-    if (report !== "pending-loading" && !/^\d{4}-\d{2}-\d{2}$/.test(date))
+    if (DATED_WHATSAPP_REPORTS.has(report) && !/^\d{4}-\d{2}-\d{2}$/.test(date))
         return res.status(400).json({ status: "Failed", error: "Plan date is missing." });
     const rawFilters = req.body?.filters && typeof req.body.filters === "object" ? req.body.filters : {};
     const filters = {};
@@ -11597,7 +11607,7 @@ app.post("/api/whatsapp-reports/:report/send", requireAuth, async (req, res) => 
         await db.query("INSERT INTO `whatsapp_report_sends` (`id`, `report`, `source`, `reportDate`, `status`, `attempts`, `startedAt`, `sentBy`, `createdAt`) VALUES (?, ?, 'Page', ?, 'Sending', 1, ?, ?, ?)", [sendId, report, date || indiaNowParts(new Date()).date, now, String(user.name || user.email || ""), now]);
         const result = await runWhatsappReportSend(db, sendId, report, config, {
             // Production Plan: the firm the user is working in (as on the page).
-            firmId: report === "production-plan" ? getRequestFirmId(req) : "",
+            firmId: FIRM_WHATSAPP_REPORTS.has(report) ? getRequestFirmId(req) : "",
             planDate: date || undefined,
             filters,
             authUserId: String(req.authUserId || ""),

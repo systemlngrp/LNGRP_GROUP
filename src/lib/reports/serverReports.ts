@@ -16,6 +16,9 @@ import { buildTraceabilityRecordById, buildTraceabilitySearchIndex } from "../tr
 import { computeDispatchPlanDayRows, computeProductionPlanRows, dispatchPlanPdfSpec, pendingLoadingPdfSpec, pendingLoadingRowsFromProjections, productionPlanPdfSpec, sortDispatchPlanDayRows } from "./whatsappReports";
 import { getPendingLoadingPlanProjections } from "../pendingLoadingEligibility";
 import { corrugationLinerQtyByJobId } from "../productionProcessingProgress";
+import { computePendingLinkedPlanningRows, planningRowFirmId, planningRowItemKey } from "../pendingLinkedPlanning";
+import { planningPdfSpec } from "./whatsappReports";
+import { getFirmDisplayNameById } from "../firmDisplay";
 
 // WhatsApp report PDFs (timed sends): the server builds the PDF from these specs.
 export { buildReportPdf, renderWhatsappReportMessage, DEFAULT_WHATSAPP_REPORT_MESSAGES, WHATSAPP_REPORT_MENUS, whatsappReportKeyForMenu } from "./whatsappReports";
@@ -370,6 +373,60 @@ REPORT_DEFINITIONS["wa-pending-loading"] = {
     return pendingLoadingPdfSpec(pendingLoadingRowsFromProjections(filtered, lists.firms), new Date(String(params.asOf || new Date().toISOString())));
   },
 };
+
+// Pending PHP / Plate Planning (as on now). params.filters: firm, company (id),
+// item (key), from / to (schedule date); params.firmLabel for the title.
+for (const [name, source, permission] of [["wa-php-planning", "PHP", "/production/php/pending-planning"], ["wa-plate-planning", "PLATE", "/production/plate/pending-planning"]] as const) {
+  REPORT_DEFINITIONS[name] = {
+    permission,
+    catalog: true,
+    lists: [
+      { key: "schedules", entity: "orders_schedule", scope: "all" },
+      { key: "orders", entity: "orders", scope: "all" },
+      { key: "companies", entity: "companies", scope: "firm" },
+      { key: "firms", entity: "firms", scope: "all" },
+      { key: "jobRows", entity: source === "PHP" ? "php_job_master" : "plate_job_master", scope: "firm" },
+    ],
+    compute: (lists, params, helpers) => {
+      const { resolveOrderItem, itemsBySource } = catalogFrom(helpers);
+      const filters = params.filters || {};
+      const rows = computePendingLinkedPlanningRows({
+        source,
+        schedules: lists.schedules as any,
+        orders: lists.orders as any,
+        companies: lists.companies as any,
+        jobRows: lists.jobRows as any,
+        sourceItems: (itemsBySource as any)[source] || [],
+        resolveOrderItem: resolveOrderItem as any,
+      })
+        .filter((row) => {
+          const date = String(row.schedule.scheduledDate || "").slice(0, 10);
+          return (!filters.firm || planningRowFirmId(row) === String(filters.firm))
+            && (!filters.company || row.company?.id === String(filters.company))
+            && (!filters.item || planningRowItemKey(row) === String(filters.item))
+            && (!filters.from || date >= String(filters.from))
+            && (!filters.to || date <= String(filters.to));
+        })
+        // Same order as the page opens in: latest schedule date first.
+        .sort((a, b) => new Date(b.schedule.scheduledDate).getTime() - new Date(a.schedule.scheduledDate).getTime());
+      return planningPdfSpec(name === "wa-php-planning" ? "php-planning" : "plate-planning", rows.map((row) => ({
+        scheduledDate: String(row.schedule.scheduledDate || ""),
+        scheduleNo: String(row.schedule.scheduleNo || ""),
+        firmName: getFirmDisplayNameById(planningRowFirmId(row), lists.firms as any),
+        orderNo: String(row.order?.orderNo || ""),
+        companyName: String(row.company?.name || ""),
+        fgItem: row.isDirectSourceOrder ? "Direct Order" : String(row.fgItem?.name || ""),
+        mainErp: String(row.order?.erpCode || row.fgItem?.erp || ""),
+        linkedItem: String(row.linkedItem?.name || ""),
+        scheduledQty: row.scheduledQty,
+        setsPerBox: row.isDirectSourceOrder ? "Direct" : String(row.setsPerBox ?? ""),
+        requiredQty: row.requiredQty,
+        alreadyPlannedQty: row.alreadyPlannedQty,
+        remainingQty: row.remainingQty,
+      })), new Date(String(params.asOf || new Date().toISOString())), String(params.firmLabel || ""));
+    },
+  };
+}
 
 export function runReport(name: string, lists: Record<string, any[]>, params: Record<string, any>, helpers: ReportHelpers) {
   const definition = REPORT_DEFINITIONS[name];

@@ -11,13 +11,20 @@ import { resolveProductionPlanCompany } from "../productionPlanCompany";
 import { buildSampleJobNumbers, deriveProductionPlanStatuses } from "../productionPlanStatus";
 import { getFirmDisplayNameById } from "../firmDisplay";
 
-export type WhatsappReportKey = "production-plan" | "dispatch-plan" | "pending-loading";
+export type WhatsappReportKey = "production-plan" | "dispatch-plan" | "pending-loading" | "php-planning" | "plate-planning";
+
+/** Reports for a plan date (the others are "as on now"). */
+export const DATED_WHATSAPP_REPORTS: WhatsappReportKey[] = ["production-plan", "dispatch-plan"];
+/** Reports for one firm (WhatsApp Master "Firm" for the timed PDF; the page button uses the user's firm). */
+export const FIRM_WHATSAPP_REPORTS: WhatsappReportKey[] = ["production-plan", "php-planning", "plate-planning"];
 
 /** Page (menu) of each report: its WhatsApp Master entry and who may send it. */
 export const WHATSAPP_REPORT_MENUS: Record<WhatsappReportKey, string> = {
   "production-plan": "/production/plan",
   "dispatch-plan": "/dispatch/plan",
   "pending-loading": "/loading/pending",
+  "php-planning": "/production/php/pending-planning",
+  "plate-planning": "/production/plate/pending-planning",
 };
 
 export const whatsappReportKeyForMenu = (menu: string) =>
@@ -52,6 +59,26 @@ export const DEFAULT_WHATSAPP_REPORT_MESSAGES: Record<WhatsappReportKey, string>
 *Pending Qty:* {{pending}}
 
 📄 Pending Loading PDF attached.`,
+  "php-planning": `🗂️ *PENDING PHP PLANNING*
+
+*As on:* {{dateTime}}
+*Firm:* {{firm}}
+*Schedules:* {{schedules}}
+*Required Qty:* {{required}}
+*Already Planned:* {{planned}}
+*Remaining to Plan:* {{remaining}}
+
+📄 Pending PHP Planning PDF attached.`,
+  "plate-planning": `🗂️ *PENDING PLATE PLANNING*
+
+*As on:* {{dateTime}}
+*Firm:* {{firm}}
+*Schedules:* {{schedules}}
+*Required Qty:* {{required}}
+*Already Planned:* {{planned}}
+*Remaining to Plan:* {{remaining}}
+
+📄 Pending Plate Planning PDF attached.`,
 };
 
 export function renderWhatsappReportMessage(template: string, values: Record<string, string>) {
@@ -345,6 +372,51 @@ export function pendingLoadingPdfSpec(rows: PendingLoadingPdfRow[], asOf: Date):
   };
 }
 
+// ---------------------------------------------------------------- Pending PHP / Plate Planning
+
+export type PlanningPdfRow = {
+  scheduledDate: string;
+  scheduleNo: string;
+  firmName: string;
+  orderNo: string;
+  companyName: string;
+  fgItem: string;
+  mainErp: string;
+  linkedItem: string;
+  scheduledQty: number;
+  setsPerBox: string;
+  requiredQty: number;
+  alreadyPlannedQty: number;
+  remainingQty: number;
+};
+
+export function planningPdfSpec(report: "php-planning" | "plate-planning", rows: PlanningPdfRow[], asOf: Date, firmLabel = ""): ReportPdfSpec {
+  const source = report === "php-planning" ? "PHP" : "Plate";
+  const totals = rows.reduce((sum, row) => ({ required: sum.required + row.requiredQty, planned: sum.planned + row.alreadyPlannedQty, remaining: sum.remaining + row.remainingQty }), { required: 0, planned: 0, remaining: 0 });
+  const dateTime = asOf.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
+  const stamp = asOf.toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).slice(0, 16).replace(/[: ]/g, "-");
+  return {
+    report,
+    title: `Pending ${source} Planning`,
+    subtitle: `As on: ${dateTime}${firmLabel ? `   Firm: ${firmLabel}` : ""}`,
+    head: ["Sr.", "Sched. Date", "Schedule No", "Firm", "Order No", "Company", "FG Item", "Main ERP", `${source} Item`, "Sched. Qty", "Sets/Pcs", "Required", "Planned", "Remaining"],
+    body: rows.map((row, index) => [
+      String(index + 1), formatDate(row.scheduledDate), shortDocNo(row.scheduleNo), row.firmName, shortDocNo(row.orderNo), row.companyName, row.fgItem, row.mainErp, row.linkedItem,
+      qtyText(row.scheduledQty), row.setsPerBox, qtyText(row.requiredQty), qtyText(row.alreadyPlannedQty), qtyText(row.remainingQty),
+    ]),
+    foot: ["TOTAL", "", "", "", "", "", "", "", "", "", "", qtyText(totals.required), qtyText(totals.planned), qtyText(totals.remaining)],
+    values: {
+      dateTime,
+      firm: firmLabel || "All firms",
+      schedules: String(rows.length),
+      required: qtyText(totals.required),
+      planned: qtyText(totals.planned),
+      remaining: qtyText(totals.remaining),
+    },
+    fileName: `Pending_${source}_Planning_${stamp}.pdf`,
+  };
+}
+
 // ---------------------------------------------------------------- PDF
 
 export function buildReportPdf(spec: ReportPdfSpec): jsPDF {
@@ -388,7 +460,7 @@ export function buildReportPdf(spec: ReportPdfSpec): jsPDF {
     });
     return doc;
   }
-  const qtyColumns = spec.report === "dispatch-plan" ? [7, 8, 9, 10] : [8, 9, 10];
+  const qtyColumns = spec.report === "dispatch-plan" ? [7, 8, 9, 10] : spec.report === "pending-loading" ? [8, 9, 10] : [9, 10, 11, 12, 13];
   autoTable(doc, {
     startY: 22,
     head: [spec.head],
