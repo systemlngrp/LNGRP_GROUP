@@ -3097,13 +3097,112 @@ function getFirmDisplayNameById(firmId, firms, _legacyTransactionName) {
   return String(firmId || "").trim() ? "Unknown firm" : "Unassigned";
 }
 
+// src/lib/phpPlateFirm.ts
+function resolvePhpPlateFirmId(job, schedules, orders) {
+  if (String(job.firmId || "").trim()) return String(job.firmId).trim();
+  const schedule = schedules.find((entry) => entry.id === job.scheduleId);
+  if (String(schedule?.firmId || "").trim()) return String(schedule?.firmId).trim();
+  return String(orders.find((entry) => entry.id === schedule?.orderId)?.firmId || "").trim();
+}
+function workflowDate(value) {
+  return String(value.scheduledDate || value.date || "").slice(0, 10);
+}
+
+// src/lib/phpPlatePlan.ts
+var s3 = (value) => String(value ?? "").trim();
+var n3 = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+function buildPhpPlateWorkflowJobs(source, sourceJobs, fgProductions) {
+  const linkField = source === "PHP" ? "phpScheduledJobId" : "plateScheduledJobId";
+  const fgByLinkedId = /* @__PURE__ */ new Map();
+  fgProductions.forEach((production) => {
+    const id = s3(production[linkField]);
+    if (id && !fgByLinkedId.has(id)) fgByLinkedId.set(id, production);
+  });
+  const jobs = sourceJobs.map((job) => {
+    const linked = fgByLinkedId.get(job.id);
+    return linked && s3(linked.methodology).toUpperCase() === "SCRAP" ? { ...job, methodology: linked.methodology, scheduledDate: linked.scheduledDate || job.scheduledDate, plannedQty: linked.plannedQty || job.plannedQty, productionOutputQty: linked.prodFromFFG || linked.productionOutputQty || job.productionOutputQty, sequence: linked.sequence || job.sequence, shift: linked.shift || job.shift } : job;
+  });
+  const ids = new Set(jobs.map((job) => job.id));
+  const scrap = fgProductions.filter((production) => s3(production.methodology).toUpperCase() === "SCRAP" && s3(production[linkField]) && !ids.has(s3(production[linkField]))).map((production) => ({
+    ...production,
+    id: s3(production[linkField]),
+    scheduledDate: production.scheduledDate || production.date,
+    shift: production.shift || "Day",
+    productionOutputQty: production.prodFromFFG || production.productionOutputQty || 0
+  }));
+  return [...jobs, ...scrap];
+}
+var SHIFT_ORDER = ["day", "night"];
+var shiftRank = (shift) => {
+  const index = SHIFT_ORDER.indexOf(shift.toLowerCase());
+  return index === -1 ? SHIFT_ORDER.length : index;
+};
+function computePhpPlatePlanRows(args) {
+  const { source, date, filters = {} } = args;
+  const scheduleById = new Map(args.schedules.map((schedule) => [schedule.id, schedule]));
+  const orderById = new Map(args.orders.map((order) => [order.id, order]));
+  const companyById = new Map(args.companies.map((company) => [company.id, company]));
+  const itemById = new Map(args.sourceItems.map((item) => [s3(item.id), item]));
+  const rows2 = args.jobs.filter((job) => job.status !== "Cancelled" && !job.cancelTimestamp).filter((job) => s3(job.scheduledDate) && workflowDate(job) === date).map((job) => {
+    const schedule = scheduleById.get(s3(job.scheduleId));
+    const order = orderById.get(s3(schedule?.orderId)) || orderById.get(s3(job.orderId));
+    const company = companyById.get(s3(order?.companyId) || s3(job.companyId));
+    const firmId = resolvePhpPlateFirmId(job, args.schedules, args.orders);
+    const item = itemById.get(s3(job.itemId));
+    const plannedQty = n3(job.plannedQty || job.qty);
+    const producedQty = n3(job.productionOutputQty);
+    const done = job.status === "Completed" || s3(job.jobCompletionTimeOutput) && producedQty > 0;
+    const sequenceText = s3(job.sequence);
+    const sequence = sequenceText && Number.isFinite(Number(sequenceText)) ? Number(sequenceText) : null;
+    return {
+      job,
+      source,
+      date,
+      shift: s3(job.shift) || "-",
+      sequence,
+      jobNo: s3(job.transactionNo || job.jobCardNo),
+      firmId,
+      firmName: getFirmDisplayNameById(firmId, args.firms),
+      companyName: s3(company?.name || job.companyName),
+      itemName: s3(item?.name || job.itemId),
+      erp: s3(job.erpCode || order?.erpCode || item?.erp),
+      methodology: s3(job.methodology),
+      plannedQty,
+      producedQty,
+      balanceQty: Math.max(0, Math.round((plannedQty - producedQty) * 100) / 100),
+      status: done ? "Complete" : producedQty > 0 ? "In Progress" : "Pending"
+    };
+  }).filter((row) => (!filters.firm || row.firmId === filters.firm) && (!filters.company || row.companyName === filters.company) && (!filters.item || row.itemName === filters.item) && (!filters.shift || row.shift === filters.shift) && (!filters.methodology || row.methodology === filters.methodology));
+  return rows2.sort((a, b) => shiftRank(a.shift) - shiftRank(b.shift) || a.shift.localeCompare(b.shift) || (a.sequence === null ? 1 : 0) - (b.sequence === null ? 1 : 0) || (a.sequence ?? 0) - (b.sequence ?? 0) || a.jobNo.localeCompare(b.jobNo, void 0, { numeric: true }));
+}
+var phpPlatePlanTotals = (rows2) => rows2.reduce((sum, row) => ({
+  jobs: sum.jobs + 1,
+  planned: sum.planned + row.plannedQty,
+  produced: sum.produced + row.producedQty,
+  balance: sum.balance + row.balanceQty
+}), { jobs: 0, planned: 0, produced: 0, balance: 0 });
+function groupPhpPlatePlanByShift(rows2) {
+  const groups = [];
+  rows2.forEach((row) => {
+    const last = groups[groups.length - 1];
+    if (last && last.shift === row.shift) last.rows.push(row);
+    else groups.push({ shift: row.shift, rows: [row] });
+  });
+  return groups;
+}
+
 // src/lib/reports/whatsappReports.ts
 var WHATSAPP_REPORT_MENUS = {
   "production-plan": "/production/plan",
   "dispatch-plan": "/dispatch/plan",
   "pending-loading": "/loading/pending",
   "php-planning": "/production/php/pending-planning",
-  "plate-planning": "/production/plate/pending-planning"
+  "plate-planning": "/production/plate/pending-planning",
+  "php-production-plan": "/production/php/plan",
+  "plate-production-plan": "/production/plate/plan"
 };
 var whatsappReportKeyForMenu = (menu) => Object.keys(WHATSAPP_REPORT_MENUS).find((key5) => WHATSAPP_REPORT_MENUS[key5] === menu);
 var DEFAULT_WHATSAPP_REPORT_MESSAGES = {
@@ -3145,6 +3244,28 @@ var DEFAULT_WHATSAPP_REPORT_MESSAGES = {
 *Remaining to Plan:* {{remaining}}
 
 \u{1F4C4} Pending PHP Planning PDF attached.`,
+  "php-production-plan": `\u{1F3ED} *PHP PRODUCTION PLAN*
+
+*Plan Date:* {{date}}
+*Jobs:* {{jobs}}
+*Planned Qty:* {{planned}}
+*Produced:* {{produced}}
+*Balance:* {{balance}}
+
+{{shiftLines}}
+
+\u{1F4C4} PHP Production Plan PDF attached.`,
+  "plate-production-plan": `\u{1F3ED} *PLATE PRODUCTION PLAN*
+
+*Plan Date:* {{date}}
+*Jobs:* {{jobs}}
+*Planned Qty:* {{planned}}
+*Produced:* {{produced}}
+*Balance:* {{balance}}
+
+{{shiftLines}}
+
+\u{1F4C4} Plate Production Plan PDF attached.`,
   "plate-planning": `\u{1F5C2}\uFE0F *PENDING PLATE PLANNING*
 
 *As on:* {{dateTime}}
@@ -3161,9 +3282,9 @@ function renderWhatsappReportMessage(template, values) {
 }
 var qtyText = (value) => Number(value || 0).toLocaleString("en-IN");
 var money2 = (value) => value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-var s3 = (value) => String(value ?? "").trim();
+var s4 = (value) => String(value ?? "").trim();
 var localDay = (value) => {
-  const date = new Date(s3(value));
+  const date = new Date(s4(value));
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).slice(0, 10);
 };
@@ -3176,18 +3297,18 @@ function computeProductionPlanRows(lists, date, filters = {}) {
   const erpLeastGsm = /* @__PURE__ */ new Map();
   productions.forEach((p) => {
     if (p.status === "Cancelled" || p.cancelTimestamp) return;
-    const erp = s3(p.erpCode);
+    const erp = s4(p.erpCode);
     const gsm = Number(p.gsm || 0);
     if (erp && gsm > 0 && (!erpLeastGsm.has(erp) || gsm < erpLeastGsm.get(erp))) erpLeastGsm.set(erp, gsm);
   });
-  const itemById = new Map(npdItems.map((item) => [s3(item.id), item]));
+  const itemById = new Map(npdItems.map((item) => [s4(item.id), item]));
   const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
   const orderById = new Map(orders.map((order) => [order.id, order]));
-  const rows2 = productions.filter((p) => (s3(p.date) ? localDay(p.date) || s3(p.date) : "") === date).map((production) => {
+  const rows2 = productions.filter((p) => (s4(p.date) ? localDay(p.date) || s4(p.date) : "") === date).map((production) => {
     const schedule = scheduleById.get(production.scheduleId);
     const order = schedule ? orderById.get(schedule.orderId) : void 0;
     const company = resolveProductionPlanCompany(production, schedule, order, companies);
-    const item = itemById.get(s3(production.itemId));
+    const item = itemById.get(s4(production.itemId));
     return { production, company, item };
   }).filter(({ production, company, item }) => {
     if (filters.companies?.length && !filters.companies.some((selected) => selected === company.companyId || selected === company.name)) return false;
@@ -3195,7 +3316,7 @@ function computeProductionPlanRows(lists, date, filters = {}) {
     return !filters.item || itemKey === filters.item;
   }).map(({ production, company, item }) => ({
     ...production,
-    leastGsm: erpLeastGsm.get(s3(production.erpCode)) ?? production.leastGsm,
+    leastGsm: erpLeastGsm.get(s4(production.erpCode)) ?? production.leastGsm,
     // Batch comes from the Flute Master, so a master change re-orders the plan.
     fluteBatches: resolveFluteBatch(production.flute, fluteBatchMap, production.fluteBatches),
     productionPlanCompanyName: company.name,
@@ -3213,7 +3334,7 @@ function productionPlanPdfSpec(rows2, date, firmLabel = "") {
     return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
   };
   const jobNumber = (p) => {
-    const text5 = s3(p.transactionNo || p.jobCardNo);
+    const text5 = s4(p.transactionNo || p.jobCardNo);
     return text5.match(/(\d+)\s*$/)?.[1] || text5 || "-";
   };
   let totalValue = 0;
@@ -3228,16 +3349,16 @@ function productionPlanPdfSpec(rows2, date, firmLabel = "") {
     if (p.shouldHighlight) highlightRows.push(index);
     return [
       jobNumber(p),
-      s3(p.productionPlanCompanyName),
-      s3(p.itemName),
-      s3(p.erpCode),
+      s4(p.productionPlanCompanyName),
+      s4(p.itemName),
+      s4(p.erpCode),
       pdfNumber(p.ups),
       pdfNumber(p.qty),
       pdfNumber(p.reelAsPerCalc),
       pdfNumber(p.reelActualWithTrimming),
       pdfNumber(p.cuttingWithTrimming),
       pdfNumber(p.ply),
-      s3(p.flute),
+      s4(p.flute),
       pdfNumber(p.l1),
       pdfNumber(p.f1),
       pdfNumber(p.l2),
@@ -3251,7 +3372,7 @@ function productionPlanPdfSpec(rows2, date, firmLabel = "") {
       pdfNumber(p.rate),
       value.toFixed(2),
       p.isSample ? "YES" : "",
-      s3(p.remarks)
+      s4(p.remarks)
     ];
   });
   return {
@@ -3308,8 +3429,8 @@ function computeDispatchPlanDayRows(lists, resolveOrderItem, date) {
   return lists.plans.filter((plan) => localDay(plan.date) === date).map((plan) => {
     const order = orderById.get(plan.orderId);
     const item = resolveOrderItem(order);
-    const itemName = s3(item?.name);
-    const itemErp = s3(order?.erpCode || item?.erp);
+    const itemName = s4(item?.name);
+    const itemErp = s4(order?.erpCode || item?.erp);
     const firmId = String(order?.firmId || plan.orderFirmId || plan.firmId || scheduleFirm.get(plan.scheduleId) || "");
     const planned = Number(plan.plannedQty || 0);
     const invoiced = Number(plan.loadedQty || 0);
@@ -3318,7 +3439,7 @@ function computeDispatchPlanDayRows(lists, resolveOrderItem, date) {
       plan,
       firmId,
       firmName: getFirmDisplayNameById(firmId, lists.firms),
-      companyName: s3(companyById.get(order?.companyId)?.name),
+      companyName: s4(companyById.get(order?.companyId)?.name),
       orderNo: String(order?.orderNo || ""),
       itemName: itemName && itemErp && !itemName.toLowerCase().includes(itemErp.toLowerCase()) ? `${itemName} - ${itemErp}` : itemName || itemErp,
       itemKey: `${itemName}::${itemErp}`,
@@ -3330,7 +3451,7 @@ function computeDispatchPlanDayRows(lists, resolveOrderItem, date) {
     };
   });
 }
-var sortDispatchPlanDayRows = (rows2) => [...rows2].sort((a, b) => s3(a.plan.planNo).localeCompare(s3(b.plan.planNo), void 0, { numeric: true, sensitivity: "base" }));
+var sortDispatchPlanDayRows = (rows2) => [...rows2].sort((a, b) => s4(a.plan.planNo).localeCompare(s4(b.plan.planNo), void 0, { numeric: true, sensitivity: "base" }));
 var DISPATCH_PLAN_HEADERS = ["Sr.", "Plan No", "Firm", "Company", "Order No", "Item", "Truck", "Planned", "Invoice Qty", "Cancl", "Pending", "Status"];
 function dispatchPlanPdfSpec(rows2, date) {
   const totals = rows2.reduce((sum, row) => ({
@@ -3346,7 +3467,7 @@ function dispatchPlanPdfSpec(rows2, date) {
     head: DISPATCH_PLAN_HEADERS,
     body: rows2.map((row, index) => [
       String(index + 1),
-      s3(row.plan.planNo),
+      s4(row.plan.planNo),
       row.firmName,
       row.companyName,
       row.orderNo,
@@ -3356,7 +3477,7 @@ function dispatchPlanPdfSpec(rows2, date) {
       qtyText(row.invoiced),
       qtyText(row.cancelled),
       qtyText(row.pending),
-      s3(row.plan.status)
+      s4(row.plan.status)
     ]),
     foot: ["TOTAL", "", "", "", "", "", "", qtyText(totals.planned), qtyText(totals.invoiced), qtyText(totals.cancelled), qtyText(totals.pending), ""],
     values: {
@@ -3372,13 +3493,13 @@ function dispatchPlanPdfSpec(rows2, date) {
 }
 function pendingLoadingRowsFromProjections(projections, firms) {
   return projections.map((projection) => ({
-    date: s3(projection.plan?.date),
-    planNo: s3(projection.plan?.planNo),
-    orderNo: s3(projection.order?.orderNo) || "N/A",
+    date: s4(projection.plan?.date),
+    planNo: s4(projection.plan?.planNo),
+    orderNo: s4(projection.order?.orderNo) || "N/A",
     firmName: getFirmDisplayNameById(projection.firmId, firms),
-    companyName: s3(projection.company?.name) || "Company unavailable",
-    itemName: s3(projection.item?.name) || "Item unavailable",
-    itemSource: s3(projection.itemSource),
+    companyName: s4(projection.company?.name) || "Company unavailable",
+    itemName: s4(projection.item?.name) || "Item unavailable",
+    itemSource: s4(projection.itemSource),
     planned: Number(projection.plan?.plannedQty || 0),
     loaded: Number(projection.plan?.loadedQty || 0),
     pending: Number(projection.pendingQty || 0)
@@ -3456,6 +3577,53 @@ function planningPdfSpec(report, rows2, asOf, firmLabel = "") {
     fileName: `Pending_${source}_Planning_${stamp}.pdf`
   };
 }
+function phpPlatePlanPdfSpec(report, rows2, date) {
+  const label = report === "php-production-plan" ? "PHP" : "Plate";
+  const body = [];
+  const groupRows = [];
+  const shiftLines = [];
+  groupPhpPlatePlanByShift(rows2).forEach((group) => {
+    groupRows.push(body.length);
+    body.push([`${group.shift} Shift`, "", "", "", "", "", "", "", "", "", "", ""]);
+    group.rows.forEach((row) => body.push([
+      row.sequence === null ? "No seq." : String(row.sequence),
+      row.shift,
+      shortDocNo(row.jobNo),
+      row.firmName,
+      row.companyName,
+      row.itemName,
+      row.erp,
+      row.methodology,
+      qtyText(row.plannedQty),
+      qtyText(row.producedQty),
+      qtyText(row.balanceQty),
+      row.status
+    ]));
+    const totals2 = phpPlatePlanTotals(group.rows);
+    groupRows.push(body.length);
+    body.push([`${group.shift} total`, "", "", "", "", "", "", `${totals2.jobs} jobs`, qtyText(totals2.planned), qtyText(totals2.produced), qtyText(totals2.balance), ""]);
+    shiftLines.push(`*${group.shift}:* ${totals2.jobs} jobs, ${qtyText(totals2.planned)} planned, ${qtyText(totals2.balance)} balance`);
+  });
+  const totals = phpPlatePlanTotals(rows2);
+  return {
+    report,
+    title: `${label} Production Plan`,
+    subtitle: `Date: ${formatDate4(date)}`,
+    head: ["Seq", "Shift", "Job No", "Firm", "Company", `${label} Item`, "ERP", "Methodology", "Planned", "Produced", "Balance", "Status"],
+    body,
+    foot: ["TOTAL", "", "", "", "", "", "", `${totals.jobs} jobs`, qtyText(totals.planned), qtyText(totals.produced), qtyText(totals.balance), ""],
+    groupRows,
+    values: {
+      date: formatDate4(date),
+      jobs: String(totals.jobs),
+      planned: qtyText(totals.planned),
+      produced: qtyText(totals.produced),
+      balance: qtyText(totals.balance),
+      shiftLines: shiftLines.join("\n") || "No jobs scheduled."
+    },
+    fileName: `${label}_Production_Plan_${date}.pdf`
+  };
+}
 function buildReportPdf(spec) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -3496,7 +3664,8 @@ function buildReportPdf(spec) {
     });
     return doc;
   }
-  const qtyColumns = spec.report === "dispatch-plan" ? [7, 8, 9, 10] : spec.report === "pending-loading" ? [8, 9, 10] : [9, 10, 11, 12, 13];
+  const qtyColumns = spec.report === "dispatch-plan" ? [7, 8, 9, 10] : spec.report === "pending-loading" ? [8, 9, 10] : spec.report === "php-production-plan" || spec.report === "plate-production-plan" ? [8, 9, 10] : [9, 10, 11, 12, 13];
+  const groups = new Set(spec.groupRows || []);
   autoTable(doc, {
     startY: 22,
     head: [spec.head],
@@ -3506,7 +3675,12 @@ function buildReportPdf(spec) {
     headStyles: { fillColor: [49, 46, 129], textColor: 255, fontStyle: "bold" },
     columnStyles: Object.fromEntries(qtyColumns.map((column) => [column, { halign: "right" }])),
     didParseCell: (data) => {
-      if (data.section === "body" && spec.foot && data.row.index === spec.body.length) data.cell.styles.fontStyle = "bold";
+      if (data.section !== "body") return;
+      if (spec.foot && data.row.index === spec.body.length) data.cell.styles.fontStyle = "bold";
+      if (groups.has(data.row.index)) {
+        data.cell.styles.fontStyle = "bold";
+        data.cell.styles.fillColor = [226, 232, 240];
+      }
     }
   });
   return doc;
@@ -4107,6 +4281,36 @@ for (const [name, source, permission] of [["wa-php-planning", "PHP", "/productio
         alreadyPlannedQty: row.alreadyPlannedQty,
         remainingQty: row.remainingQty
       })), new Date(String(params.asOf || (/* @__PURE__ */ new Date()).toISOString())), String(params.firmLabel || ""));
+    }
+  };
+}
+for (const [name, source, permission] of [["wa-php-production-plan", "PHP", "/production/php/plan"], ["wa-plate-production-plan", "PLATE", "/production/plate/plan"]]) {
+  REPORT_DEFINITIONS[name] = {
+    permission,
+    catalog: true,
+    lists: [
+      { key: "sourceJobs", entity: source === "PHP" ? "php_job_master" : "plate_job_master", scope: "all" },
+      { key: "productions", entity: "productions", scope: "all" },
+      { key: "schedules", entity: "orders_schedule", scope: "all" },
+      { key: "orders", entity: "orders", scope: "all" },
+      { key: "companies", entity: "companies", scope: "all" },
+      { key: "firms", entity: "firms", scope: "all" }
+    ],
+    compute: (lists, params, helpers) => {
+      const { itemsBySource } = catalogFrom(helpers);
+      const date = String(params.date || "");
+      const rows2 = computePhpPlatePlanRows({
+        source,
+        date,
+        jobs: buildPhpPlateWorkflowJobs(source, lists.sourceJobs, lists.productions),
+        schedules: lists.schedules,
+        orders: lists.orders,
+        companies: lists.companies,
+        firms: lists.firms,
+        sourceItems: itemsBySource[source] || [],
+        filters: params.filters || {}
+      });
+      return phpPlatePlanPdfSpec(source === "PHP" ? "php-production-plan" : "plate-production-plan", rows2, date);
     }
   };
 }

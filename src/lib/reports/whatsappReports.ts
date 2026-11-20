@@ -10,11 +10,12 @@ import { findRealizationTargetForDate, parseRealizationTargets } from "../realiz
 import { resolveProductionPlanCompany } from "../productionPlanCompany";
 import { buildSampleJobNumbers, deriveProductionPlanStatuses } from "../productionPlanStatus";
 import { getFirmDisplayNameById } from "../firmDisplay";
+import { groupPhpPlatePlanByShift, phpPlatePlanTotals, type PhpPlatePlanRow } from "../phpPlatePlan";
 
-export type WhatsappReportKey = "production-plan" | "dispatch-plan" | "pending-loading" | "php-planning" | "plate-planning";
+export type WhatsappReportKey = "production-plan" | "dispatch-plan" | "pending-loading" | "php-planning" | "plate-planning" | "php-production-plan" | "plate-production-plan";
 
 /** Reports for a plan date (the others are "as on now"). */
-export const DATED_WHATSAPP_REPORTS: WhatsappReportKey[] = ["production-plan", "dispatch-plan"];
+export const DATED_WHATSAPP_REPORTS: WhatsappReportKey[] = ["production-plan", "dispatch-plan", "php-production-plan", "plate-production-plan"];
 /** Reports for one firm (WhatsApp Master "Firm" for the timed PDF; the page button uses the user's firm). */
 export const FIRM_WHATSAPP_REPORTS: WhatsappReportKey[] = ["production-plan", "php-planning", "plate-planning"];
 
@@ -25,6 +26,8 @@ export const WHATSAPP_REPORT_MENUS: Record<WhatsappReportKey, string> = {
   "pending-loading": "/loading/pending",
   "php-planning": "/production/php/pending-planning",
   "plate-planning": "/production/plate/pending-planning",
+  "php-production-plan": "/production/php/plan",
+  "plate-production-plan": "/production/plate/plan",
 };
 
 export const whatsappReportKeyForMenu = (menu: string) =>
@@ -69,6 +72,28 @@ export const DEFAULT_WHATSAPP_REPORT_MESSAGES: Record<WhatsappReportKey, string>
 *Remaining to Plan:* {{remaining}}
 
 📄 Pending PHP Planning PDF attached.`,
+  "php-production-plan": `🏭 *PHP PRODUCTION PLAN*
+
+*Plan Date:* {{date}}
+*Jobs:* {{jobs}}
+*Planned Qty:* {{planned}}
+*Produced:* {{produced}}
+*Balance:* {{balance}}
+
+{{shiftLines}}
+
+📄 PHP Production Plan PDF attached.`,
+  "plate-production-plan": `🏭 *PLATE PRODUCTION PLAN*
+
+*Plan Date:* {{date}}
+*Jobs:* {{jobs}}
+*Planned Qty:* {{planned}}
+*Produced:* {{produced}}
+*Balance:* {{balance}}
+
+{{shiftLines}}
+
+📄 Plate Production Plan PDF attached.`,
   "plate-planning": `🗂️ *PENDING PLATE PLANNING*
 
 *As on:* {{dateTime}}
@@ -94,6 +119,8 @@ export type ReportPdfSpec = {
   foot?: string[];
   /** Body rows filled red (Production Plan: realization below target). */
   highlightRows?: number[];
+  /** Body rows shown as a grey bold heading / sub-total (PHP / Plate Production Plan shifts). */
+  groupRows?: number[];
   /** Values for the WhatsApp message template. */
   values: Record<string, string>;
   fileName: string;
@@ -417,6 +444,46 @@ export function planningPdfSpec(report: "php-planning" | "plate-planning", rows:
   };
 }
 
+// ---------------------------------------------------------------- PHP / Plate Production Plan
+
+export function phpPlatePlanPdfSpec(report: "php-production-plan" | "plate-production-plan", rows: PhpPlatePlanRow[], date: string): ReportPdfSpec {
+  const label = report === "php-production-plan" ? "PHP" : "Plate";
+  const body: string[][] = [];
+  const groupRows: number[] = [];
+  const shiftLines: string[] = [];
+  groupPhpPlatePlanByShift(rows).forEach((group) => {
+    groupRows.push(body.length);
+    body.push([`${group.shift} Shift`, "", "", "", "", "", "", "", "", "", "", ""]);
+    group.rows.forEach((row) => body.push([
+      row.sequence === null ? "No seq." : String(row.sequence), row.shift, shortDocNo(row.jobNo), row.firmName, row.companyName, row.itemName, row.erp, row.methodology,
+      qtyText(row.plannedQty), qtyText(row.producedQty), qtyText(row.balanceQty), row.status,
+    ]));
+    const totals = phpPlatePlanTotals(group.rows);
+    groupRows.push(body.length);
+    body.push([`${group.shift} total`, "", "", "", "", "", "", `${totals.jobs} jobs`, qtyText(totals.planned), qtyText(totals.produced), qtyText(totals.balance), ""]);
+    shiftLines.push(`*${group.shift}:* ${totals.jobs} jobs, ${qtyText(totals.planned)} planned, ${qtyText(totals.balance)} balance`);
+  });
+  const totals = phpPlatePlanTotals(rows);
+  return {
+    report,
+    title: `${label} Production Plan`,
+    subtitle: `Date: ${formatDate(date)}`,
+    head: ["Seq", "Shift", "Job No", "Firm", "Company", `${label} Item`, "ERP", "Methodology", "Planned", "Produced", "Balance", "Status"],
+    body,
+    foot: ["TOTAL", "", "", "", "", "", "", `${totals.jobs} jobs`, qtyText(totals.planned), qtyText(totals.produced), qtyText(totals.balance), ""],
+    groupRows,
+    values: {
+      date: formatDate(date),
+      jobs: String(totals.jobs),
+      planned: qtyText(totals.planned),
+      produced: qtyText(totals.produced),
+      balance: qtyText(totals.balance),
+      shiftLines: shiftLines.join("\n") || "No jobs scheduled.",
+    },
+    fileName: `${label}_Production_Plan_${date}.pdf`,
+  };
+}
+
 // ---------------------------------------------------------------- PDF
 
 export function buildReportPdf(spec: ReportPdfSpec): jsPDF {
@@ -460,7 +527,9 @@ export function buildReportPdf(spec: ReportPdfSpec): jsPDF {
     });
     return doc;
   }
-  const qtyColumns = spec.report === "dispatch-plan" ? [7, 8, 9, 10] : spec.report === "pending-loading" ? [8, 9, 10] : [9, 10, 11, 12, 13];
+  const qtyColumns = spec.report === "dispatch-plan" ? [7, 8, 9, 10] : spec.report === "pending-loading" ? [8, 9, 10]
+    : spec.report === "php-production-plan" || spec.report === "plate-production-plan" ? [8, 9, 10] : [9, 10, 11, 12, 13];
+  const groups = new Set(spec.groupRows || []);
   autoTable(doc, {
     startY: 22,
     head: [spec.head],
@@ -469,7 +538,11 @@ export function buildReportPdf(spec: ReportPdfSpec): jsPDF {
     styles: { fontSize: 7, cellPadding: 1.2, lineColor: [0, 0, 0], lineWidth: 0.1 },
     headStyles: { fillColor: [49, 46, 129], textColor: 255, fontStyle: "bold" },
     columnStyles: Object.fromEntries(qtyColumns.map((column) => [column, { halign: "right" }])),
-    didParseCell: (data) => { if (data.section === "body" && spec.foot && data.row.index === spec.body.length) data.cell.styles.fontStyle = "bold"; },
+    didParseCell: (data) => {
+      if (data.section !== "body") return;
+      if (spec.foot && data.row.index === spec.body.length) data.cell.styles.fontStyle = "bold";
+      if (groups.has(data.row.index)) { data.cell.styles.fontStyle = "bold"; data.cell.styles.fillColor = [226, 232, 240]; }
+    },
   });
   return doc;
 }

@@ -12039,9 +12039,9 @@ async function retryPrintingShiftReports() {
 // for tomorrow, Pending Loading as of now) and sends it; the page's WhatsApp
 // button sends the PDF of what is on screen. Every send is logged once in
 // whatsapp_report_sends (a timed slot is never sent twice).
-type WhatsappReportKey = "production-plan" | "dispatch-plan" | "pending-loading" | "php-planning" | "plate-planning";
+type WhatsappReportKey = "production-plan" | "dispatch-plan" | "pending-loading" | "php-planning" | "plate-planning" | "php-production-plan" | "plate-production-plan";
 /** Reports for a plan date (the others are "as on now"). */
-const DATED_WHATSAPP_REPORTS = new Set<WhatsappReportKey>(["production-plan", "dispatch-plan"]);
+const DATED_WHATSAPP_REPORTS = new Set<WhatsappReportKey>(["production-plan", "dispatch-plan", "php-production-plan", "plate-production-plan"]);
 /** Reports for one firm (config Firm for timed sends, the user's firm for the page button). */
 const FIRM_WHATSAPP_REPORTS = new Set<WhatsappReportKey>(["production-plan", "php-planning", "plate-planning"]);
 const WHATSAPP_REPORT_MENU_BY_KEY: Record<WhatsappReportKey, string> = {
@@ -12050,6 +12050,8 @@ const WHATSAPP_REPORT_MENU_BY_KEY: Record<WhatsappReportKey, string> = {
   "pending-loading": "/loading/pending",
   "php-planning": "/production/php/pending-planning",
   "plate-planning": "/production/plate/pending-planning",
+  "php-production-plan": "/production/php/plan",
+  "plate-production-plan": "/production/plate/plan",
 };
 const WHATSAPP_REPORT_TITLES: Record<WhatsappReportKey, string> = {
   "production-plan": "Production Plan",
@@ -12057,6 +12059,8 @@ const WHATSAPP_REPORT_TITLES: Record<WhatsappReportKey, string> = {
   "pending-loading": "Pending Loading",
   "php-planning": "Pending PHP Planning",
   "plate-planning": "Pending Plate Planning",
+  "php-production-plan": "PHP Production Plan",
+  "plate-production-plan": "Plate Production Plan",
 };
 const whatsappReportKeyOfMenu = (menu: string) =>
   (Object.keys(WHATSAPP_REPORT_MENU_BY_KEY) as WhatsappReportKey[]).find((key) => WHATSAPP_REPORT_MENU_BY_KEY[key] === menu);
@@ -20688,6 +20692,8 @@ entities.forEach(entity => {
           ? ["/production/php/pending-planning", "/production/php/master"]
           : ["/production/plate/pending-planning", "/production/plate/master"];
         phpPlateMenus.push("/production/php-plate/scheduling", "/production/php-plate/sequencing", "/production/php-plate/pending-production");
+        // PHP / Plate Production Plan only reads the jobs.
+        if (req.method === "GET") phpPlateMenus.push(entity === "php_job_master" ? "/production/php/plan" : "/production/plate/plan");
         if (!phpPlateMenus.some((menu) => hasPermission(user, menu))) {
           console.warn("[AUTHZ] Permission denied", { entity, method: req.method, userId: user.id, role: user.role, required: phpPlateMenus.join(" | ") });
           return res.status(403).json({ error: "Forbidden" });

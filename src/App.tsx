@@ -102,6 +102,8 @@ const PlateProductionExecution = lazy(() => import("./pages/PlateProductionExecu
 const ProductionPendingConsumption = lazy(() => import("./pages/ProductionStageQueue").then((module) => ({ default: module.ProductionPendingConsumption })));
 const ProductionPendingReelIssueScan = lazy(() => import("./pages/ProductionStageQueue").then((module) => ({ default: module.ProductionPendingReelIssueScan })));
 const ProductionPlan = lazy(() => import("./pages/ProductionPlan").then((module) => ({ default: module.ProductionPlan })));
+const PhpProductionPlan = lazy(() => import("./pages/PhpPlateProductionPlan").then((module) => ({ default: module.PhpProductionPlan })));
+const PlateProductionPlan = lazy(() => import("./pages/PhpPlateProductionPlan").then((module) => ({ default: module.PlateProductionPlan })));
 const PendingNpd = lazy(() => import("./pages/PendingNpd").then((module) => ({ default: module.PendingNpd })));
 const Home = lazy(() => import("./pages/Home").then((module) => ({ default: module.Home })));
 const OperationDashboard = lazy(() => import("./pages/OperationDashboard").then((module) => ({ default: module.OperationDashboard })));
@@ -389,6 +391,8 @@ export default function App() {
           <Route path="production/plate/scheduling" element={<PlateProductionScheduling />} />
           <Route path="production/plate/pending-production" element={<PlateProductionExecution />} />
           <Route path="production/plan" element={<ProductionPlan />} />
+          <Route path="production/php/plan" element={<PhpProductionPlan />} />
+          <Route path="production/plate/plan" element={<PlateProductionPlan />} />
           <Route path="home" element={<Home />} />
           <Route path="operations-dashboard" element={<OperationDashboard />} />
           <Route path="audit-dashboard" element={<AuditDashboard />} />

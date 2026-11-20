@@ -17,7 +17,8 @@ import { computeDispatchPlanDayRows, computeProductionPlanRows, dispatchPlanPdfS
 import { getPendingLoadingPlanProjections } from "../pendingLoadingEligibility";
 import { corrugationLinerQtyByJobId } from "../productionProcessingProgress";
 import { computePendingLinkedPlanningRows, planningRowFirmId, planningRowItemKey } from "../pendingLinkedPlanning";
-import { planningPdfSpec } from "./whatsappReports";
+import { planningPdfSpec, phpPlatePlanPdfSpec } from "./whatsappReports";
+import { buildPhpPlateWorkflowJobs, computePhpPlatePlanRows } from "../phpPlatePlan";
 import { getFirmDisplayNameById } from "../firmDisplay";
 
 // WhatsApp report PDFs (timed sends): the server builds the PDF from these specs.
@@ -424,6 +425,38 @@ for (const [name, source, permission] of [["wa-php-planning", "PHP", "/productio
         alreadyPlannedQty: row.alreadyPlannedQty,
         remainingQty: row.remainingQty,
       })), new Date(String(params.asOf || new Date().toISOString())), String(params.firmLabel || ""));
+    },
+  };
+}
+
+// PHP / Plate Production Plan for params.date (Shift, then Sequence). params.filters: firm, company, item, shift, methodology.
+for (const [name, source, permission] of [["wa-php-production-plan", "PHP", "/production/php/plan"], ["wa-plate-production-plan", "PLATE", "/production/plate/plan"]] as const) {
+  REPORT_DEFINITIONS[name] = {
+    permission,
+    catalog: true,
+    lists: [
+      { key: "sourceJobs", entity: source === "PHP" ? "php_job_master" : "plate_job_master", scope: "all" },
+      { key: "productions", entity: "productions", scope: "all" },
+      { key: "schedules", entity: "orders_schedule", scope: "all" },
+      { key: "orders", entity: "orders", scope: "all" },
+      { key: "companies", entity: "companies", scope: "all" },
+      { key: "firms", entity: "firms", scope: "all" },
+    ],
+    compute: (lists, params, helpers) => {
+      const { itemsBySource } = catalogFrom(helpers);
+      const date = String(params.date || "");
+      const rows = computePhpPlatePlanRows({
+        source,
+        date,
+        jobs: buildPhpPlateWorkflowJobs(source, lists.sourceJobs as any, lists.productions as any),
+        schedules: lists.schedules as any,
+        orders: lists.orders as any,
+        companies: lists.companies as any,
+        firms: lists.firms as any,
+        sourceItems: (itemsBySource as any)[source] || [],
+        filters: params.filters || {},
+      });
+      return phpPlatePlanPdfSpec(source === "PHP" ? "php-production-plan" : "plate-production-plan", rows, date);
     },
   };
 }

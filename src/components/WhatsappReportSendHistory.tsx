@@ -27,6 +27,8 @@ const REPORT_LABELS: Record<string, string> = {
   "pending-loading": "Pending Loading",
   "php-planning": "Pending PHP Planning",
   "plate-planning": "Pending Plate Planning",
+  "php-production-plan": "PHP Production Plan",
+  "plate-production-plan": "Plate Production Plan",
 };
 const SOURCE_LABELS: Record<string, string> = { Scheduled: "Timed", Page: "Page button", "Send Now": "Send now", Resend: "Resend" };
 

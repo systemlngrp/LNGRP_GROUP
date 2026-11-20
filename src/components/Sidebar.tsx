@@ -143,6 +143,8 @@ const phpPlateProcessItems: NavItem[] = [
   { name: "Scheduling", href: "/production/php-plate/scheduling", icon: ClipboardList },
   { name: "Sequencing", href: "/production/php-plate/sequencing", icon: ClipboardList },
   { name: "Production", href: "/production/php-plate/pending-production", icon: Hammer, countKey: "/production/php-plate/pending-production" },
+  { name: "PHP Production Plan", href: "/production/php/plan", icon: ClipboardList },
+  { name: "Plate Production Plan", href: "/production/plate/plan", icon: ClipboardList },
   { name: "PHP Production Master", href: "/production/php/master", icon: Database },
   { name: "Plate Production Master", href: "/production/plate/master", icon: Database },
 ];
@@ -363,6 +365,8 @@ export const NAVIGATION: NavGroup[] = [
       { name: "Operation Dashboard", href: "/operations-dashboard", icon: BarChart3 },
       { name: "Audit Dashboard", href: "/audit-dashboard", icon: BarChart3 },
       { name: "Production Plan", href: "/production/plan", icon: ClipboardList },
+      { name: "PHP Production Plan", href: "/production/php/plan", icon: ClipboardList },
+      { name: "Plate Production Plan", href: "/production/plate/plan", icon: ClipboardList },
       { name: "Dispatch Plan", href: "/dispatch/plan", icon: ClipboardList },
       { name: "Summary Sheet", href: "/reports/summary-sheet", icon: BarChart3 },
     ],
