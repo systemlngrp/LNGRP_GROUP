@@ -12045,6 +12045,8 @@ type WhatsappReportKey = "production-plan" | "dispatch-plan" | "pending-loading"
 const DATED_WHATSAPP_REPORTS = new Set<WhatsappReportKey>(["production-plan", "dispatch-plan", "php-production-plan", "plate-production-plan"]);
 /** Reports for one firm (config Firm for timed sends, the user's firm for the page button). */
 const FIRM_WHATSAPP_REPORTS = new Set<WhatsappReportKey>(["production-plan", "php-planning", "plate-planning"]);
+/** Timed sends paused by the user for now (Send Times stay saved; page button still works). Empty to resume. */
+const PAUSED_TIMED_WHATSAPP_REPORTS = new Set<WhatsappReportKey>(["production-plan", "dispatch-plan", "php-production-plan", "plate-production-plan"]);
 const WHATSAPP_REPORT_MENU_BY_KEY: Record<WhatsappReportKey, string> = {
   "production-plan": "/production/plan",
   "dispatch-plan": "/dispatch/plan",
@@ -12301,6 +12303,7 @@ async function runWhatsappReportSchedules() {
     const today = indiaNowParts(new Date()).date;
     const nowMs = Date.now();
     for (const report of Object.keys(WHATSAPP_REPORT_MENU_BY_KEY) as WhatsappReportKey[]) {
+      if (PAUSED_TIMED_WHATSAPP_REPORTS.has(report)) continue;
       const config = await getWhatsappReportConfig(db, report);
       if (!whatsappReportConfigUsable(config)) continue;
       for (const slot of parseWhatsappReportSendTimes(config!.sendTimes)) {

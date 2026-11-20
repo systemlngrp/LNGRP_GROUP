@@ -16,6 +16,9 @@ export type WhatsappReportKey = "production-plan" | "dispatch-plan" | "pending-l
 
 /** Reports for a plan date (the others are "as on now"). */
 export const DATED_WHATSAPP_REPORTS: WhatsappReportKey[] = ["production-plan", "dispatch-plan", "php-production-plan", "plate-production-plan"];
+// Timed (automatic) sends paused for these by the user; Send Times stay saved
+// and the page's WhatsApp button still works. Empty this list to resume.
+export const PAUSED_TIMED_WHATSAPP_REPORTS: WhatsappReportKey[] = ["production-plan", "dispatch-plan", "php-production-plan", "plate-production-plan"];
 /** Reports for one firm (WhatsApp Master "Firm" for the timed PDF; the page button uses the user's firm). */
 export const FIRM_WHATSAPP_REPORTS: WhatsappReportKey[] = ["production-plan", "php-planning", "plate-planning"];
 

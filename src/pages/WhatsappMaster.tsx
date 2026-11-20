@@ -12,7 +12,7 @@ import { Spinner } from "../components/Spinner";
 import { WhatsappConfig } from "../types";
 import { DEFAULT_QC_SCORE_MESSAGE, QC_SCORE_MENU } from "../lib/qcScore";
 import { SortHeader, useTableSort } from "../lib/tableSort";
-import { DATED_WHATSAPP_REPORTS, DEFAULT_WHATSAPP_REPORT_MESSAGES, FIRM_WHATSAPP_REPORTS, whatsappReportKeyForMenu } from "../lib/reports/whatsappReports";
+import { DATED_WHATSAPP_REPORTS, PAUSED_TIMED_WHATSAPP_REPORTS, DEFAULT_WHATSAPP_REPORT_MESSAGES, FIRM_WHATSAPP_REPORTS, whatsappReportKeyForMenu } from "../lib/reports/whatsappReports";
 import { WhatsappReportSendHistory } from "../components/WhatsappReportSendHistory";
 import { getFirmOptions } from "../lib/firmDisplay";
 
@@ -464,7 +464,7 @@ export function WhatsappMaster() {
             ) : null}
             {formReportKey ? (
               <>
-                <label className="space-y-2"><span className="text-blue-700 font-bold">Send Times (India time)</span><input value={sendTimes} onChange={(e) => setSendTimes(e.target.value)} placeholder="09:00, 14:00, 18:00" className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /><span className="block text-xs font-semibold text-slate-500">{!formReportDated ? "PDF as on that time." : `PDF of ${reportDay.toLowerCase()}'s plan.`} Leave blank for no timed sends; the page's WhatsApp button still works.</span></label>
+                <label className="space-y-2"><span className="text-blue-700 font-bold">Send Times (India time)</span><input value={sendTimes} onChange={(e) => setSendTimes(e.target.value)} placeholder="09:00, 14:00, 18:00" className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /><span className="block text-xs font-semibold text-slate-500">{!formReportDated ? "PDF as on that time." : `PDF of ${reportDay.toLowerCase()}'s plan.`} Leave blank for no timed sends; the page's WhatsApp button still works.</span>{formReportKey && PAUSED_TIMED_WHATSAPP_REPORTS.includes(formReportKey) ? <span className="block rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-900">Timed sends are paused for this report for now. Saved times are kept.</span> : null}</label>
                 {formReportDated ? (
                   <label className="space-y-2"><span className="text-blue-700 font-bold">Plan Date (timed PDF)</span><select value={reportDay} onChange={(e) => setReportDay(e.target.value)} className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="Yesterday">Yesterday</option><option value="Today">Today</option><option value="Tomorrow">Tomorrow</option></select></label>
                 ) : null}
