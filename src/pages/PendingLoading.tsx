@@ -876,7 +876,7 @@ export function PendingLoading() {
               <FileText size={16} /><span>PDF</span>
             </button>
           ) : null}
-          <SendReportWhatsappButton report="pending-loading" disabled={!sortedPlanRows.length} buildSpec={pendingLoadingSpec} />
+          <SendReportWhatsappButton report="pending-loading" title="Pending Loading" loading={pageLoading} disabled={!sortedPlanRows.length} buildRequest={() => ({ filters: { firm: firmFilter, source: sourceFilter, company: companyFilter, item: itemFilter }, label: "as on now" })} />
         </div>
       </div>
 

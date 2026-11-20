@@ -252,7 +252,7 @@ export function ProductionPlan() {
               </button>
             </>
           ) : null}
-          <SendReportWhatsappButton report="production-plan" disabled={statusRows.length === 0} buildSpec={() => (statusRows.length ? productionPlanPdfSpec(statusRows, selectedDate, activeFirm?.firmName || "") : null)} />
+          <SendReportWhatsappButton report="production-plan" title="Production Plan" loading={isLoading} disabled={statusRows.length === 0} buildRequest={() => ({ date: selectedDate, filters: { companies: companyFilter, item: itemFilter }, label: `${formatDate(selectedDate)}${activeFirm?.firmName ? `, ${activeFirm.firmName}` : ""}` })} />
         </div>
       </div>
 

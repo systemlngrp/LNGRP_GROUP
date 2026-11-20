@@ -9007,6 +9007,8 @@ await db.query(`
           \`startedAt\` VARCHAR(40),
           \`sentBy\` VARCHAR(255),
           \`createdAt\` VARCHAR(40),
+          \`valuesJson\` TEXT,
+          \`preparedAt\` VARCHAR(40),
           KEY \`idx_whatsapp_report_sends_report\` (\`report\`, \`createdAt\`)
         )
       `);
@@ -9899,6 +9901,8 @@ await db.query(`
         { table: "whatsapp_configs", column: "sendTimes", type: "VARCHAR(255)" },
         { table: "whatsapp_configs", column: "reportFirmId", type: "VARCHAR(64)" },
         { table: "whatsapp_configs", column: "reportDay", type: "VARCHAR(20)" },
+        { table: "whatsapp_report_sends", column: "valuesJson", type: "TEXT" },
+        { table: "whatsapp_report_sends", column: "preparedAt", type: "VARCHAR(40)" },
         { table: "material_in", column: "transactionNo", type: "VARCHAR(100) NOT NULL" },
         { table: "material_in", column: "mrrType", type: "VARCHAR(50)" },
         { table: "material_in", column: "mrrSubType", type: "VARCHAR(50)" },
@@ -11599,7 +11603,9 @@ async function sendGateEntryWhatsapp(db: mysql.Pool, config: any, gateEntryId: s
     [gateEntryId]
   );
   const entry = (rows as any[])[0];
-  if (!entry) return { result: { status: "Failed" as const, error: "Gate Entry not found." }, fileName: "" };
+  if (!entry) return { result: { status: "Failed" as const, error: "Gate Entry not found." }, fileName: "", notReady: true };
+  // Send only a fully saved entry: it has its Gate Entry number.
+  if (!String(entry.gateEntryNo || "").trim()) return { result: { status: "Failed" as const, error: "Waiting for the Gate Entry number to be saved." }, fileName: "", notReady: true };
   const [photoRows] = await db.query("SELECT photo, slotNo FROM `gate_entry_photos` WHERE gateEntryId = ? ORDER BY slotNo", [gateEntryId]);
   const uploadsDir = path.join(process.cwd(), "uploads");
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -11636,6 +11642,8 @@ async function sendGateEntryWhatsapp(db: mysql.Pool, config: any, gateEntryId: s
   };
   const fileName = `gate-entry-${String(entry.gateEntryNo || gateEntryId).replace(/[^a-zA-Z0-9_-]/g, "_")}-${crypto.randomUUID().slice(0, 8)}.pdf`;
   await writeGateEntryPdf({ ...values, supplier: entry.supplierName, invoiceValue: entry.invoiceValue }, photos, path.join(uploadsDir, fileName));
+  // Keep the PDF in the database too, so its link still works after a redeploy.
+  try { await storeUploadedFile(db, fileName, "application/pdf", fs.readFileSync(path.join(uploadsDir, fileName))); } catch (error) { console.warn("[WHATSAPP] gate entry PDF not stored in database:", (error as Error).message); }
   const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngrp.in").replace(/\/$/, "");
   const urls = [`${publicBase}/uploads/${encodeURIComponent(fileName)}`, ...photos.map((photo) => `${publicBase}/uploads/${encodeURIComponent(photo.filename)}`)];
   const message = resolveWhatsappGateEntryTemplate(String(config.message || DEFAULT_GATE_ENTRY_MESSAGE), values);
@@ -11643,7 +11651,7 @@ async function sendGateEntryWhatsapp(db: mysql.Pool, config: any, gateEntryId: s
   let result = await sendWhatsappGateEntryMessage(senderConfig, message, urls);
   // A photo the sender cannot fetch (424): send the message with the PDF only.
   if (result.status === "Failed" && result.httpStatus === 424 && urls.length > 1) result = await sendWhatsappGateEntryMessage(senderConfig, message, urls.slice(0, 1));
-  return { result, fileName };
+  return { result, fileName, notReady: false };
 }
 
 /** Send once per Gate Entry (saved entries only; claimed so two runs never both send). */
@@ -11666,7 +11674,13 @@ async function processGateEntryWhatsappDelivery(db: mysql.Pool, gateEntryId: str
       await db.query("UPDATE `gate_entries` SET whatsappSendStatus = 'Not Configured', whatsappSendError = ?, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?", [error, gateEntryId, nowIso]);
       return { status: "Not Configured", error };
     }
-    const { result, fileName } = await sendGateEntryWhatsapp(db, config, gateEntryId);
+    const { result, fileName, notReady } = await sendGateEntryWhatsapp(db, config, gateEntryId);
+    if (notReady) {
+      // Not saved completely yet: stays Pending, the retry sends it once it is.
+      const error = String(result.error || "Waiting for the Gate Entry to be saved.").slice(0, 255);
+      await db.query("UPDATE `gate_entries` SET whatsappSendStatus = 'Pending', whatsappSendError = ?, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?", [error, gateEntryId, nowIso]);
+      return { status: "Failed", error };
+    }
     if (result.status !== "Sent") {
       const error = String(result.error || "Gate Entry WhatsApp message could not be sent.").slice(0, 255);
       await db.query("UPDATE `gate_entries` SET whatsappSendStatus = 'Failed', whatsappSendError = ?, whatsappSendStartedAt = NULL, whatsappPdfFilename = ? WHERE id = ? AND whatsappSendStartedAt = ?", [error, fileName || null, gateEntryId, nowIso]);
@@ -12053,40 +12067,77 @@ async function loadQtyAtJobWorkerByJob(db: mysql.Pool) {
 }
 
 /** Build the report on the server (same code as the page) and write its PDF to /uploads. */
-/** Plan date of a timed / Send-now PDF: Yesterday, Today or Tomorrow (default) in India time. */
-function whatsappReportPlanDate(config: { reportDay?: string }) {
+/** Plan date of a timed / Send-now PDF: Yesterday, Today or Tomorrow (default) of baseDate (India time). */
+function whatsappReportPlanDate(config: { reportDay?: string }, baseDate = indiaNowParts(new Date()).date) {
   const day = String(config.reportDay || "Tomorrow").trim().toLowerCase();
-  return addIndiaDays(indiaNowParts(new Date()).date, day === "yesterday" ? -1 : day === "today" ? 0 : 1);
+  return addIndiaDays(baseDate, day === "yesterday" ? -1 : day === "today" ? 0 : 1);
 }
 
-async function buildWhatsappReportPdfFile(db: mysql.Pool, report: WhatsappReportKey, config: { reportFirmId?: string; reportDay?: string }) {
+type WhatsappReportBuildOptions = {
+  /** Production Plan: firm of the report (blank = all firms). */
+  firmId?: string;
+  /** Production / Dispatch Plan: plan date. */
+  planDate?: string;
+  /** Page filters (dropdowns only). */
+  filters?: Record<string, unknown>;
+  /** User the lists are read for (default: an Admin). */
+  authUserId?: string;
+};
+
+const whatsappReportOptionsFromConfig = (report: WhatsappReportKey, config: { reportFirmId?: string; reportDay?: string }, baseDate?: string): WhatsappReportBuildOptions => ({
+  firmId: report === "production-plan" ? String(config.reportFirmId || "").trim() : "",
+  planDate: report === "pending-loading" ? undefined : whatsappReportPlanDate(config, baseDate),
+});
+
+/** Read the report from the database (same code as the page), make the PDF and store it. */
+async function buildWhatsappReportPdfFile(db: mysql.Pool, report: WhatsappReportKey, options: WhatsappReportBuildOptions) {
   const module = await loadReportModule();
   const name = `wa-${report}`;
   const definition = module.REPORT_DEFINITIONS?.[name];
   if (!definition) throw new Error(`Report ${name} is not available.`);
-  const [adminRows] = await db.query("SELECT id FROM `users` WHERE role = 'Admin' ORDER BY id LIMIT 1");
-  const authUserId = String((adminRows as any[])[0]?.id || "");
-  const firmId = report === "production-plan" ? String(config.reportFirmId || "").trim() : "";
+  let authUserId = String(options.authUserId || "");
+  if (!authUserId) {
+    const [adminRows] = await db.query("SELECT id FROM `users` WHERE role = 'Admin' ORDER BY id LIMIT 1");
+    authUserId = String((adminRows as any[])[0]?.id || "");
+  }
+  const firmId = report === "production-plan" ? String(options.firmId || "").trim() : "";
   let firmLabel = "";
   if (firmId) {
     const [firmRows] = await db.query("SELECT firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]);
     firmLabel = String((firmRows as any[])[0]?.firmName || "");
   }
+  const filters = options.filters || {};
   const params: Record<string, any> = report === "pending-loading"
-    ? { asOf: new Date().toISOString(), atJobWorkerByJobId: await loadQtyAtJobWorkerByJob(db) }
-    : { date: whatsappReportPlanDate(config), firmLabel };
+    ? { asOf: new Date().toISOString(), atJobWorkerByJobId: await loadQtyAtJobWorkerByJob(db), filters }
+    : { date: options.planDate || whatsappReportPlanDate({}), firmLabel, filters };
   const spec = await buildServerReport(module, name, definition, firmId, authUserId, params, JSON.stringify([name, firmId, params, Date.now()]), db);
   const fileName = await writeWhatsappReportPdf(module, spec);
-  return { spec, fileName, rows: Array.isArray(spec?.body) ? spec.body.length : 0 };
+  return { spec, fileName, rows: Array.isArray(spec?.body) ? spec.body.length : 0, reportDate: report === "pending-loading" ? indiaNowParts(new Date()).date : String(params.date) };
+}
+
+/** Saved on disk and in the database (uploaded_files), so the PDF and its link survive a redeploy. */
+async function storeUploadedFile(db: mysql.Pool, fileName: string, mimeType: string, buffer: Buffer) {
+  const uploadsDir = path.join(process.cwd(), "uploads");
+  try {
+    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+    fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
+  } catch (error) {
+    console.warn("[UPLOAD] disk copy failed (kept in database):", (error as Error).message);
+  }
+  await db.query("REPLACE INTO `uploaded_files` (`filename`, `mimeType`, `data`) VALUES (?, ?, ?)", [fileName, mimeType, buffer]);
 }
 
 async function writeWhatsappReportPdf(module: any, spec: any) {
-  const uploadsDir = path.join(process.cwd(), "uploads");
-  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  const db = await getPool();
   const base = String(spec?.fileName || "report.pdf").replace(/\.pdf$/i, "").replace(/[^a-zA-Z0-9._-]/g, "_");
   const fileName = `${base}_${crypto.randomUUID().slice(0, 8)}.pdf`;
   const buffer = Buffer.from(module.buildReportPdf(spec).output("arraybuffer"));
-  fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
+  if (db) await storeUploadedFile(db, fileName, "application/pdf", buffer);
+  else {
+    const uploadsDir = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+    fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
+  }
   return fileName;
 }
 
@@ -12111,11 +12162,14 @@ async function deliverWhatsappReport(db: mysql.Pool, sendId: string, report: Wha
   return { status, error: status === "Sent" ? undefined : String(result.error || "WhatsApp message could not be sent.") };
 }
 
-/** Build + send now (timed slot or WhatsApp Master "Send current"). */
-async function runWhatsappReportSend(db: mysql.Pool, sendId: string, report: WhatsappReportKey, config: any) {
+/** Build from the database + send now (WhatsApp Master "Send current", a timed slot whose PDF was not prepared). */
+async function runWhatsappReportSend(db: mysql.Pool, sendId: string, report: WhatsappReportKey, config: any, options: WhatsappReportBuildOptions) {
   try {
-    const { spec, fileName } = await buildWhatsappReportPdfFile(db, report, config);
-    await db.query("UPDATE `whatsapp_report_sends` SET label = ?, reportDate = ? WHERE id = ?", [String(spec?.subtitle || "").slice(0, 255), report === "pending-loading" ? indiaNowParts(new Date()).date : whatsappReportPlanDate(config), sendId]);
+    const { spec, fileName, reportDate } = await buildWhatsappReportPdfFile(db, report, options);
+    await db.query(
+      "UPDATE `whatsapp_report_sends` SET label = ?, reportDate = ?, fileName = ?, valuesJson = ?, preparedAt = ? WHERE id = ?",
+      [String(spec?.subtitle || "").slice(0, 255), reportDate, fileName, JSON.stringify(spec?.values || {}), new Date().toISOString(), sendId]
+    );
     return await deliverWhatsappReport(db, sendId, report, config, fileName, spec?.values || {});
   } catch (error) {
     const message = `Report could not be built: ${(error as Error)?.message || error}`.slice(0, 500);
@@ -12124,22 +12178,61 @@ async function runWhatsappReportSend(db: mysql.Pool, sendId: string, report: Wha
   }
 }
 
-async function processWhatsappReportSlot(db: mysql.Pool, report: WhatsappReportKey, config: any, date: string, slot: string) {
-  const id = `${report}|${date}|${slot}`;
+const whatsappReportSlotId = (report: WhatsappReportKey, date: string, slot: string) => `${report}|${date}|${slot}`;
+
+/** A few minutes before a send time: read the data, make the PDF and store it (sent at the time). */
+async function prepareWhatsappReportSlot(db: mysql.Pool, report: WhatsappReportKey, config: any, date: string, slot: string) {
+  const id = whatsappReportSlotId(report, date, slot);
   const now = new Date().toISOString();
   await db.query(
     "INSERT IGNORE INTO `whatsapp_report_sends` (`id`, `report`, `source`, `reportDate`, `slot`, `status`, `attempts`, `createdAt`) VALUES (?, ?, 'Scheduled', ?, ?, 'Pending', 0, ?)",
     [id, report, date, slot, now]
   );
-  // Claim: not sent, under the attempt limit, not being sent by another run (2 min lease).
+  const stale = new Date(Date.now() - 120_000).toISOString();
+  const [claim] = await db.query(
+    "UPDATE `whatsapp_report_sends` SET status = 'Preparing', startedAt = ? WHERE id = ? AND status = 'Pending' AND COALESCE(preparedAt, '') = '' AND (startedAt IS NULL OR startedAt < ?)",
+    [now, id, stale]
+  );
+  if (!(claim as mysql.ResultSetHeader).affectedRows) return;
+  try {
+    const { spec, fileName, reportDate } = await buildWhatsappReportPdfFile(db, report, whatsappReportOptionsFromConfig(report, config, date));
+    await db.query(
+      "UPDATE `whatsapp_report_sends` SET status = 'Prepared', error = NULL, startedAt = NULL, label = ?, reportDate = ?, fileName = ?, valuesJson = ?, preparedAt = ? WHERE id = ? AND startedAt = ?",
+      [String(spec?.subtitle || "").slice(0, 255), reportDate, fileName, JSON.stringify(spec?.values || {}), new Date().toISOString(), id, now]
+    );
+  } catch (error) {
+    // Not fatal: the send time builds it again.
+    await db.query("UPDATE `whatsapp_report_sends` SET status = 'Pending', error = ?, startedAt = NULL WHERE id = ? AND startedAt = ?", [`PDF could not be prepared early: ${(error as Error)?.message || error}`.slice(0, 500), id, now]);
+  }
+}
+
+async function processWhatsappReportSlot(db: mysql.Pool, report: WhatsappReportKey, config: any, date: string, slot: string) {
+  const id = whatsappReportSlotId(report, date, slot);
+  const now = new Date().toISOString();
+  await db.query(
+    "INSERT IGNORE INTO `whatsapp_report_sends` (`id`, `report`, `source`, `reportDate`, `slot`, `status`, `attempts`, `createdAt`) VALUES (?, ?, 'Scheduled', ?, ?, 'Pending', 0, ?)",
+    [id, report, date, slot, now]
+  );
+  // Claim: not sent, under the attempt limit, not being prepared / sent by another run (2 min lease).
   const stale = new Date(Date.now() - 120_000).toISOString();
   const [claim] = await db.query(
     "UPDATE `whatsapp_report_sends` SET status = 'Sending', startedAt = ?, attempts = attempts + 1 WHERE id = ? AND status <> 'Sent' AND attempts < ? AND (startedAt IS NULL OR startedAt < ?)",
     [now, id, WHATSAPP_REPORT_MAX_ATTEMPTS, stale]
   );
   if (!(claim as mysql.ResultSetHeader).affectedRows) return;
-  await runWhatsappReportSend(db, id, report, config);
+  const [rows] = await db.query("SELECT fileName, valuesJson, preparedAt FROM `whatsapp_report_sends` WHERE id = ? LIMIT 1", [id]);
+  const prepared = (rows as any[])[0];
+  if (prepared?.preparedAt && prepared.fileName && prepared.valuesJson) {
+    // PDF prepared before the send time: send it as stored.
+    let values: Record<string, string> = {};
+    try { values = JSON.parse(String(prepared.valuesJson)); } catch { values = {}; }
+    await deliverWhatsappReport(db, id, report, config, String(prepared.fileName), values);
+    return;
+  }
+  await runWhatsappReportSend(db, id, report, config, whatsappReportOptionsFromConfig(report, config, date));
 }
+
+const WHATSAPP_REPORT_PREPARE_BEFORE_MIN = 5;
 
 let whatsappReportWorkerRunning = false;
 async function runWhatsappReportSchedules() {
@@ -12148,16 +12241,18 @@ async function runWhatsappReportSchedules() {
   try {
     const db = await getPool();
     if (!db) return;
-    const { date, hour, minute } = indiaNowParts(new Date());
-    const nowMinutes = hour * 60 + minute;
+    const today = indiaNowParts(new Date()).date;
+    const nowMs = Date.now();
     for (const report of Object.keys(WHATSAPP_REPORT_MENU_BY_KEY) as WhatsappReportKey[]) {
       const config = await getWhatsappReportConfig(db, report);
       if (!whatsappReportConfigUsable(config)) continue;
       for (const slot of parseWhatsappReportSendTimes(config!.sendTimes)) {
-        const [h, m] = slot.split(":").map(Number);
-        const late = nowMinutes - (h * 60 + m);
-        if (late < 0 || late > WHATSAPP_REPORT_SLOT_WINDOW_MIN) continue;
-        await processWhatsappReportSlot(db, report, config, date, slot);
+        // Today's and tomorrow's slot (a 00:02 send is prepared at 23:57 the day before).
+        for (const date of [today, addIndiaDays(today, 1)]) {
+          const minutesUntil = (Date.parse(`${date}T${slot}:00+05:30`) - nowMs) / 60_000;
+          if (minutesUntil > 0 && minutesUntil <= WHATSAPP_REPORT_PREPARE_BEFORE_MIN) await prepareWhatsappReportSlot(db, report, config, date, slot);
+          else if (minutesUntil <= 0 && minutesUntil >= -WHATSAPP_REPORT_SLOT_WINDOW_MIN) await processWhatsappReportSlot(db, report, config, date, slot);
+        }
       }
     }
   } catch (error) {
@@ -12167,7 +12262,8 @@ async function runWhatsappReportSchedules() {
   }
 }
 
-// Page button: sends the PDF of what is on screen (made in the browser with the same layout).
+// Page button: the server reads the data from the database with the page's date and
+// dropdown filters, makes the PDF (same layout as Download), stores it and sends it.
 app.post("/api/whatsapp-reports/:report/send", requireAuth, async (req, res) => {
   const report = String(req.params.report || "") as WhatsappReportKey;
   const menu = WHATSAPP_REPORT_MENU_BY_KEY[report];
@@ -12175,28 +12271,32 @@ app.post("/api/whatsapp-reports/:report/send", requireAuth, async (req, res) => 
   const user = await getRequestUser(req).catch(() => null);
   if (!user) return res.status(401).json({ status: "Failed", error: "Unauthorized" });
   if (user.role === "TruckDriver" || !hasPermission(user, menu)) return res.status(403).json({ status: "Failed", error: "Forbidden" });
-  const pdf = String(req.body?.pdf || "");
-  const match = pdf.match(/^data:application\/pdf;(?:[^;,]*;)*base64,(.+)$/);
-  if (!match) return res.status(400).json({ status: "Failed", error: "PDF is missing." });
-  const buffer = Buffer.from(match[1], "base64");
-  if (buffer.length < 100 || buffer.length > 20 * 1024 * 1024 || buffer.subarray(0, 4).toString() !== "%PDF") return res.status(400).json({ status: "Failed", error: "PDF is not valid." });
+  const date = String(req.body?.date || "").trim();
+  if (report !== "pending-loading" && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ status: "Failed", error: "Plan date is missing." });
+  const rawFilters = req.body?.filters && typeof req.body.filters === "object" ? req.body.filters : {};
+  const filters: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(rawFilters)) {
+    if (Array.isArray(value)) filters[key] = value.map((item) => String(item ?? "")).filter(Boolean).slice(0, 200);
+    else if (value !== undefined && value !== null && String(value).trim()) filters[key] = String(value).slice(0, 300);
+  }
   try {
     const db = await getPool();
     if (!db) return res.status(503).json({ status: "Failed", error: "Database unavailable." });
     const config = await getWhatsappReportConfig(db, report);
     if (!whatsappReportConfigUsable(config)) return res.json({ status: "Not Configured", error: `No active WhatsApp setup for ${WHATSAPP_REPORT_TITLES[report]}. Add it in WhatsApp Master.` });
-    const uploadsDir = path.join(process.cwd(), "uploads");
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-    const base = String(req.body?.fileName || `${report}.pdf`).replace(/\.pdf$/i, "").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
-    const fileName = `${base}_${crypto.randomUUID().slice(0, 8)}.pdf`;
-    fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
-    const values = Object.fromEntries(Object.entries(req.body?.values || {}).map(([key, value]) => [String(key), String(value ?? "")]));
     const sendId = crypto.randomUUID();
+    const now = new Date().toISOString();
     await db.query(
-      "INSERT INTO `whatsapp_report_sends` (`id`, `report`, `source`, `reportDate`, `label`, `fileName`, `status`, `attempts`, `startedAt`, `sentBy`, `createdAt`) VALUES (?, ?, 'Page', ?, ?, ?, 'Sending', 1, ?, ?, ?)",
-      [sendId, report, indiaNowParts(new Date()).date, String(req.body?.label || "").slice(0, 255), fileName, new Date().toISOString(), String(user.name || user.email || ""), new Date().toISOString()]
+      "INSERT INTO `whatsapp_report_sends` (`id`, `report`, `source`, `reportDate`, `status`, `attempts`, `startedAt`, `sentBy`, `createdAt`) VALUES (?, ?, 'Page', ?, 'Sending', 1, ?, ?, ?)",
+      [sendId, report, date || indiaNowParts(new Date()).date, now, String(user.name || user.email || ""), now]
     );
-    const result = await deliverWhatsappReport(db, sendId, report, config, fileName, values);
+    const result = await runWhatsappReportSend(db, sendId, report, config, {
+      // Production Plan: the firm the user is working in (as on the page).
+      firmId: report === "production-plan" ? getRequestFirmId(req) : "",
+      planDate: date || undefined,
+      filters,
+      authUserId: String((req as any).authUserId || ""),
+    });
     return res.json(result);
   } catch (error) {
     console.error("[whatsapp-reports send]", report, error);
@@ -12213,7 +12313,7 @@ app.get("/api/whatsapp-reports/log", requireAuth, async (req, res) => {
     if (!db) return res.status(503).json({ error: "Database unavailable." });
     const report = String(req.query.report || "");
     const [rows] = await db.query(
-      `SELECT id, report, source, reportDate, slot, label, fileName, status, error, attempts, sentAt, sentBy, createdAt FROM \`whatsapp_report_sends\` ${report ? "WHERE report = ?" : ""} ORDER BY createdAt DESC LIMIT 100`,
+      `SELECT id, report, source, reportDate, slot, label, fileName, status, error, attempts, sentAt, sentBy, createdAt, preparedAt FROM \`whatsapp_report_sends\` ${report ? "WHERE report = ?" : ""} ORDER BY createdAt DESC LIMIT 100`,
       report ? [report] : []
     );
     res.setHeader("Cache-Control", "no-store");
@@ -12239,13 +12339,14 @@ app.post("/api/whatsapp-reports/log/:id/resend", requireAuth, async (req, res) =
     const sendId = crypto.randomUUID();
     const now = new Date().toISOString();
     await db.query(
-      "INSERT INTO `whatsapp_report_sends` (`id`, `report`, `source`, `reportDate`, `slot`, `label`, `fileName`, `status`, `attempts`, `startedAt`, `sentBy`, `createdAt`) VALUES (?, ?, 'Resend', ?, ?, ?, ?, 'Sending', 1, ?, ?, ?)",
-      [sendId, report, previous.reportDate, previous.slot, previous.label, previous.fileName, now, String(user.name || user.email || ""), now]
+      "INSERT INTO `whatsapp_report_sends` (`id`, `report`, `source`, `reportDate`, `slot`, `label`, `fileName`, `status`, `attempts`, `startedAt`, `sentBy`, `createdAt`, `valuesJson`, `preparedAt`) VALUES (?, ?, 'Resend', ?, ?, ?, ?, 'Sending', 1, ?, ?, ?, ?, ?)",
+      [sendId, report, previous.reportDate, previous.slot, previous.label, previous.fileName, now, String(user.name || user.email || ""), now, previous.valuesJson || null, previous.preparedAt || null]
     );
     const fileName = String(previous.fileName || "");
-    if (!fileName || !fs.existsSync(path.join(process.cwd(), "uploads", fileName))) {
+    const [storedRows] = fileName ? await db.query("SELECT 1 FROM `uploaded_files` WHERE filename = ? LIMIT 1", [fileName]) : [[]];
+    if (!fileName || (!fs.existsSync(path.join(process.cwd(), "uploads", fileName)) && !(storedRows as any[]).length)) {
       // No PDF kept (the first try failed before it was made): build it again now.
-      return res.json(await runWhatsappReportSend(db, sendId, report, config));
+      return res.json(await runWhatsappReportSend(db, sendId, report, config, whatsappReportOptionsFromConfig(report, config!)));
     }
     const message = String(previous.message || "");
     const senderConfig = { loginId: String(config!.loginId), pass: String(config!.pass), groupId: String(config!.groupId), message };
@@ -12389,7 +12490,8 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
         "INSERT INTO `whatsapp_report_sends` (`id`, `report`, `source`, `status`, `attempts`, `startedAt`, `sentBy`, `createdAt`) VALUES (?, ?, 'Send Now', 'Sending', 1, ?, ?, ?)",
         [sendId, reportKey, now, String(user.name || user.email || ""), now]
       );
-      const result = await runWhatsappReportSend(db, sendId, reportKey, (fullRows as any[])[0] || config);
+      const fullConfig = (fullRows as any[])[0] || config;
+      const result = await runWhatsappReportSend(db, sendId, reportKey, fullConfig, whatsappReportOptionsFromConfig(reportKey, fullConfig));
       return res.json(result.status === "Sent" ? { status: "Sent", attachmentsSent: true } : { status: "Failed", error: result.error });
     }
     const messageTemplate = String(config.message || "");

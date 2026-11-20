@@ -17,6 +17,8 @@ type SendRow = {
   sentAt?: string;
   sentBy?: string;
   createdAt?: string;
+  /** When the data in the PDF was read from the database. */
+  preparedAt?: string;
 };
 
 const REPORT_LABELS: Record<string, string> = {
@@ -100,7 +102,7 @@ export function WhatsappReportSendHistory() {
               <tr><td colSpan={7} className="px-4 py-8 text-center font-bold text-slate-500">{loading ? "Loading…" : "No report sends yet."}</td></tr>
             ) : rows.map((row) => (
               <tr key={row.id} className="border-t border-slate-200 align-top">
-                <td className="px-4 py-3 whitespace-nowrap">{when(row.sentAt || row.createdAt)}{row.slot ? <div className="text-xs font-bold text-slate-500">Slot {row.slot}</div> : null}</td>
+                <td className="px-4 py-3 whitespace-nowrap">{when(row.sentAt || row.createdAt)}{row.slot ? <div className="text-xs font-bold text-slate-500">Slot {row.slot}</div> : null}{row.preparedAt ? <div className="text-xs text-slate-500">Data read {when(row.preparedAt)}</div> : null}</td>
                 <td className="px-4 py-3 font-bold">{REPORT_LABELS[row.report] || row.report}</td>
                 <td className="px-4 py-3">{SOURCE_LABELS[row.source] || row.source}{row.sentBy ? <div className="text-xs text-slate-500">{row.sentBy}</div> : null}</td>
                 <td className="px-4 py-3 text-xs">{row.label || "-"}</td>

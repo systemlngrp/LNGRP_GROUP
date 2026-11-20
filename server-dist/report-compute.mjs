@@ -3876,7 +3876,11 @@ REPORT_DEFINITIONS["wa-production-plan"] = {
   ],
   compute: (lists, params, helpers) => {
     const npdItems = (helpers.catalogRows?.fgRows || []).map(normalizeNpdItem);
-    const rows2 = computeProductionPlanRows({ ...lists, npdItems }, String(params.date || ""));
+    const filters = params.filters || {};
+    const rows2 = computeProductionPlanRows({ ...lists, npdItems }, String(params.date || ""), {
+      companies: Array.isArray(filters.companies) ? filters.companies.map(String) : [],
+      item: String(filters.item || "")
+    });
     return productionPlanPdfSpec(rows2, String(params.date || ""), String(params.firmLabel || ""));
   }
 };
@@ -3893,7 +3897,10 @@ REPORT_DEFINITIONS["wa-dispatch-plan"] = {
   ],
   compute: (lists, params, helpers) => {
     const { resolveOrderItem } = catalogFrom(helpers);
-    const rows2 = sortDispatchPlanDayRows(computeDispatchPlanDayRows(lists, resolveOrderItem, String(params.date || "")));
+    const filters = params.filters || {};
+    const rows2 = sortDispatchPlanDayRows(computeDispatchPlanDayRows(lists, resolveOrderItem, String(params.date || "")).filter(
+      (row) => (!filters.firm || row.firmId === String(filters.firm)) && (!filters.company || row.companyName === String(filters.company)) && (!filters.item || row.itemKey === String(filters.item))
+    ));
     return dispatchPlanPdfSpec(rows2, String(params.date || ""));
   }
 };
@@ -3923,7 +3930,11 @@ REPORT_DEFINITIONS["wa-pending-loading"] = {
       resolveOrderItem,
       findItemAcrossSources
     });
-    return pendingLoadingPdfSpec(pendingLoadingRowsFromProjections(projections, lists.firms), new Date(String(params.asOf || (/* @__PURE__ */ new Date()).toISOString())));
+    const filters = params.filters || {};
+    const filtered = projections.filter(
+      (projection) => (!filters.firm || String(projection.firmId || "").toLowerCase() === String(filters.firm).trim().toLowerCase()) && (!filters.source || projection.itemSource === String(filters.source)) && (!filters.company || (projection.company?.name || "Company unavailable") === String(filters.company)) && (!filters.item || (projection.item?.name || "Item unavailable") === String(filters.item))
+    );
+    return pendingLoadingPdfSpec(pendingLoadingRowsFromProjections(filtered, lists.firms), new Date(String(params.asOf || (/* @__PURE__ */ new Date()).toISOString())));
   }
 };
 function runReport(name, lists, params, helpers) {

@@ -146,7 +146,7 @@ export function DispatchPlanByDate() {
               </button>
             </>
           ) : null}
-          <SendReportWhatsappButton report="dispatch-plan" disabled={!rows.length} buildSpec={() => (rows.length ? dispatchPlanPdfSpec(rows, selectedDate) : null)} />
+          <SendReportWhatsappButton report="dispatch-plan" title="Dispatch Plan" loading={plansLoading} disabled={!rows.length} buildRequest={() => ({ date: selectedDate, filters: { firm: firmFilter, company: companyFilter, item: itemFilter }, label: formatDate(selectedDate) })} />
         </div>
       </div>
 
