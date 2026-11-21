@@ -22,9 +22,15 @@ test("fails when a visual check is not OK", () => {
   assert.equal(derivePdiResult({ ...checks, printingColorCheck: "NOT OK", csAchieved: "198" }, "180"), "QC FAIL");
 });
 
-test("remains pending when CS Actual or Standard is missing", () => {
+test("remains pending when CS Actual is missing", () => {
   assert.equal(derivePdiResult(checks, "180"), "Pending");
-  assert.equal(derivePdiResult({ ...checks, csAchieved: "198" }, ""), "Pending");
+});
+
+test("passes on the checks alone when there is no CS Standard", () => {
+  assert.equal(derivePdiResult({ ...checks, csAchieved: "198" }, ""), "QC PASS");
+  assert.equal(derivePdiResult(checks, ""), "QC PASS");
+  assert.equal(derivePdiResult({ ...checks, flapGapCheck: "" }, ""), "Pending");
+  assert.equal(derivePdiResult({ ...checks, flapGapCheck: "NOT OK" }, ""), "QC FAIL");
 });
 
 test("uses the legacy stored CS value when the NPD value is unavailable", () => {

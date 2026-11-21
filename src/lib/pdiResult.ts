@@ -61,5 +61,9 @@ export function derivePdiResult(
     return csPasses ? "QC PASS" : "QC FAIL";
   }
 
+  // No CS Std (item CS Std and PDI CS Required both empty): nothing to judge CS against,
+  // so the result follows the 5 checks alone.
+  if (standard === undefined && checks.every((result) => result === "OK")) return "QC PASS";
+
   return "Pending";
 }
