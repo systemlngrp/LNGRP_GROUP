@@ -130,7 +130,7 @@ export function PendingDispatchPlanning() {
 
   // Jobs already started for each schedule (not cancelled), oldest first.
   const jobNosByScheduleId = useMemo(() => {
-    // Each entry: short job no with its planning (job) date, e.g. "26-27/11150 (21-11-2026)".
+    // Each entry: short job no, planning (job) date and planned qty, e.g. "26-27/11150 (21-11-2026) - 3,000".
     const map = new Map<string, string[]>();
     [...productions]
       .filter((p) => p.scheduleId && p.status !== "Cancelled" && !p.cancelTimestamp)
@@ -138,7 +138,8 @@ export function PendingDispatchPlanning() {
       .forEach((p) => {
         const jobNo = displayJobNo(p.jobNo);
         if (!jobNo) return;
-        const label = p.date ? `${jobNo} (${formatDate(p.date)})` : jobNo;
+        const qty = Number(p.qty || 0);
+        const label = `${p.date ? `${jobNo} (${formatDate(p.date)})` : jobNo} - ${qty.toLocaleString()}`;
         const key = String(p.scheduleId);
         const list = map.get(key) || [];
         if (!list.includes(label)) list.push(label);
@@ -768,7 +769,7 @@ export function PendingDispatchPlanning() {
                 <th className="w-[84px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Schedule Date", "scheduledDate")}</th>
                 <th className="w-[110px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Schedule No", "scheduleNo")}</th>
                 <th className="w-[110px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Order No", "orderNo")}</th>
-                <th className="w-[150px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black" title="Jobs already started for this schedule (not cancelled), with planning date">Job No (Date)</th>
+                <th className="w-[190px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black" title="Jobs already started for this schedule (not cancelled), with planning date and planned quantity">Job No (Date) - Planned Qty</th>
                 <th className="w-[52px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Firm", "firmName")}</th>
                 <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Item Name", "itemName")}</th>
