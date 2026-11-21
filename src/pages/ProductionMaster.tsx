@@ -43,14 +43,14 @@ const formatItemFilterLabel = (name: string, erp: string) => {
   if (!erp || name.toLowerCase().includes(erp.toLowerCase())) return name;
   return `${name} - ${erp}`;
 };
+// One shared formatter: toLocaleString with options builds a new formatter on
+// every call, and the table formats about 60 numbers for each of 4,000+ jobs.
+const DECIMAL_FORMAT = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const formatDecimal = (value: unknown) => {
   if (value === null || value === undefined || String(value).trim() === "") return "-";
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) return "-";
-  return numberValue.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return DECIMAL_FORMAT.format(numberValue);
 };
 
 const PRODUCTION_MASTER_COLUMN_LABELS = [
@@ -474,7 +474,22 @@ export function ProductionMaster() {
   // Values of the table's columns, in PRODUCTION_MASTER_COLUMN_LABELS order, as
   // the desktop table cells show them. Sr. No., Job Closer and Close Date
   // (row position / editable inputs) are not searched.
+  // Column values are worked out once per job and reused by search, sort and the
+  // table until the data changes (rebuilding them for every job on each key press
+  // made the page take ~5 seconds per action).
+  const columnValuesCache = useMemo(
+    () => new Map<string, unknown[]>(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [productions, scheduleById, orderById, companyById, firmMap, itemsBySource, processingTotalsMap, corrugationWastageTotalsMap, printingWastageTotalsMap, loadedQtyByProductionId, erpLeastGsmMap, jobClosureStatusMap],
+  );
   const getTableColumnValues = (p: Production): unknown[] => {
+    const cached = columnValuesCache.get(p.id);
+    if (cached && cached[0] === p) return cached[1] as unknown[];
+    const values = buildTableColumnValues(p);
+    columnValuesCache.set(p.id, [p, values]);
+    return values;
+  };
+  const buildTableColumnValues = (p: Production): unknown[] => {
     const schedule = p.scheduleId ? scheduleById.get(p.scheduleId) : undefined;
     const order = (schedule?.orderId ? orderById.get(schedule.orderId) : undefined) || orderById.get(String((p as Production & { orderId?: string }).orderId || ""));
     const company = order?.companyId ? companyById.get(order.companyId) : undefined;
