@@ -3527,6 +3527,7 @@ function dispatchPlanPdfSpec(rows2, date, toDate) {
   return {
     report: "dispatch-plan",
     title: "Dispatch Plan",
+    orientation: "portrait",
     subtitle: to === date ? `Date: ${rangeLabel}` : rangeLabel,
     head: cols.map((col) => col.label),
     body: rows2.map((row, index) => cols.map((col) => col.qty ? qtyText(col.cell(row, index)) : s4(col.cell(row, index)))),
@@ -3681,7 +3682,7 @@ function phpPlatePlanPdfSpec(report, rows2, date) {
   };
 }
 function buildReportPdf(spec) {
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const doc = new jsPDF({ orientation: spec.orientation || "landscape", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const isProductionPlan = spec.report === "production-plan";
   doc.setFont("helvetica", "bold");
@@ -3727,7 +3728,8 @@ function buildReportPdf(spec) {
     head: [spec.head],
     // Total as the last body row in bold (as the Dispatch Plan PDF had it).
     body: spec.foot ? [...spec.body, spec.foot] : spec.body,
-    styles: { fontSize: 7, cellPadding: 1.2, lineColor: [0, 0, 0], lineWidth: 0.1 },
+    ...spec.orientation === "portrait" ? { margin: { left: 8, right: 8 } } : {},
+    styles: { fontSize: 7, cellPadding: 1.2, lineColor: [0, 0, 0], lineWidth: 0.1, overflow: "linebreak" },
     headStyles: { fillColor: [49, 46, 129], textColor: 255, fontStyle: "bold" },
     columnStyles: Object.fromEntries(qtyColumns.map((column) => [column, { halign: "right" }])),
     didParseCell: (data) => {

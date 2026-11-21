@@ -131,6 +131,8 @@ export type ReportPdfSpec = {
   groupRows?: number[];
   /** Body columns aligned right (quantities); defaults per report when absent. */
   rightColumns?: number[];
+  /** Page orientation; landscape when not set. */
+  orientation?: "portrait" | "landscape";
   /** Values for the WhatsApp message template. */
   values: Record<string, string>;
   fileName: string;
@@ -362,6 +364,7 @@ export function dispatchPlanPdfSpec(rows: DispatchPlanDayRow[], date: string, to
   return {
     report: "dispatch-plan",
     title: "Dispatch Plan",
+    orientation: "portrait",
     subtitle: to === date ? `Date: ${rangeLabel}` : rangeLabel,
     head: cols.map((col) => col.label),
     body: rows.map((row, index) => cols.map((col) => col.qty ? qtyText(col.cell(row, index)) : s(col.cell(row, index)))),
@@ -531,7 +534,7 @@ export function phpPlatePlanPdfSpec(report: "php-production-plan" | "plate-produ
 // ---------------------------------------------------------------- PDF
 
 export function buildReportPdf(spec: ReportPdfSpec): jsPDF {
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const doc = new jsPDF({ orientation: spec.orientation || "landscape", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const isProductionPlan = spec.report === "production-plan";
   doc.setFont("helvetica", "bold");
@@ -579,7 +582,8 @@ export function buildReportPdf(spec: ReportPdfSpec): jsPDF {
     head: [spec.head],
     // Total as the last body row in bold (as the Dispatch Plan PDF had it).
     body: spec.foot ? [...spec.body, spec.foot] : spec.body,
-    styles: { fontSize: 7, cellPadding: 1.2, lineColor: [0, 0, 0], lineWidth: 0.1 },
+    ...(spec.orientation === "portrait" ? { margin: { left: 8, right: 8 } } : {}),
+    styles: { fontSize: 7, cellPadding: 1.2, lineColor: [0, 0, 0], lineWidth: 0.1, overflow: "linebreak" },
     headStyles: { fillColor: [49, 46, 129], textColor: 255, fontStyle: "bold" },
     columnStyles: Object.fromEntries(qtyColumns.map((column) => [column, { halign: "right" }])),
     didParseCell: (data) => {
