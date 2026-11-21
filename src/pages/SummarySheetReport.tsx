@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getFirmDisplayName } from "../lib/firmDisplay";
-import { Download, Eye, EyeOff, FileText, Pencil, Search } from "lucide-react";
+import { Download, Eye, EyeOff, FileText, Search } from "lucide-react";
 import { userDashboardName } from "../lib/dashboardName";
 import { downloadSummaryExcel, downloadSummaryPdf, type SummaryExportInput } from "../lib/summarySheetExport";
 import { getDataAuthHeaders, useData } from "../hooks/useData";
@@ -105,52 +105,57 @@ const isZeroDisplay = (value: unknown) => {
   return /^[₹\s]*[-+]?0+(?:[.,]0+)?\s*%?$/.test(text);
 };
 
-// Admin: click the pencil to edit a job's Remarks; Save stores it on the job for everyone.
+// Admin: click a Remarks cell to type; it saves when you click away (like Google Sheets).
+// Enter also saves, Alt+Enter adds a new line, Esc undoes the edit.
 function RemarksCell({ productionId, value, onSaved }: { productionId: string; value: string; onSaved: (id: string, text: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const start = () => { setDraft(value); setError(""); setEditing(true); };
-  const save = async () => {
-    const text = draft.trim();
-    if (text === value.trim()) { setEditing(false); return; }
+  const cancelled = useRef(false);
+  const start = () => { setDraft(value); setError(""); cancelled.current = false; setEditing(true); };
+  const save = async (text: string) => {
+    setEditing(false);
+    if (text.trim() === value.trim()) return;
     setSaving(true);
     setError("");
+    onSaved(productionId, text.trim()); // show at once
     try {
       const response = await fetch(`/api/productions/${encodeURIComponent(productionId)}/remarks`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...getDataAuthHeaders(true) },
-        body: JSON.stringify({ remarks: text }),
+        body: JSON.stringify({ remarks: text.trim() }),
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Unable to save Remarks.");
-      onSaved(productionId, s(result.remarks ?? text));
-      setEditing(false);
+      if (!response.ok) throw new Error(result.error || "Not saved");
+      onSaved(productionId, s(result.remarks ?? text.trim()));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to save Remarks.");
+      onSaved(productionId, value); // put the old text back
+      setError(cause instanceof Error ? cause.message : "Not saved");
     } finally { setSaving(false); }
   };
   if (!editing) {
-    return <button type="button" onClick={start} title="Edit Remarks" className="group flex w-full items-start gap-1 text-left">
-      <span className="min-w-0 flex-1 whitespace-pre-wrap">{value || <span className="text-slate-400">Add remarks</span>}</span>
-      <Pencil size={12} className="mt-0.5 shrink-0 text-indigo-700 opacity-60 group-hover:opacity-100" />
-    </button>;
+    return <div role="button" tabIndex={0} onClick={start} onKeyDown={(event) => { if (event.key === "Enter" || event.key === "F2") { event.preventDefault(); start(); } }} title="Click to edit Remarks" className="min-h-[20px] w-full cursor-text whitespace-pre-wrap text-left">
+      {value || <span className="text-slate-300">&nbsp;</span>}
+      {saving ? <div className="text-[10px] font-bold text-slate-500">Saving…</div> : null}
+      {error ? <div className="text-[10px] font-bold text-red-700">{error} – click to try again</div> : null}
+    </div>;
   }
-  return <div className="space-y-1">
-    <textarea autoFocus rows={3} maxLength={1000} value={draft} disabled={saving}
-      onChange={(event) => setDraft(event.target.value)}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") setEditing(false);
-        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void save(); }
-      }}
-      className="w-full rounded border-2 border-black bg-white p-1 text-[11px] font-normal text-black focus:border-indigo-600 focus:outline-none" />
-    {error ? <div className="text-[10px] font-bold text-red-700">{error}</div> : null}
-    <div className="flex justify-end gap-1">
-      <button type="button" disabled={saving} onClick={() => setEditing(false)} className="rounded border border-black bg-white px-2 py-0.5 text-[10px] font-bold text-black">Cancel</button>
-      <button type="button" disabled={saving} onClick={() => void save()} className="rounded bg-indigo-700 px-2 py-0.5 text-[10px] font-bold text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
-    </div>
-  </div>;
+  return <textarea autoFocus rows={3} maxLength={1000} value={draft}
+    onChange={(event) => setDraft(event.target.value)}
+    onFocus={(event) => { const end = event.target.value.length; event.target.setSelectionRange(end, end); }}
+    onBlur={() => { if (cancelled.current) { cancelled.current = false; setEditing(false); return; } void save(draft); }}
+    onKeyDown={(event) => {
+      if (event.key === "Escape") { cancelled.current = true; event.currentTarget.blur(); }
+      else if (event.key === "Enter" && event.altKey) {
+        event.preventDefault();
+        const el = event.currentTarget; const at = el.selectionStart;
+        const next = `${draft.slice(0, at)}\n${draft.slice(el.selectionEnd)}`;
+        setDraft(next);
+        requestAnimationFrame(() => el.setSelectionRange(at + 1, at + 1));
+      } else if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.blur(); }
+    }}
+    className="w-full rounded border-2 border-indigo-600 bg-white p-1 text-[11px] font-normal text-black focus:outline-none" />;
 }
 
 export function SummarySheetReport() {
