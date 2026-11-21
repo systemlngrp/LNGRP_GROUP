@@ -6735,6 +6735,41 @@ async function backfillMissingConsumptionTransactionNos(db: mysql.Pool) {
   return (rows as any[]).length;
 }
 
+async function restoreSheetSyncRemovedFlags(db: mysql.Pool) {
+  // One-time (21-Nov-2026, asked by the owner): the sheet sync wrongly marked
+  // NPD, PHP and Plate items "removed" (its finalize list was partial). Only
+  // that sync ever sets "removed", so every removed row goes back to active.
+  // Only syncStatus changes; the list is kept in sync_removed_backup_20261121.
+  const migrationKey = "migration/restore-sheet-sync-removed-flags-v1";
+  const tables = ["npd", "php_item_master", "plate_item_master", "companies"];
+  const conn = await db.getConnection();
+  try {
+    const [markerRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [migrationKey]);
+    if ((markerRows as any[]).length) return { changed: 0, alreadyApplied: true };
+    await conn.query("CREATE TABLE IF NOT EXISTS sync_removed_backup_20261121 (tableName VARCHAR(64), id VARCHAR(191), syncStatus VARCHAR(20), updatedBy TEXT, updateTimestamp TEXT)");
+    await conn.beginTransaction();
+    let changed = 0;
+    for (const table of tables) {
+      const [cols] = await conn.query(`SHOW COLUMNS FROM \`${table}\` LIKE 'syncStatus'`);
+      if (!(cols as any[]).length) continue;
+      const where = "COALESCE(NULLIF(TRIM(`syncStatus`), ''), 'active') = 'removed'";
+      await conn.query(`INSERT INTO sync_removed_backup_20261121 (tableName, id, syncStatus, updatedBy, updateTimestamp) SELECT ?, id, syncStatus, updatedBy, updateTimestamp FROM \`${table}\` WHERE ${where}`, [table]);
+      const [result] = await conn.query(`UPDATE \`${table}\` SET \`syncStatus\` = 'active' WHERE ${where}`);
+      const n = Number((result as any)?.affectedRows || 0);
+      changed += n;
+      console.log(`[DB] Restore removed flags: ${table} ${n} rows set active.`);
+    }
+    await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)", [migrationKey, changed]);
+    await conn.commit();
+    return { changed, alreadyApplied: false };
+  } catch (error) {
+    try { await conn.rollback(); } catch {}
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
 async function bulkCloseJobsBefore17Nov(db: mysql.Pool) {
   // One-time (21-Nov-2026, asked by the owner): close every open job dated
   // before 17-Nov-2026 (Pending PH and Pending Consumption). Most are old jobs
@@ -11005,6 +11040,12 @@ await db.query(`
           sqlState: details?.sqlState || "",
           message: details?.message || String(err),
         });
+      }
+
+      try {
+        await restoreSheetSyncRemovedFlags(db);
+      } catch (err) {
+        console.warn("[DB] Restore removed flags failed:", (err as Error).message);
       }
 
       try {
