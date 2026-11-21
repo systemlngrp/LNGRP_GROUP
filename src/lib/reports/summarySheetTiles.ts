@@ -206,9 +206,17 @@ const between = (value: number, low: number, high: number) => value >= low && va
 const filled = (value: unknown) => s(value) !== "";
 
 /** Cell colours of the Google Summary Sheet's conditional formatting, per app column. */
+const DISPATCH_LOADING_FILL = /^(Dispatch (Qty|Date) [1-6]|Total Loading|Loading (No|Date|Qty) [1-6]|Vehicle [1-6]|Total Invoice Value|Invoice No\. [1-6]|Invoice Value [1-6])$/;
+
 export function summarySheetCellClass(column: string, row: SummaryRow, now = new Date()): string {
   const value = row[column];
   const num = n(value);
+  // Dispatch & Loading columns (Total Dispatch keeps its PDI colours): light green when filled,
+  // the same colour as Invoice No. 1.
+  if (DISPATCH_LOADING_FILL.test(column)) {
+    const text = s(value);
+    return text && text !== "-" && !(typeof value === "number" ? value === 0 : /^0+(\.0+)?$/.test(text)) ? "bg-[#b7e1cd]" : "";
+  }
   switch (column) {
     // Job No. is coloured like Date..Planned Qty (by job date).
     case "Job No.":
