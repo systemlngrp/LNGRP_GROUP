@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { getPhpPlateItemErp, getPhpPlateMainErp } from "../lib/phpPlateErps";
 import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { ClientPagination } from "../components/ClientPagination";
@@ -89,7 +90,7 @@ export function StandaloneProductionSequencing({ source }: Props) {
       .filter((job) => {
         const item = (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim());
         if (!words.length) return true;
-        return matchesTableSearch([job.jobSource, job.transactionNo, item?.name || job.itemId, job.scheduledDate, job.shift, job.methodology], words);
+        return matchesTableSearch([job.jobSource, job.transactionNo, getPhpPlateMainErp(job, item), getPhpPlateItemErp(job, item), item?.name || job.itemId, job.scheduledDate, job.shift, job.methodology], words);
       })
       .sort(compareJobDateDesc);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -97,6 +98,10 @@ export function StandaloneProductionSequencing({ source }: Props) {
 
   const { sorted: sortedJobs, sort, toggle: toggleSort } = useTableSort(pendingJobs, (job: JobRow, key) => {
     if (key === "item") return (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim())?.name || job.itemId;
+    if (key === "mainErp" || key === "itemErp") {
+      const item = (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim());
+      return key === "mainErp" ? getPhpPlateMainErp(job, item) : getPhpPlateItemErp(job, item);
+    }
     return (job as any)[key];
   }, [itemsBySource]);
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(sortedJobs, 25);
@@ -179,6 +184,8 @@ export function StandaloneProductionSequencing({ source }: Props) {
             <tr>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Source" sortKey="jobSource" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Job No" sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Main ERP" sortKey="mainErp" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="PHP/Plate ERP" sortKey="itemErp" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase whitespace-normal break-words min-w-[200px] max-w-[300px]"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Scheduled Date" sortKey="scheduledDate" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Shift" sortKey="shift" sort={sort} onToggle={toggleSort} align="left" /></th>
@@ -188,13 +195,15 @@ export function StandaloneProductionSequencing({ source }: Props) {
           </thead>
           <tbody>
             {paginatedItems.length === 0 ? (
-              <tr><td colSpan={7} className="h-16" aria-label="No records" /></tr>
+              <tr><td colSpan={9} className="h-16" aria-label="No records" /></tr>
             ) : paginatedItems.map((job) => {
               const item = (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim());
               return (
                 <tr key={`${job.jobSource}:${job.id}`} className="border-t border-black">
                   <td className="px-3 py-2 text-sm font-bold">{job.jobSource}</td>
                   <td className="px-3 py-2 text-sm font-semibold">{formatCell(job.transactionNo)}</td>
+                  <td className="px-3 py-2 text-sm">{formatCell(getPhpPlateMainErp(job, item))}</td>
+                  <td className="px-3 py-2 text-sm font-bold">{formatCell(getPhpPlateItemErp(job, item))}</td>
                   <td className="px-3 py-2 text-sm whitespace-normal break-words min-w-[200px] max-w-[300px]">{formatCell(item?.name || job.itemId)}</td>
                   <td className="px-3 py-2 text-sm">{formatCell(job.scheduledDate)}</td>
                   <td className="px-3 py-2 text-sm">{formatCell(job.shift)}</td>

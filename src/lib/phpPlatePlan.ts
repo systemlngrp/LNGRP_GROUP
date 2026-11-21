@@ -1,6 +1,7 @@
 // PHP / Plate Production Plan for one date: jobs scheduled for that date in
 // Shift (Day, Night) then Sequence order. Shared by the page and the server
 // (WhatsApp PDF), so both show the same rows.
+import { getPhpPlateItemErp, getPhpPlateMainErp } from "./phpPlateErps";
 import type { Company, Firm, Order, OrderSchedule, Production } from "../types";
 import type { OrderCatalogItem } from "./orderItems";
 import { getFirmDisplayNameById } from "./firmDisplay";
@@ -19,6 +20,9 @@ export type PhpPlatePlanRow = {
   firmName: string;
   companyName: string;
   itemName: string;
+  /** Main (FG box / master) ERP. */
+  mainErp: string;
+  /** PHP / Plate item ERP. */
   erp: string;
   methodology: string;
   plannedQty: number;
@@ -112,7 +116,8 @@ export function computePhpPlatePlanRows(args: {
         firmName: getFirmDisplayNameById(firmId, args.firms),
         companyName: s(company?.name || job.companyName),
         itemName: s(item?.name || job.itemId),
-        erp: s(job.erpCode || order?.erpCode || item?.erp),
+        mainErp: getPhpPlateMainErp(job, item, order?.erpCode),
+        erp: getPhpPlateItemErp(job, item) || s(order?.erpCode),
         methodology: s(job.methodology),
         plannedQty,
         producedQty,

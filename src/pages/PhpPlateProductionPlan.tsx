@@ -62,7 +62,7 @@ export function PhpPlateProductionPlan({ source }: { source: PhpPlateSource }) {
   const rows = useMemo(() => {
     const words = searchWords(search);
     if (!words.length) return filtered;
-    return filtered.filter((row) => matchesTableSearch([row.jobNo, row.firmName, row.companyName, row.itemName, row.erp, row.methodology, row.shift, row.status, row.sequence], words));
+    return filtered.filter((row) => matchesTableSearch([row.jobNo, row.firmName, row.companyName, row.itemName, row.mainErp, row.erp, row.methodology, row.shift, row.status, row.sequence], words));
   }, [filtered, search]);
   const totals = useMemo(() => phpPlatePlanTotals(rows), [rows]);
   const groups = useMemo(() => groupPhpPlatePlanByShift(rows), [rows]);
@@ -166,19 +166,19 @@ export function PhpPlateProductionPlan({ source }: { source: PhpPlateSource }) {
         <table className="min-w-[1100px] w-full border-collapse text-sm">
           <thead className="bg-slate-900 text-xs uppercase text-white">
             <tr>
-              {["Seq", "Shift", "Job No", "Firm", "Company", `${label} Item`, "ERP", "Methodology", "Planned", "Produced", "Balance", "Status"].map((header) => (
+              {["Seq", "Shift", "Job No", "Firm", "Company", `${label} Item`, "Main ERP", `${label} ERP`, "Methodology", "Planned", "Produced", "Balance", "Status"].map((header) => (
                 <th key={header} className={`border border-black px-3 py-2 ${["Planned", "Produced", "Balance"].includes(header) ? "text-right" : "text-left"}`}>{header}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {!rows.length ? (
-              <tr><td colSpan={12} className="px-3 py-10 text-center font-bold text-slate-500">{loading ? "Loading…" : `No ${label} jobs scheduled for ${formatDate(selectedDate)}.`}</td></tr>
+              <tr><td colSpan={13} className="px-3 py-10 text-center font-bold text-slate-500">{loading ? "Loading…" : `No ${label} jobs scheduled for ${formatDate(selectedDate)}.`}</td></tr>
             ) : groups.map((group) => {
               const groupTotals = phpPlatePlanTotals(group.rows);
               return (
                 <Fragment key={group.shift}>
-                  <tr className="bg-slate-200"><td colSpan={12} className="border border-black px-3 py-1.5 text-xs font-black uppercase">{formatDate(selectedDate)} · {group.shift} Shift</td></tr>
+                  <tr className="bg-slate-200"><td colSpan={13} className="border border-black px-3 py-1.5 text-xs font-black uppercase">{formatDate(selectedDate)} · {group.shift} Shift</td></tr>
                   {group.rows.map((row) => (
                     <tr key={`${row.job.id}-${row.jobNo}`} className="hover:bg-slate-50">
                       <td className="border border-black px-3 py-2 font-black">{row.sequence === null ? <span className="text-xs font-bold text-red-600">No sequence</span> : row.sequence}</td>
@@ -187,7 +187,8 @@ export function PhpPlateProductionPlan({ source }: { source: PhpPlateSource }) {
                       <td className="border border-black px-3 py-2">{row.firmName}</td>
                       <td className="border border-black px-3 py-2">{row.companyName || "-"}</td>
                       <td className="border border-black px-3 py-2">{row.itemName || "-"}</td>
-                      <td className="border border-black px-3 py-2">{row.erp || "-"}</td>
+                      <td className="border border-black px-3 py-2">{row.mainErp || "-"}</td>
+                      <td className="border border-black px-3 py-2 font-bold">{row.erp || "-"}</td>
                       <td className="border border-black px-3 py-2">{row.methodology || "-"}</td>
                       <td className="border border-black px-3 py-2 text-right">{qty(row.plannedQty)}</td>
                       <td className="border border-black px-3 py-2 text-right">{qty(row.producedQty)}</td>
@@ -196,7 +197,7 @@ export function PhpPlateProductionPlan({ source }: { source: PhpPlateSource }) {
                     </tr>
                   ))}
                   <tr className="bg-slate-100 font-black">
-                    <td colSpan={8} className="border border-black px-3 py-1.5 text-xs uppercase">{group.shift} total · {groupTotals.jobs} jobs</td>
+                    <td colSpan={9} className="border border-black px-3 py-1.5 text-xs uppercase">{group.shift} total · {groupTotals.jobs} jobs</td>
                     <td className="border border-black px-3 py-1.5 text-right">{qty(groupTotals.planned)}</td>
                     <td className="border border-black px-3 py-1.5 text-right">{qty(groupTotals.produced)}</td>
                     <td className="border border-black px-3 py-1.5 text-right">{qty(groupTotals.balance)}</td>
@@ -209,7 +210,7 @@ export function PhpPlateProductionPlan({ source }: { source: PhpPlateSource }) {
           {rows.length ? (
             <tfoot>
               <tr className="bg-indigo-100 font-black">
-                <td colSpan={8} className="border border-black px-3 py-2 uppercase">Total · {totals.jobs} jobs</td>
+                <td colSpan={9} className="border border-black px-3 py-2 uppercase">Total · {totals.jobs} jobs</td>
                 <td className="border border-black px-3 py-2 text-right">{qty(totals.planned)}</td>
                 <td className="border border-black px-3 py-2 text-right">{qty(totals.produced)}</td>
                 <td className="border border-black px-3 py-2 text-right">{qty(totals.balance)}</td>

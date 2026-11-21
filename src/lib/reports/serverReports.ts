@@ -420,6 +420,7 @@ for (const [name, source, permission] of [["wa-php-planning", "PHP", "/productio
         companyName: String(row.company?.name || ""),
         fgItem: row.isDirectSourceOrder ? "Direct Order" : String(row.fgItem?.name || ""),
         mainErp: String(row.order?.erpCode || row.fgItem?.erp || ""),
+        linkedErp: String(row.linkedItem?.erp || ""),
         linkedItem: String(row.linkedItem?.name || ""),
         scheduledQty: row.scheduledQty,
         setsPerBox: row.isDirectSourceOrder ? "Direct" : String(row.setsPerBox ?? ""),

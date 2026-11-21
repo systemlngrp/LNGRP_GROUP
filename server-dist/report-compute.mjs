@@ -3120,6 +3120,21 @@ function getFirmDisplayNameById(firmId, firms, _legacyTransactionName) {
   return String(firmId || "").trim() ? "Unknown firm" : "Unassigned";
 }
 
+// src/lib/phpPlateErps.ts
+function firstText2(...values) {
+  for (const value of values) {
+    const text5 = String(value ?? "").trim();
+    if (text5) return text5;
+  }
+  return "";
+}
+function getPhpPlateMainErp(job, item, fallback) {
+  return firstText2(job?.masterErp, item?.raw?.masterItemNameErpCode, fallback);
+}
+function getPhpPlateItemErp(job, item) {
+  return firstText2(job?.erpCode, item?.raw?.erpItemCode, item?.erp);
+}
+
 // src/lib/phpPlateFirm.ts
 function resolvePhpPlateFirmId(job, schedules, orders) {
   if (String(job.firmId || "").trim()) return String(job.firmId).trim();
@@ -3191,7 +3206,8 @@ function computePhpPlatePlanRows(args) {
       firmName: getFirmDisplayNameById(firmId, args.firms),
       companyName: s3(company?.name || job.companyName),
       itemName: s3(item?.name || job.itemId),
-      erp: s3(job.erpCode || order?.erpCode || item?.erp),
+      mainErp: getPhpPlateMainErp(job, item, order?.erpCode),
+      erp: getPhpPlateItemErp(job, item) || s3(order?.erpCode),
       methodology: s3(job.methodology),
       plannedQty,
       producedQty,
@@ -3585,7 +3601,7 @@ function planningPdfSpec(report, rows2, asOf, firmLabel = "") {
     report,
     title: `Pending ${source} Planning`,
     subtitle: `As on: ${dateTime}${firmLabel ? `   Firm: ${firmLabel}` : ""}`,
-    head: ["Sr.", "Sched. Date", "Schedule No", "Firm", "Order No", "Company", "FG Item", "Main ERP", `${source} Item`, "Sched. Qty", "Sets/Pcs", "Required", "Planned", "Remaining"],
+    head: ["Sr.", "Sched. Date", "Schedule No", "Firm", "Order No", "Company", "FG Item", "Main ERP", `${source} ERP`, `${source} Item`, "Sched. Qty", "Sets/Pcs", "Required", "Planned", "Remaining"],
     body: rows2.map((row, index) => [
       String(index + 1),
       formatDate4(row.scheduledDate),
@@ -3595,6 +3611,7 @@ function planningPdfSpec(report, rows2, asOf, firmLabel = "") {
       row.companyName,
       row.fgItem,
       row.mainErp,
+      row.linkedErp || "",
       row.linkedItem,
       qtyText(row.scheduledQty),
       row.setsPerBox,
@@ -3602,7 +3619,7 @@ function planningPdfSpec(report, rows2, asOf, firmLabel = "") {
       qtyText(row.alreadyPlannedQty),
       qtyText(row.remainingQty)
     ]),
-    foot: ["TOTAL", "", "", "", "", "", "", "", "", "", "", qtyText(totals.required), qtyText(totals.planned), qtyText(totals.remaining)],
+    foot: ["TOTAL", "", "", "", "", "", "", "", "", "", "", "", qtyText(totals.required), qtyText(totals.planned), qtyText(totals.remaining)],
     values: {
       dateTime,
       firm: firmLabel || "All firms",
@@ -3611,7 +3628,8 @@ function planningPdfSpec(report, rows2, asOf, firmLabel = "") {
       planned: qtyText(totals.planned),
       remaining: qtyText(totals.remaining)
     },
-    fileName: `Pending_${source}_Planning_${stamp}.pdf`
+    fileName: `Pending_${source}_Planning_${stamp}.pdf`,
+    rightColumns: [10, 11, 12, 13, 14]
   };
 }
 function phpPlatePlanPdfSpec(report, rows2, date) {
@@ -3621,7 +3639,7 @@ function phpPlatePlanPdfSpec(report, rows2, date) {
   const shiftLines = [];
   groupPhpPlatePlanByShift(rows2).forEach((group) => {
     groupRows.push(body.length);
-    body.push([`${group.shift} Shift`, "", "", "", "", "", "", "", "", "", "", ""]);
+    body.push([`${group.shift} Shift`, "", "", "", "", "", "", "", "", "", "", "", ""]);
     group.rows.forEach((row) => body.push([
       row.sequence === null ? "No seq." : String(row.sequence),
       row.shift,
@@ -3629,6 +3647,7 @@ function phpPlatePlanPdfSpec(report, rows2, date) {
       row.firmName,
       row.companyName,
       row.itemName,
+      row.mainErp,
       row.erp,
       row.methodology,
       qtyText(row.plannedQty),
@@ -3638,7 +3657,7 @@ function phpPlatePlanPdfSpec(report, rows2, date) {
     ]));
     const totals2 = phpPlatePlanTotals(group.rows);
     groupRows.push(body.length);
-    body.push([`${group.shift} total`, "", "", "", "", "", "", `${totals2.jobs} jobs`, qtyText(totals2.planned), qtyText(totals2.produced), qtyText(totals2.balance), ""]);
+    body.push([`${group.shift} total`, "", "", "", "", "", "", "", `${totals2.jobs} jobs`, qtyText(totals2.planned), qtyText(totals2.produced), qtyText(totals2.balance), ""]);
     shiftLines.push(`*${group.shift}:* ${totals2.jobs} jobs, ${qtyText(totals2.planned)} planned, ${qtyText(totals2.balance)} balance`);
   });
   const totals = phpPlatePlanTotals(rows2);
@@ -3646,9 +3665,9 @@ function phpPlatePlanPdfSpec(report, rows2, date) {
     report,
     title: `${label} Production Plan`,
     subtitle: `Date: ${formatDate4(date)}`,
-    head: ["Seq", "Shift", "Job No", "Firm", "Company", `${label} Item`, "ERP", "Methodology", "Planned", "Produced", "Balance", "Status"],
+    head: ["Seq", "Shift", "Job No", "Firm", "Company", `${label} Item`, "Main ERP", `${label} ERP`, "Methodology", "Planned", "Produced", "Balance", "Status"],
     body,
-    foot: ["TOTAL", "", "", "", "", "", "", `${totals.jobs} jobs`, qtyText(totals.planned), qtyText(totals.produced), qtyText(totals.balance), ""],
+    foot: ["TOTAL", "", "", "", "", "", "", "", `${totals.jobs} jobs`, qtyText(totals.planned), qtyText(totals.produced), qtyText(totals.balance), ""],
     groupRows,
     values: {
       date: formatDate4(date),
@@ -3701,7 +3720,7 @@ function buildReportPdf(spec) {
     });
     return doc;
   }
-  const qtyColumns = spec.rightColumns ? spec.rightColumns : spec.report === "pending-loading" ? [8, 9, 10] : spec.report === "php-production-plan" || spec.report === "plate-production-plan" ? [8, 9, 10] : [9, 10, 11, 12, 13];
+  const qtyColumns = spec.rightColumns ? spec.rightColumns : spec.report === "pending-loading" ? [8, 9, 10] : spec.report === "php-production-plan" || spec.report === "plate-production-plan" ? [9, 10, 11] : [9, 10, 11, 12, 13];
   const groups = new Set(spec.groupRows || []);
   autoTable(doc, {
     startY: 22,
@@ -3726,7 +3745,7 @@ function buildReportPdf(spec) {
 // src/lib/pendingLoadingEligibility.ts
 var normalizeKey = (value) => String(value ?? "").trim().toLowerCase();
 var normalizeText3 = (value) => String(value ?? "").trim();
-function firstText2(...values) {
+function firstText3(...values) {
   for (const value of values) {
     const text5 = normalizeText3(value);
     if (text5) return text5;
@@ -3765,7 +3784,7 @@ function productionItemKeys(production) {
   return keys;
 }
 function getJobFirmId(production) {
-  return firstText2(
+  return firstText3(
     production.orderFirmId,
     production.sourceFirmId,
     production.destinationFirmId,
@@ -3804,7 +3823,7 @@ function getDispatchPlanPendingQty(plan) {
   ) : 0;
 }
 function getLoadingJobNumber(production) {
-  return firstText2(production.transactionNo, production.jobCardNo);
+  return firstText3(production.transactionNo, production.jobCardNo);
 }
 var jobIndexCache = /* @__PURE__ */ new WeakMap();
 function jobIndexFor(jobs) {
@@ -3861,7 +3880,7 @@ function eligibleLoadingJobs(itemSource, itemId, firmId, productions, phpJobs, p
   ).slice(0, 3);
 }
 function resolveFirmId(plan, schedule, order, firms = []) {
-  const raw = firstText2(plan.orderFirmId, plan.firmId, schedule?.firmId, order?.firmId);
+  const raw = firstText3(plan.orderFirmId, plan.firmId, schedule?.firmId, order?.firmId);
   const firm = firms.find((row) => normalizeKey(row.id) === normalizeKey(raw));
   return normalizeText3(firm?.id || raw);
 }
@@ -3878,14 +3897,14 @@ function getPendingLoadingPlanProjections(args) {
     const itemFromOrder = args.resolveOrderItem?.(order);
     const source = normalizeOrderItemSource(order?.itemSource || itemFromOrder?.source);
     const item = itemFromOrder || args.findItemAcrossSources?.(
-      firstText2(order?.itemId, order?.npdId),
+      firstText3(order?.itemId, order?.npdId),
       source,
-      firstText2(order?.erpCode)
+      firstText3(order?.erpCode)
     );
     const firmId = resolveFirmId(plan, schedule, order, args.firms);
     const eligibleJobs = eligibleLoadingJobs(
       source,
-      item?.id || firstText2(order?.itemId, order?.npdId),
+      item?.id || firstText3(order?.itemId, order?.npdId),
       firmId,
       args.productions,
       args.phpJobs,
@@ -4318,6 +4337,7 @@ for (const [name, source, permission] of [["wa-php-planning", "PHP", "/productio
         companyName: String(row.company?.name || ""),
         fgItem: row.isDirectSourceOrder ? "Direct Order" : String(row.fgItem?.name || ""),
         mainErp: String(row.order?.erpCode || row.fgItem?.erp || ""),
+        linkedErp: String(row.linkedItem?.erp || ""),
         linkedItem: String(row.linkedItem?.name || ""),
         scheduledQty: row.scheduledQty,
         setsPerBox: row.isDirectSourceOrder ? "Direct" : String(row.setsPerBox ?? ""),

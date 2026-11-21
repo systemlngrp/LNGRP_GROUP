@@ -1,0 +1,1 @@
+function n(...t){for(const r of t){const e=String(r??"").trim();if(e)return e}return""}function a(t,r,e){return n(t?.masterErp,r?.raw?.masterItemNameErpCode,e)}function o(t,r){return n(t?.erpCode,r?.raw?.erpItemCode,r?.erp)}export{o as a,a as g};

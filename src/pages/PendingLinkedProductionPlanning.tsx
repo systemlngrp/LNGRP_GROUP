@@ -18,7 +18,7 @@ import { SendReportWhatsappButton } from "../components/SendReportWhatsappButton
 import { usePageDataStatus } from "../components/DataLoadingBoundary";
 
 type SortKey = "scheduledDate" | "orderNo" | "companyName" | "fgItemName" | "linkedItemName" | "remainingQty"
-  | "scheduleNo" | "firm" | "mainErp" | "scheduledQty" | "setsPerBox" | "requiredQty" | "alreadyPlannedQty" | "matchStatus";
+  | "scheduleNo" | "firm" | "mainErp" | "linkedErp" | "scheduledQty" | "setsPerBox" | "requiredQty" | "alreadyPlannedQty" | "matchStatus";
 
 type PendingLinkedProductionPlanningProps = {
   source: PlanningSource;
@@ -223,6 +223,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
         row.company?.name,
         row.isDirectSourceOrder ? "Direct Order" : row.fgItem?.name,
         String(row.order?.erpCode || row.fgItem?.erp || ""),
+        String(row.linkedItem?.erp || ""),
         row.linkedItem?.name,
         row.scheduledQty,
         row.isDirectSourceOrder ? "Direct" : row.setsPerBox,
@@ -269,6 +270,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
             if (sortKey === "scheduleNo") return String(row.schedule.scheduleNo || "");
             if (sortKey === "firm") return getFirmDisplayNameById(String(row.schedule.firmId || row.order?.firmId || ""), firms);
             if (sortKey === "mainErp") return String(row.order?.erpCode || row.fgItem?.erp || "");
+            if (sortKey === "linkedErp") return String(row.linkedItem?.erp || "");
             return row.matchStatus;
           };
           compare = value(a).localeCompare(value(b), undefined, { numeric: true, sensitivity: "base" });
@@ -486,6 +488,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black whitespace-normal break-words min-w-[200px] max-w-[300px]">{renderSortHeader("FG Item", "fgItemName")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Main ERP", "mainErp")}</th>
+                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader(`${source} ERP`, "linkedErp")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black whitespace-normal break-words min-w-[200px] max-w-[300px]">{renderSortHeader(`${source} Item`, "linkedItemName")}</th>
                 <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">{renderSortHeader("Scheduled Qty", "scheduledQty", "right")}</th>
                 <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">{renderSortHeader("Sets/Pcs", "setsPerBox", "right")}</th>
@@ -498,7 +501,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
             </thead>
             <tbody className="divide-y divide-black bg-white">
               {paginatedItems.length === 0 ? (
-                <tr><td colSpan={16} className="h-16" aria-label="No records" /></tr>
+                <tr><td colSpan={17} className="h-16" aria-label="No records" /></tr>
               ) : (
                 paginatedItems.map((row) => {
                   const scheduleId = row.schedule.id;
@@ -521,6 +524,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                       <td className="px-4 py-4 text-xs border border-black">{row.company?.name || "-"}</td>
                       <td className="px-4 py-4 text-xs border border-black whitespace-normal break-words min-w-[200px] max-w-[300px]">{row.isDirectSourceOrder ? "Direct Order" : row.fgItem?.name || "-"}</td>
                       <td className="px-4 py-4 text-xs border border-black whitespace-nowrap">{String(row.order?.erpCode || row.fgItem?.erp || "-")}</td>
+                      <td className="px-4 py-4 text-xs font-bold border border-black whitespace-nowrap">{String(row.linkedItem?.erp || "-")}</td>
                       <td className="px-4 py-4 text-xs border border-black whitespace-normal break-words min-w-[200px] max-w-[300px]">{row.linkedItem?.name || "-"}</td>
                       <td className="px-4 py-4 text-right text-xs font-bold text-indigo-700 border border-black whitespace-nowrap">{row.scheduledQty.toLocaleString()}</td>
                       <td className="px-4 py-4 text-right text-xs border border-black whitespace-nowrap">{row.isDirectSourceOrder ? "Direct" : row.setsPerBox?.toLocaleString() || "-"}</td>
@@ -547,7 +551,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
             {selectedIds.size > 0 && (
               <tfoot className="bg-slate-100 border-t-2 border-black">
                 <tr className="divide-x divide-black font-black">
-                  <td colSpan={15} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
+                  <td colSpan={16} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
                   <td className="px-4 py-3 text-right text-sm text-indigo-700 bg-indigo-50 border border-black">{totalSelectedQty.toLocaleString()}</td>
                 </tr>
               </tfoot>

@@ -346,8 +346,8 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Job No" sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase whitespace-normal break-words min-w-[200px] max-w-[300px]"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Master ERP" sortKey="masterErp" sort={sort} onToggle={toggleSort} align="left" /></th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="ERP" sortKey="erpCode" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Main ERP" sortKey="masterErp" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="PHP/Plate ERP" sortKey="erpCode" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Required Qty" sortKey="requiredQty" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Planned Qty" sortKey="plannedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Scheduled Date" sortKey="scheduledDate" sort={sort} onToggle={toggleSort} align="left" /></th>

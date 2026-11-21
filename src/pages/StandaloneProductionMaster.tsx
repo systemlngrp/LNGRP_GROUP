@@ -50,7 +50,7 @@ function getFgCellClasses(isBlocked: boolean, requiresFgGate: boolean) {
   return "bg-slate-50 text-black font-semibold";
 }
 
-const MASTER_COLUMNS = ["Job No", "Date", "Firm", "Shift", "Category", "Master ERP", "ERP", "Item", "Sets/Pcs per Box", "Length", "Breadth", "Height", "Ply", "No of Holes in PHP", "Flute Type", "L1", "F1", "L2", "F2", "L3", "Board GSM (Req)", "Brusting Strength (Req)", "Weight/Pc Set (Req)", "Printing Colour", "Required Qnt", "Planning ID", "Scheduled Date", "Planned Qnt", "Methodology", "FG Value", "Job Type", "Sequence", "Job Completion Time", "Output", "Qty", "UOM", "Status", "Remarks", "Action"];
+const MASTER_COLUMNS = ["Job No", "Date", "Firm", "Shift", "Category", "Main ERP", "PHP/Plate ERP", "Item", "Sets/Pcs per Box", "Length", "Breadth", "Height", "Ply", "No of Holes in PHP", "Flute Type", "L1", "F1", "L2", "F2", "L3", "Board GSM (Req)", "Brusting Strength (Req)", "Weight/Pc Set (Req)", "Printing Colour", "Required Qnt", "Planning ID", "Scheduled Date", "Planned Qnt", "Methodology", "FG Value", "Job Type", "Sequence", "Job Completion Time", "Output", "Qty", "UOM", "Status", "Remarks", "Action"];
 
 export function StandaloneProductionMaster({ source }: StandaloneProductionMasterProps) {
   const { user } = useAuth();
@@ -292,8 +292,8 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Firm" sortKey="2" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Shift" sortKey="3" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Category" sortKey="4" sort={sort} onToggle={toggleSort} align="left" /></th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Master ERP" sortKey="5" sort={sort} onToggle={toggleSort} align="left" /></th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="ERP" sortKey="6" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Main ERP" sortKey="5" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label={`${source === "PLATE" ? "Plate" : "PHP"} ERP`} sortKey="6" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase !whitespace-normal break-words min-w-[200px] max-w-[300px]"><SortHeader label="Item" sortKey="7" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Sets/Pcs per Box" sortKey="8" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Length" sortKey="9" sort={sort} onToggle={toggleSort} align="right" /></th>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { getPhpPlateItemErp, getPhpPlateMainErp } from "../lib/phpPlateErps";
 import { Link } from "react-router-dom";
 import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
@@ -125,7 +126,7 @@ export function StandaloneProductionExecution({ source }: Props) {
     String(job.scheduledDate || "").trim() && String(job.shift || "").trim() &&
     !String(job.sequence || "").trim() &&
     (!String(job.jobCompletionTimeOutput || "").trim() || !(Number(job.productionOutputQty || 0) > 0)) &&
-    (!searchTerm.trim() || [job.transactionNo, job.erpCode, job.methodology, job.jobSource].join(" ").toLowerCase().includes(searchTerm.trim().toLowerCase()))
+    (!searchTerm.trim() || [job.transactionNo, job.erpCode, job.masterErp, job.methodology, job.jobSource].join(" ").toLowerCase().includes(searchTerm.trim().toLowerCase()))
   ), [activeSourceFilter, firmFilter, fromDate, jobs, orders, schedules, searchTerm, toDate]);
 
   const pendingJobs = useMemo(() => {
@@ -158,6 +159,10 @@ export function StandaloneProductionExecution({ source }: Props) {
   const { sorted: sortedJobs, sort, toggle: toggleSort } = useTableSort(pendingJobs, (job: JobRow, key) => {
     if (key === "firm") return getFirmDisplayNameById(resolvePhpPlateFirmId(job, schedules, orders), firms);
     if (key === "item") return (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim())?.name || job.itemId;
+    if (key === "mainErp" || key === "itemErp") {
+      const item = (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim());
+      return key === "mainErp" ? getPhpPlateMainErp(job, item) : getPhpPlateItemErp(job, item);
+    }
     if (key === "fgValue") { const parsed = Number(resolvePhpPlateFgLink(job, fgProductions, job.jobSource).fgValue); return Number.isFinite(parsed) ? parsed : 0; }
     return (job as any)[key];
   }, [firms, schedules, orders, itemsBySource, fgProductions]);
@@ -272,6 +277,8 @@ export function StandaloneProductionExecution({ source }: Props) {
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Source" sortKey="jobSource" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Job No" sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Main ERP" sortKey="mainErp" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="PHP/Plate ERP" sortKey="itemErp" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Sequence" sortKey="sequence" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Shift" sortKey="shift" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase whitespace-normal break-words min-w-[200px] max-w-[300px]"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
@@ -283,7 +290,7 @@ export function StandaloneProductionExecution({ source }: Props) {
           </thead>
           <tbody>
             {paginatedItems.length === 0 ? (
-              <tr><td colSpan={10} className="h-16" aria-label="No records" /></tr>
+              <tr><td colSpan={12} className="h-16" aria-label="No records" /></tr>
             ) : paginatedItems.map((job) => {
               const item = (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim());
               const fgState = resolvePhpPlateFgLink(job, fgProductions, job.jobSource);
@@ -292,6 +299,8 @@ export function StandaloneProductionExecution({ source }: Props) {
                   <td className="px-3 py-2 text-sm font-bold">{job.jobSource}</td>
                   <td className="px-3 py-2 text-sm">{getFirmDisplayNameById(resolvePhpPlateFirmId(job, schedules, orders), firms)}</td>
                   <td className="px-3 py-2 text-sm font-semibold">{formatCell(job.transactionNo)}</td>
+                  <td className="px-3 py-2 text-sm">{formatCell(getPhpPlateMainErp(job, item))}</td>
+                  <td className="px-3 py-2 text-sm font-bold">{formatCell(getPhpPlateItemErp(job, item))}</td>
                   <td className="px-3 py-2 text-sm">{formatCell(job.sequence)}</td>
                   <td className="px-3 py-2 text-sm">{formatCell(job.shift)}</td>
                   <td className="px-3 py-2 text-sm whitespace-normal break-words min-w-[200px] max-w-[300px]">{formatCell(item?.name || job.itemId)}</td>

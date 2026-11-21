@@ -451,6 +451,7 @@ export type PlanningPdfRow = {
   companyName: string;
   fgItem: string;
   mainErp: string;
+  linkedErp?: string;
   linkedItem: string;
   scheduledQty: number;
   setsPerBox: string;
@@ -468,12 +469,12 @@ export function planningPdfSpec(report: "php-planning" | "plate-planning", rows:
     report,
     title: `Pending ${source} Planning`,
     subtitle: `As on: ${dateTime}${firmLabel ? `   Firm: ${firmLabel}` : ""}`,
-    head: ["Sr.", "Sched. Date", "Schedule No", "Firm", "Order No", "Company", "FG Item", "Main ERP", `${source} Item`, "Sched. Qty", "Sets/Pcs", "Required", "Planned", "Remaining"],
+    head: ["Sr.", "Sched. Date", "Schedule No", "Firm", "Order No", "Company", "FG Item", "Main ERP", `${source} ERP`, `${source} Item`, "Sched. Qty", "Sets/Pcs", "Required", "Planned", "Remaining"],
     body: rows.map((row, index) => [
-      String(index + 1), formatDate(row.scheduledDate), shortDocNo(row.scheduleNo), row.firmName, shortDocNo(row.orderNo), row.companyName, row.fgItem, row.mainErp, row.linkedItem,
+      String(index + 1), formatDate(row.scheduledDate), shortDocNo(row.scheduleNo), row.firmName, shortDocNo(row.orderNo), row.companyName, row.fgItem, row.mainErp, row.linkedErp || "", row.linkedItem,
       qtyText(row.scheduledQty), row.setsPerBox, qtyText(row.requiredQty), qtyText(row.alreadyPlannedQty), qtyText(row.remainingQty),
     ]),
-    foot: ["TOTAL", "", "", "", "", "", "", "", "", "", "", qtyText(totals.required), qtyText(totals.planned), qtyText(totals.remaining)],
+    foot: ["TOTAL", "", "", "", "", "", "", "", "", "", "", "", qtyText(totals.required), qtyText(totals.planned), qtyText(totals.remaining)],
     values: {
       dateTime,
       firm: firmLabel || "All firms",
@@ -483,6 +484,7 @@ export function planningPdfSpec(report: "php-planning" | "plate-planning", rows:
       remaining: qtyText(totals.remaining),
     },
     fileName: `Pending_${source}_Planning_${stamp}.pdf`,
+    rightColumns: [10, 11, 12, 13, 14],
   };
 }
 
@@ -495,14 +497,14 @@ export function phpPlatePlanPdfSpec(report: "php-production-plan" | "plate-produ
   const shiftLines: string[] = [];
   groupPhpPlatePlanByShift(rows).forEach((group) => {
     groupRows.push(body.length);
-    body.push([`${group.shift} Shift`, "", "", "", "", "", "", "", "", "", "", ""]);
+    body.push([`${group.shift} Shift`, "", "", "", "", "", "", "", "", "", "", "", ""]);
     group.rows.forEach((row) => body.push([
-      row.sequence === null ? "No seq." : String(row.sequence), row.shift, shortDocNo(row.jobNo), row.firmName, row.companyName, row.itemName, row.erp, row.methodology,
+      row.sequence === null ? "No seq." : String(row.sequence), row.shift, shortDocNo(row.jobNo), row.firmName, row.companyName, row.itemName, row.mainErp, row.erp, row.methodology,
       qtyText(row.plannedQty), qtyText(row.producedQty), qtyText(row.balanceQty), row.status,
     ]));
     const totals = phpPlatePlanTotals(group.rows);
     groupRows.push(body.length);
-    body.push([`${group.shift} total`, "", "", "", "", "", "", `${totals.jobs} jobs`, qtyText(totals.planned), qtyText(totals.produced), qtyText(totals.balance), ""]);
+    body.push([`${group.shift} total`, "", "", "", "", "", "", "", `${totals.jobs} jobs`, qtyText(totals.planned), qtyText(totals.produced), qtyText(totals.balance), ""]);
     shiftLines.push(`*${group.shift}:* ${totals.jobs} jobs, ${qtyText(totals.planned)} planned, ${qtyText(totals.balance)} balance`);
   });
   const totals = phpPlatePlanTotals(rows);
@@ -510,9 +512,9 @@ export function phpPlatePlanPdfSpec(report: "php-production-plan" | "plate-produ
     report,
     title: `${label} Production Plan`,
     subtitle: `Date: ${formatDate(date)}`,
-    head: ["Seq", "Shift", "Job No", "Firm", "Company", `${label} Item`, "ERP", "Methodology", "Planned", "Produced", "Balance", "Status"],
+    head: ["Seq", "Shift", "Job No", "Firm", "Company", `${label} Item`, "Main ERP", `${label} ERP`, "Methodology", "Planned", "Produced", "Balance", "Status"],
     body,
-    foot: ["TOTAL", "", "", "", "", "", "", `${totals.jobs} jobs`, qtyText(totals.planned), qtyText(totals.produced), qtyText(totals.balance), ""],
+    foot: ["TOTAL", "", "", "", "", "", "", "", `${totals.jobs} jobs`, qtyText(totals.planned), qtyText(totals.produced), qtyText(totals.balance), ""],
     groupRows,
     values: {
       date: formatDate(date),
@@ -570,7 +572,7 @@ export function buildReportPdf(spec: ReportPdfSpec): jsPDF {
     return doc;
   }
   const qtyColumns = spec.rightColumns ? spec.rightColumns : spec.report === "pending-loading" ? [8, 9, 10]
-    : spec.report === "php-production-plan" || spec.report === "plate-production-plan" ? [8, 9, 10] : [9, 10, 11, 12, 13];
+    : spec.report === "php-production-plan" || spec.report === "plate-production-plan" ? [9, 10, 11] : [9, 10, 11, 12, 13];
   const groups = new Set(spec.groupRows || []);
   autoTable(doc, {
     startY: 22,
