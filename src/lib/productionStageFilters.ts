@@ -24,7 +24,13 @@ export function isProductionPendingConsumption(
   // Old jobs migrated from the Summary Sheet / Loading PDF have no order or
   // schedule and are already Completed: nothing is left to issue for them.
   if (isMigratedCompletedJobWithoutOrder(production)) return false;
+  // Closed jobs (Completed, or Close = Yes) need no more material.
+  if (isProductionClosed(production)) return false;
   return !production.cancelTimestamp && !production.tallyTimestamp && !isFgUnlocked(production, actualPaperUsed, hasCorrugatedSheetUsage);
+}
+
+export function isProductionClosed(production: Pick<Production, "status" | "closeBy">) {
+  return production.status === "Completed" || String(production.closeBy || "").trim().toLowerCase() === "yes";
 }
 
 export function isMigratedCompletedJobWithoutOrder(production: Production) {

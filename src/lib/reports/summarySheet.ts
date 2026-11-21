@@ -2,7 +2,7 @@
 // report engine. Same calculation the page used before; filters stay in the page.
 import { getProductionWastageTotals } from "../wastageCalculations";
 import { buildJobLoadingRecords } from "../jobLoadingRecords";
-import { hasPaperNotRequiredBypass } from "../productionMaterialUsage";
+import { isProductionPendingConsumption } from "../productionStageFilters";
 import { findLatestInspection } from "../pdiReportData";
 import { normalizeQcResult } from "../jobCellColors";
 import type { Company, DispatchPlan, Firm, Invoice, InvoiceLineItem, LoadingSlip, Order, OrderSchedule, PreDispatchInspection, Production, ProductionProcessing, Truck } from "../../types";
@@ -189,7 +189,8 @@ export function computeSummarySheetRows(lists: SummarySheetLists, stockItems: an
     const jobClosed = s(production.closeBy).toLowerCase() === "yes" && Boolean(s(production.closeDate));
     const loadingStarted = dispatchedQty > 0;
     const stage = jobClosed ? "Job Closed"
-      : !loadingStarted && pprUsed <= 0 && !hasPaperNotRequiredBypass(production) ? "Pending Material Issue"
+      // Same rule as the Pending Material Issue screen (paper from the job record).
+      : !loadingStarted && isProductionPendingConsumption(production, pprUsed) ? "Pending Material Issue"
       : !loadingStarted && !isComplete(/corrugation/i, productionRows.filter((entry) => /corrugation/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0)) ? "Pending Corrugation"
       : !loadingStarted && !isComplete(/printing/i, printing) ? "Pending Printing"
       : planned > 0 && dispatchedQty >= planned ? "Pending Job Closure"

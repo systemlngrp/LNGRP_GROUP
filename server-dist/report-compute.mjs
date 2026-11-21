@@ -1356,6 +1356,13 @@ function buildJobLoadingRecords(productions, slips, plans, options = {}) {
 }
 
 // src/lib/productionMaterialUsage.ts
+function hasWorkflowValue(value) {
+  if (value === null || value === void 0) return false;
+  const asString = String(value).trim();
+  if (!asString) return false;
+  const asNumber = Number(asString);
+  return Number.isFinite(asNumber) ? asNumber > 0 : true;
+}
 function hasPaperNotRequiredBypass(production) {
   return Boolean(production.paperNotRequired) && String(production.paperNotRequiredReason || "").trim().length > 0;
 }
@@ -1452,6 +1459,22 @@ function getProductionActualPaperUsed(production, usageMap) {
     return usageMap.get(production.id) || 0;
   }
   return Number(production.actualPaperUsed || 0);
+}
+
+// src/lib/productionStageFilters.ts
+function isFgUnlocked(production, actualPaperUsed, hasCorrugatedSheetUsage = false) {
+  return hasWorkflowValue(actualPaperUsed) || hasCorrugatedSheetUsage || hasPaperNotRequiredBypass(production);
+}
+function isProductionPendingConsumption(production, actualPaperUsed = production.actualPaperUsed, hasCorrugatedSheetUsage = false) {
+  if (isMigratedCompletedJobWithoutOrder(production)) return false;
+  if (isProductionClosed(production)) return false;
+  return !production.cancelTimestamp && !production.tallyTimestamp && !isFgUnlocked(production, actualPaperUsed, hasCorrugatedSheetUsage);
+}
+function isProductionClosed(production) {
+  return production.status === "Completed" || String(production.closeBy || "").trim().toLowerCase() === "yes";
+}
+function isMigratedCompletedJobWithoutOrder(production) {
+  return !String(production.scheduleId || "").trim() && production.status === "Completed";
 }
 
 // src/lib/jobCellColors.ts
@@ -1625,7 +1648,7 @@ function computeSummarySheetRows(lists, stockItems) {
     const isComplete = (pattern, producedQty) => productionRows.some((entry) => pattern.test(entry.machineName) && s(entry.completionStatus || "Full") === "Full") || planned > 0 && producedQty >= planned;
     const jobClosed = s(production.closeBy).toLowerCase() === "yes" && Boolean(s(production.closeDate));
     const loadingStarted = dispatchedQty > 0;
-    const stage = jobClosed ? "Job Closed" : !loadingStarted && pprUsed <= 0 && !hasPaperNotRequiredBypass(production) ? "Pending Material Issue" : !loadingStarted && !isComplete(/corrugation/i, productionRows.filter((entry) => /corrugation/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0)) ? "Pending Corrugation" : !loadingStarted && !isComplete(/printing/i, printing) ? "Pending Printing" : planned > 0 && dispatchedQty >= planned ? "Pending Job Closure" : "Pending Loading";
+    const stage = jobClosed ? "Job Closed" : !loadingStarted && isProductionPendingConsumption(production, pprUsed) ? "Pending Material Issue" : !loadingStarted && !isComplete(/corrugation/i, productionRows.filter((entry) => /corrugation/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0)) ? "Pending Corrugation" : !loadingStarted && !isComplete(/printing/i, printing) ? "Pending Printing" : planned > 0 && dispatchedQty >= planned ? "Pending Job Closure" : "Pending Loading";
     const jobDispatchByInvoice = dispatchQtyByJobInvoice.get(production.id) || /* @__PURE__ */ new Map();
     const dispatchQtys = relatedInvoices.map((invoice) => money(jobDispatchByInvoice.get(invoice.id) || 0));
     const totalDispatchQty = money(dispatchQtys.reduce((sum, value) => sum + value, 0));
