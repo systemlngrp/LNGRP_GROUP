@@ -40,7 +40,7 @@ export async function writeGateEntryPdf(record, photos, filePath) {
     const rows = [
         ["Firm", text(record.firmName)],
         ["Purpose", text(record.purpose)],
-        ["Supplier", text(record.supplier)],
+        ["Party Name", text(record.supplier)],
         ["Invoice No", text(record.invoiceNo)],
         ["Invoice Value", `Rs. ${Number(record.invoiceValue || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
         ["Truck No", text(record.truckNo)],

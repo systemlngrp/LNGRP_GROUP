@@ -11358,7 +11358,8 @@ async function getGateEntryWhatsappConfig(db) {
 }
 /** Build the PDF and send the Gate Entry; returns the result and the PDF file name. */
 async function sendGateEntryWhatsapp(db, config, gateEntryId) {
-    const [rows] = await db.query("SELECT ge.*, s.name AS supplierName, f.firmName AS masterFirmName FROM `gate_entries` ge LEFT JOIN `suppliers` s ON s.id = ge.supplierId LEFT JOIN `firms` f ON f.id = COALESCE(NULLIF(ge.firmId, ''), ge.destinationFirmId) WHERE ge.id = ? LIMIT 1", [gateEntryId]);
+    // The party can be a supplier, a customer (company) or a group firm, as on the Gate Entry screens.
+    const [rows] = await db.query("SELECT ge.*, COALESCE(s.name, pc.name, pf.firmName) AS supplierName, f.firmName AS masterFirmName FROM `gate_entries` ge LEFT JOIN `suppliers` s ON s.id = ge.supplierId LEFT JOIN `companies` pc ON pc.id = ge.supplierId LEFT JOIN `firms` pf ON pf.id = ge.supplierId LEFT JOIN `firms` f ON f.id = COALESCE(NULLIF(ge.firmId, ''), ge.destinationFirmId) WHERE ge.id = ? LIMIT 1", [gateEntryId]);
     const entry = rows[0];
     if (!entry)
         return { result: { status: "Failed", error: "Gate Entry not found." }, fileName: "", notReady: true };
