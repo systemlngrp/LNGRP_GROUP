@@ -15,6 +15,44 @@ export type SheetMasterRow = {
   [key: string]: string | number | boolean | null | undefined;
 };
 
+// Sheet timestamps arrive either as ISO (UTC) or as the sheet's own
+// "M/D/YYYY H:mm:ss" text in India time. Both are read as real instants.
+export function parseSheetTimestamp(value: unknown): number | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const m = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ ,T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (m) {
+    let month = Number(m[1]);
+    let day = Number(m[2]);
+    if (month > 12 && day <= 12) [month, day] = [day, month];
+    const utc = Date.UTC(Number(m[3]), month - 1, day, Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0));
+    return utc - 330 * 60 * 1000; // India time is UTC+5:30
+  }
+  const parsed = Date.parse(text);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+const INDIAN_TIMESTAMP_FORMAT = new Intl.DateTimeFormat("en-IN", {
+  timeZone: "Asia/Kolkata",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: true,
+});
+
+export function formatIndianTimestamp(value: unknown) {
+  const at = parseSheetTimestamp(value);
+  if (at === null) return formatCellValue(value as SheetMasterRow[string]);
+  const parts = Object.fromEntries(INDIAN_TIMESTAMP_FORMAT.formatToParts(new Date(at)).map((part) => [part.type, part.value]));
+  return `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute} ${String(parts.dayPeriod || "").toUpperCase()}`;
+}
+
+function displayCellValue(key: string, value: SheetMasterRow[string]) {
+  return key === "timestamp" ? formatIndianTimestamp(value) : formatCellValue(value);
+}
+
 export function formatCellValue(value: SheetMasterRow[string]) {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -90,6 +128,7 @@ export function SheetMasterPage({
     searchTerm,
     (row) => columns.map((column) => {
       const value = row[column.key];
+      if (column.key === "timestamp") return formatIndianTimestamp(value);
       return typeof value === "boolean" ? (value ? "Yes" : "No") : value;
     }),
     [columns],
@@ -110,10 +149,12 @@ export function SheetMasterPage({
     });
   }, [searchedRows, filterValues, filters, stockFilter, stockKey]);
 
+  const hasTimestampColumn = columns.some((column) => column.key === "timestamp");
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filteredRows, (row, key) => {
     const value = row[key];
+    if (key === "timestamp") return parseSheetTimestamp(value) ?? "";
     return typeof value === "boolean" ? (value ? "Yes" : "No") : value;
-  });
+  }, [], hasTimestampColumn ? { key: "timestamp", direction: "desc" } : null);
 
   const {
     page,
@@ -318,7 +359,7 @@ export function SheetMasterPage({
                               className="w-24 rounded border border-black px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-black disabled:bg-slate-100"
                             />
                           ) : (
-                            formatCellValue(row[column.key])
+                            displayCellValue(column.key, row[column.key])
                           )}
                         </td>
                       );
