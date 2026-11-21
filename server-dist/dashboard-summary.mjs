@@ -1128,10 +1128,90 @@ function buildScheduleConsumptionByScheduleId(productions, phpJobs = [], plateJo
 }
 
 // src/lib/pendingLinkedPlanning.ts
+var normalizeErpCode = (value) => String(value || "").trim().toLowerCase();
+function toOptionalNumber(value) {
+  const numberValue2 = Number(value);
+  return Number.isFinite(numberValue2) && numberValue2 > 0 ? numberValue2 : void 0;
+}
+var round24 = (value) => parseFloat(value.toFixed(2));
+var getScheduledQty = (schedule) => Math.max(Number(schedule.qty || 0) - Number(schedule.canceledQty || 0), 0);
+function findItemsByErp(items, erpCode) {
+  const normalizedErp = normalizeErpCode(erpCode);
+  if (!normalizedErp) return [];
+  return items.filter((item) => {
+    const raw = item.raw || {};
+    return [item.erp, raw.erpItemCode, raw.masterItemNameErpCode].some((value) => normalizeErpCode(value) === normalizedErp);
+  });
+}
+function plannedQtyByScheduleItem(jobRows) {
+  const byItem = /* @__PURE__ */ new Map();
+  const unassigned = /* @__PURE__ */ new Map();
+  jobRows.forEach((row) => {
+    if (!row.scheduleId) return;
+    if (row.status === "Cancelled" || row.cancelTimestamp) return;
+    const effectiveQty = Math.max(0, Number(row.plannedQty || row.qty || 0));
+    if (effectiveQty <= 0) return;
+    const itemId = String(row.itemId || "").trim();
+    const key = `${row.scheduleId}::${itemId}`;
+    byItem.set(key, (byItem.get(key) || 0) + effectiveQty);
+    if (!itemId) unassigned.set(row.scheduleId, (unassigned.get(row.scheduleId) || 0) + effectiveQty);
+  });
+  return (scheduleId, itemIds, itemId) => {
+    let qty = byItem.get(`${scheduleId}::${itemId}`) || 0;
+    if (itemIds[0] === itemId) {
+      byItem.forEach((value, key) => {
+        const [sid, iid] = [key.slice(0, key.indexOf("::")), key.slice(key.indexOf("::") + 2)];
+        if (sid === scheduleId && iid && !itemIds.includes(iid)) qty += value;
+      });
+      qty += unassigned.get(scheduleId) || 0;
+    }
+    return qty;
+  };
+}
+var getSetsPerBox = (item) => toOptionalNumber((item?.raw || {}).numberOfSetsPerBox);
 var PLATE_PLANNING_FIRST_DATE = "2026-11-17";
 function isScheduleInLinkedPlanningWindow(source, schedule) {
   if (source !== "PLATE") return true;
   return String(schedule.scheduledDate || "").slice(0, 10) >= PLATE_PLANNING_FIRST_DATE;
+}
+function computePendingLinkedPlanningRows(args) {
+  const { source, schedules, sourceItems } = args;
+  const orderById = new Map(args.orders.map((order) => [order.id, order]));
+  const companyById = new Map(args.companies.map((company) => [company.id, company]));
+  const plannedFor = plannedQtyByScheduleItem(args.jobRows);
+  return schedules.filter((schedule) => isScheduleInLinkedPlanningWindow(source, schedule)).flatMap((schedule) => {
+    const order = orderById.get(schedule.orderId);
+    const fgItem = args.resolveOrderItem(order);
+    const company = order?.companyId ? companyById.get(order.companyId) : void 0;
+    const scheduledQty = getScheduledQty(schedule);
+    const isDirectSourceOrder = order?.itemSource === source;
+    const scheduleErp = String(order?.erpCode || fgItem?.erp || "").trim();
+    const linkedItems = isDirectSourceOrder ? sourceItems.filter((item) => item.id === String(order?.itemId || "").trim()).slice(0, 1) : findItemsByErp(sourceItems, scheduleErp);
+    const itemIds = linkedItems.map((item) => item.id);
+    return (linkedItems.length ? linkedItems : [void 0]).map((linkedItem) => {
+      const setsPerBox = getSetsPerBox(linkedItem);
+      const requiredQty = isDirectSourceOrder ? scheduledQty : linkedItem && setsPerBox ? round24(scheduledQty * setsPerBox) : 0;
+      const alreadyPlannedQty = linkedItem ? plannedFor(schedule.id, itemIds, linkedItem.id) : 0;
+      const remainingQty = Math.max(0, round24(requiredQty - alreadyPlannedQty));
+      let matchStatus = "Ready";
+      let selectable = true;
+      if (!linkedItem) {
+        matchStatus = isDirectSourceOrder ? `No ${source} item found for direct order` : `No ${source} master match for ERP`;
+        selectable = false;
+      } else if (!isDirectSourceOrder && !setsPerBox) {
+        matchStatus = "Sets/Pcs per box missing";
+        selectable = false;
+      } else if (remainingQty <= 0) {
+        matchStatus = "Already fully planned";
+        selectable = false;
+      }
+      const rowKey = `${schedule.id}::${linkedItem?.id || ""}`;
+      return { rowKey, schedule, order, company, fgItem, linkedItem, isDirectSourceOrder, scheduledQty, setsPerBox, requiredQty, alreadyPlannedQty, remainingQty, selectable, matchStatus };
+    });
+  }).filter((row) => {
+    if (row.scheduledQty <= 0 || !row.selectable || !row.linkedItem || row.remainingQty <= 0) return false;
+    return row.isDirectSourceOrder || Boolean(row.setsPerBox);
+  });
 }
 
 // src/lib/indentTotals.ts
@@ -1617,13 +1697,6 @@ function parseLocalYmd(dateStr) {
   date.setHours(0, 0, 0, 0);
   return date;
 }
-function normalizeErpCode(value) {
-  return String(value || "").trim().toLowerCase();
-}
-function toOptionalNumber(value) {
-  const numberValue2 = Number(value);
-  return Number.isFinite(numberValue2) && numberValue2 > 0 ? numberValue2 : void 0;
-}
 function groupBy(rows, getKey) {
   const groups = /* @__PURE__ */ new Map();
   rows.forEach((row) => {
@@ -1641,28 +1714,6 @@ function firstBy(rows, getKey) {
     if (!index.has(key)) index.set(key, row);
   });
   return index;
-}
-function indexItemsByErp(items) {
-  const index = /* @__PURE__ */ new Map();
-  items.forEach((item) => {
-    const raw = item.raw || {};
-    [item.erp, raw.erpItemCode, raw.masterItemNameErpCode].forEach((value) => {
-      const key = normalizeErpCode(value);
-      if (!index.has(key)) index.set(key, item);
-    });
-  });
-  return index;
-}
-function findItemByErpIndexed(index, erpCode) {
-  const normalizedErp = normalizeErpCode(erpCode);
-  if (!normalizedErp) return void 0;
-  return index.get(normalizedErp);
-}
-function getSetsPerBox(item) {
-  return toOptionalNumber(item?.raw?.numberOfSetsPerBox);
-}
-function getScheduledQty(schedule) {
-  return Math.max(Number(schedule.qty || 0) - Number(schedule.canceledQty || 0), 0);
 }
 function getPendingProductionPlanCount(schedules, productions, phpJobs, plateJobs, dispatchPlans, loadingSlips) {
   const today = /* @__PURE__ */ new Date();
@@ -1682,34 +1733,15 @@ function getPendingProductionPlanCount(schedules, productions, phpJobs, plateJob
     return scheduledDate.getTime() <= cutoffDate.getTime();
   }).length;
 }
-function getPendingLinkedPlanningCount(source, schedules, orders, fgProductions, phpJobs, plateJobs, resolveOrderItem, itemsBySource = {}) {
-  const sourceItems = itemsBySource[source] || [];
-  const jobRows = source === "PHP" ? phpJobs : plateJobs;
-  const plannedQtyByScheduleId = /* @__PURE__ */ new Map();
-  jobRows.forEach((row) => {
-    if (!row.scheduleId) return;
-    if (row.status === "Cancelled" || row.cancelTimestamp) return;
-    const effectiveQty = Math.max(0, Number(row.plannedQty || row.qty || 0));
-    if (effectiveQty <= 0) return;
-    plannedQtyByScheduleId.set(row.scheduleId, (plannedQtyByScheduleId.get(row.scheduleId) || 0) + effectiveQty);
-  });
-  const orderById = firstBy(orders, (order) => order.id);
-  const sourceItemById = firstBy(sourceItems, (item) => item.id);
-  const sourceItemByErp = indexItemsByErp(sourceItems);
-  return schedules.filter((schedule) => {
-    if (!isScheduleInLinkedPlanningWindow(source, schedule)) return false;
-    const order = orderById.get(schedule.orderId);
-    const fgItem = resolveOrderItem?.(order);
-    const scheduledQty = getScheduledQty(schedule);
-    const isDirectSourceOrder = order?.itemSource === source;
-    const scheduleErp = String(order?.erpCode || fgItem?.erp || "").trim();
-    const linkedItem = isDirectSourceOrder ? sourceItemById.get(String(order?.itemId || "").trim()) : findItemByErpIndexed(sourceItemByErp, scheduleErp);
-    const setsPerBox = getSetsPerBox(linkedItem);
-    const requiredQty = isDirectSourceOrder ? scheduledQty : linkedItem && setsPerBox ? Number((scheduledQty * setsPerBox).toFixed(2)) : 0;
-    const alreadyPlannedQty = Number(plannedQtyByScheduleId.get(schedule.id) || 0);
-    const remainingQty = Math.max(0, Number((requiredQty - alreadyPlannedQty).toFixed(2)));
-    if (scheduledQty <= 0 || !linkedItem || remainingQty <= 0) return false;
-    return isDirectSourceOrder || Boolean(setsPerBox);
+function getPendingLinkedPlanningCount(source, schedules, orders, _fgProductions, phpJobs, plateJobs, resolveOrderItem, itemsBySource = {}) {
+  return computePendingLinkedPlanningRows({
+    source,
+    schedules,
+    orders,
+    companies: [],
+    jobRows: source === "PHP" ? phpJobs : plateJobs,
+    sourceItems: itemsBySource[source] || [],
+    resolveOrderItem: resolveOrderItem || (() => void 0)
   }).length;
 }
 function getPendingPhpPlateProductionCount(phpJobs, plateJobs) {
@@ -2167,7 +2199,7 @@ function calculateInternalUps(rapcForSingleBox) {
   if (!Number.isFinite(rapcValue) || rapcValue <= 0) return void 0;
   return Math.floor(1320 / rapcValue);
 }
-function round24(value) {
+function round25(value) {
   return Math.round(value * 100) / 100;
 }
 function positiveNumber(...values) {
@@ -2185,7 +2217,7 @@ function calculateProductionRapc(input) {
   const ply = Number(input.ply || 0);
   const idToOd = ply === 3 ? 6 : ply === 5 ? 10 : 0;
   const rapc = calculateProductionReel({ breadth, height, ups, idToOd });
-  return Number.isFinite(rapc) && rapc > 0 ? round24(rapc) : void 0;
+  return Number.isFinite(rapc) && rapc > 0 ? round25(rapc) : void 0;
 }
 function calculateInternalRapc(item) {
   const savedInternalUps = Number(item.internalUps);

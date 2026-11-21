@@ -3939,26 +3939,40 @@ function toOptionalNumber(value) {
 }
 var round27 = (value) => parseFloat(value.toFixed(2));
 var getScheduledQty = (schedule) => Math.max(Number(schedule.qty || 0) - Number(schedule.canceledQty || 0), 0);
-function findItemByErp(items, erpCode) {
+function findItemsByErp(items, erpCode) {
   const normalizedErp = normalizeErpCode(erpCode);
-  if (!normalizedErp) return void 0;
-  return items.find((item) => {
+  if (!normalizedErp) return [];
+  return items.filter((item) => {
     const raw = item.raw || {};
     return [item.erp, raw.erpItemCode, raw.masterItemNameErpCode].some((value) => normalizeErpCode(value) === normalizedErp);
   });
 }
-var getSetsPerBox = (item) => toOptionalNumber((item?.raw || {}).numberOfSetsPerBox);
-function plannedQtyByScheduleId(jobRows) {
-  const map = /* @__PURE__ */ new Map();
+function plannedQtyByScheduleItem(jobRows) {
+  const byItem = /* @__PURE__ */ new Map();
+  const unassigned = /* @__PURE__ */ new Map();
   jobRows.forEach((row) => {
     if (!row.scheduleId) return;
     if (row.status === "Cancelled" || row.cancelTimestamp) return;
     const effectiveQty = Math.max(0, Number(row.plannedQty || row.qty || 0));
     if (effectiveQty <= 0) return;
-    map.set(row.scheduleId, (map.get(row.scheduleId) || 0) + effectiveQty);
+    const itemId = String(row.itemId || "").trim();
+    const key5 = `${row.scheduleId}::${itemId}`;
+    byItem.set(key5, (byItem.get(key5) || 0) + effectiveQty);
+    if (!itemId) unassigned.set(row.scheduleId, (unassigned.get(row.scheduleId) || 0) + effectiveQty);
   });
-  return map;
+  return (scheduleId, itemIds, itemId) => {
+    let qty = byItem.get(`${scheduleId}::${itemId}`) || 0;
+    if (itemIds[0] === itemId) {
+      byItem.forEach((value, key5) => {
+        const [sid, iid] = [key5.slice(0, key5.indexOf("::")), key5.slice(key5.indexOf("::") + 2)];
+        if (sid === scheduleId && iid && !itemIds.includes(iid)) qty += value;
+      });
+      qty += unassigned.get(scheduleId) || 0;
+    }
+    return qty;
+  };
 }
+var getSetsPerBox = (item) => toOptionalNumber((item?.raw || {}).numberOfSetsPerBox);
 var PLATE_PLANNING_FIRST_DATE = "2026-11-17";
 function isScheduleInLinkedPlanningWindow(source, schedule) {
   if (source !== "PLATE") return true;
@@ -3968,32 +3982,36 @@ function computePendingLinkedPlanningRows(args) {
   const { source, schedules, sourceItems } = args;
   const orderById = new Map(args.orders.map((order) => [order.id, order]));
   const companyById = new Map(args.companies.map((company) => [company.id, company]));
-  const planned = plannedQtyByScheduleId(args.jobRows);
-  return schedules.filter((schedule) => isScheduleInLinkedPlanningWindow(source, schedule)).map((schedule) => {
+  const plannedFor = plannedQtyByScheduleItem(args.jobRows);
+  return schedules.filter((schedule) => isScheduleInLinkedPlanningWindow(source, schedule)).flatMap((schedule) => {
     const order = orderById.get(schedule.orderId);
     const fgItem = args.resolveOrderItem(order);
     const company = order?.companyId ? companyById.get(order.companyId) : void 0;
     const scheduledQty = getScheduledQty(schedule);
     const isDirectSourceOrder = order?.itemSource === source;
     const scheduleErp = String(order?.erpCode || fgItem?.erp || "").trim();
-    const linkedItem = isDirectSourceOrder ? sourceItems.find((item) => item.id === String(order?.itemId || "").trim()) : findItemByErp(sourceItems, scheduleErp);
-    const setsPerBox = getSetsPerBox(linkedItem);
-    const requiredQty = isDirectSourceOrder ? scheduledQty : linkedItem && setsPerBox ? round27(scheduledQty * setsPerBox) : 0;
-    const alreadyPlannedQty = Number(planned.get(schedule.id) || 0);
-    const remainingQty = Math.max(0, round27(requiredQty - alreadyPlannedQty));
-    let matchStatus = "Ready";
-    let selectable = true;
-    if (!linkedItem) {
-      matchStatus = isDirectSourceOrder ? `No ${source} item found for direct order` : `No ${source} master match for ERP`;
-      selectable = false;
-    } else if (!isDirectSourceOrder && !setsPerBox) {
-      matchStatus = "Sets/Pcs per box missing";
-      selectable = false;
-    } else if (remainingQty <= 0) {
-      matchStatus = "Already fully planned";
-      selectable = false;
-    }
-    return { schedule, order, company, fgItem, linkedItem, isDirectSourceOrder, scheduledQty, setsPerBox, requiredQty, alreadyPlannedQty, remainingQty, selectable, matchStatus };
+    const linkedItems = isDirectSourceOrder ? sourceItems.filter((item) => item.id === String(order?.itemId || "").trim()).slice(0, 1) : findItemsByErp(sourceItems, scheduleErp);
+    const itemIds = linkedItems.map((item) => item.id);
+    return (linkedItems.length ? linkedItems : [void 0]).map((linkedItem) => {
+      const setsPerBox = getSetsPerBox(linkedItem);
+      const requiredQty = isDirectSourceOrder ? scheduledQty : linkedItem && setsPerBox ? round27(scheduledQty * setsPerBox) : 0;
+      const alreadyPlannedQty = linkedItem ? plannedFor(schedule.id, itemIds, linkedItem.id) : 0;
+      const remainingQty = Math.max(0, round27(requiredQty - alreadyPlannedQty));
+      let matchStatus = "Ready";
+      let selectable = true;
+      if (!linkedItem) {
+        matchStatus = isDirectSourceOrder ? `No ${source} item found for direct order` : `No ${source} master match for ERP`;
+        selectable = false;
+      } else if (!isDirectSourceOrder && !setsPerBox) {
+        matchStatus = "Sets/Pcs per box missing";
+        selectable = false;
+      } else if (remainingQty <= 0) {
+        matchStatus = "Already fully planned";
+        selectable = false;
+      }
+      const rowKey = `${schedule.id}::${linkedItem?.id || ""}`;
+      return { rowKey, schedule, order, company, fgItem, linkedItem, isDirectSourceOrder, scheduledQty, setsPerBox, requiredQty, alreadyPlannedQty, remainingQty, selectable, matchStatus };
+    });
   }).filter((row) => {
     if (row.scheduledQty <= 0 || !row.selectable || !row.linkedItem || row.remainingQty <= 0) return false;
     return row.isDirectSourceOrder || Boolean(row.setsPerBox);

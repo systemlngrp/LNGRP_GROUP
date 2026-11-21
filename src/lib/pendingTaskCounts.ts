@@ -36,7 +36,7 @@ import { getRequiredMachinesForProduction, resolveProductionProcessingRoute } fr
 import { normalizeMachineName } from "./productionMachineNames";
 import { getCurrentProcessingMachine, isCorrugationLinerComplete, isMachineStepFull } from "./productionProcessingProgress";
 import { buildScheduleConsumptionByScheduleId } from "./productionScheduleQty";
-import { isScheduleInLinkedPlanningWindow } from "./pendingLinkedPlanning";
+import { computePendingLinkedPlanningRows } from "./pendingLinkedPlanning";
 import { isJobDueByToday, isJobOnOrAfterPendingReturnStart, isProductionClosed, isProductionPendingMaterialIssue, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
 import { withIndentTotals } from "./indentTotals";
 import { getPendingReturnJobReelLines } from "./materialMovement";
@@ -263,45 +263,21 @@ function getPendingLinkedPlanningCount(
   source: "PHP" | "PLATE",
   schedules: OrderSchedule[],
   orders: Order[],
-  fgProductions: Production[],
+  _fgProductions: Production[],
   phpJobs: Production[],
   plateJobs: Production[],
   resolveOrderItem?: (order?: Order) => OrderCatalogItem | undefined,
   itemsBySource: Record<string, OrderCatalogItem[]> = {}
 ) {
-  const sourceItems = itemsBySource[source] || [];
-  const jobRows = source === "PHP" ? phpJobs : plateJobs;
-  const plannedQtyByScheduleId = new Map<string, number>();
-
-  jobRows.forEach((row) => {
-    if (!row.scheduleId) return;
-    if (row.status === "Cancelled" || row.cancelTimestamp) return;
-    const effectiveQty = Math.max(0, Number(row.plannedQty || row.qty || 0));
-    if (effectiveQty <= 0) return;
-    plannedQtyByScheduleId.set(row.scheduleId, (plannedQtyByScheduleId.get(row.scheduleId) || 0) + effectiveQty);
-  });
-
-  const orderById = firstBy(orders, (order) => order.id);
-  const sourceItemById = firstBy(sourceItems, (item) => item.id);
-  const sourceItemByErp = indexItemsByErp(sourceItems);
-
-  return schedules.filter((schedule) => {
-    if (!isScheduleInLinkedPlanningWindow(source, schedule)) return false;
-    const order = orderById.get(schedule.orderId);
-    const fgItem = resolveOrderItem?.(order);
-    const scheduledQty = getScheduledQty(schedule);
-    const isDirectSourceOrder = order?.itemSource === source;
-    const scheduleErp = String(order?.erpCode || fgItem?.erp || "").trim();
-    const linkedItem = isDirectSourceOrder
-      ? sourceItemById.get(String(order?.itemId || "").trim())
-      : findItemByErpIndexed(sourceItemByErp, scheduleErp);
-    const setsPerBox = getSetsPerBox(linkedItem);
-    const requiredQty = isDirectSourceOrder ? scheduledQty : linkedItem && setsPerBox ? Number((scheduledQty * setsPerBox).toFixed(2)) : 0;
-    const alreadyPlannedQty = Number(plannedQtyByScheduleId.get(schedule.id) || 0);
-    const remainingQty = Math.max(0, Number((requiredQty - alreadyPlannedQty).toFixed(2)));
-
-    if (scheduledQty <= 0 || !linkedItem || remainingQty <= 0) return false;
-    return isDirectSourceOrder || Boolean(setsPerBox);
+  // Same rows as the page (one per schedule and PHP / Plate item).
+  return computePendingLinkedPlanningRows({
+    source,
+    schedules,
+    orders,
+    companies: [],
+    jobRows: source === "PHP" ? phpJobs : plateJobs,
+    sourceItems: (itemsBySource[source] || []) as any,
+    resolveOrderItem: (resolveOrderItem || (() => undefined)) as any,
   }).length;
 }
 

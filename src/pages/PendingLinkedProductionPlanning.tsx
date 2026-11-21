@@ -311,12 +311,12 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
   );
 
   const selectableIds = useMemo(
-    () => new Set(filteredRows.filter((row) => row.selectable).map((row) => row.schedule.id)),
+    () => new Set(filteredRows.filter((row) => row.selectable).map((row) => row.rowKey)),
     [filteredRows]
   );
 
   const toggleSelect = (scheduleId: string) => {
-    const row = rows.find((entry) => entry.schedule.id === scheduleId);
+    const row = rows.find((entry) => entry.rowKey === scheduleId);
     if (!row?.selectable) return;
     const next = new Set(selectedIds);
     if (next.has(scheduleId)) {
@@ -339,9 +339,9 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
     const nextQty = { ...rowPlannedQty };
     filteredRows.forEach((row) => {
       if (!row.selectable) return;
-      next.add(row.schedule.id);
-      if (nextQty[row.schedule.id] === undefined) {
-        nextQty[row.schedule.id] = row.remainingQty;
+      next.add(row.rowKey);
+      if (nextQty[row.rowKey] === undefined) {
+        nextQty[row.rowKey] = row.remainingQty;
       }
     });
     setSelectedIds(next);
@@ -358,10 +358,10 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
       return;
     }
 
-    const selectedRows = rows.filter((row) => selectedIds.has(row.schedule.id));
+    const selectedRows = rows.filter((row) => selectedIds.has(row.rowKey));
     const validationErrors: string[] = [];
     selectedRows.forEach((row) => {
-      const plannedQty = Number(rowPlannedQty[row.schedule.id] ?? row.remainingQty);
+      const plannedQty = Number(rowPlannedQty[row.rowKey] ?? row.remainingQty);
       if (!row.selectable) {
         validationErrors.push(`${row.order?.orderNo || row.schedule.id}: ${row.matchStatus}`);
         return;
@@ -391,7 +391,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
             source,
             sourceItem: row.linkedItem,
             transactionNo,
-            qty: Number(rowPlannedQty[row.schedule.id] ?? row.remainingQty),
+            qty: Number(rowPlannedQty[row.rowKey] ?? row.remainingQty),
             schedule: row.schedule,
             order: row.order,
             companyName: row.company?.name,
@@ -477,7 +477,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                   <input
                     type="checkbox"
                     className="w-4 h-4 rounded border-black text-indigo-600 focus:ring-indigo-600"
-                    checked={paginatedItems.length > 0 && paginatedItems.filter((row) => row.selectable).every((row) => selectedIds.has(row.schedule.id))}
+                    checked={paginatedItems.length > 0 && paginatedItems.filter((row) => row.selectable).every((row) => selectedIds.has(row.rowKey))}
                     onChange={(e) => handleSelectAll(e.target.checked)}
                   />
                 </th>
@@ -504,7 +504,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                 <tr><td colSpan={17} className="h-16" aria-label="No records" /></tr>
               ) : (
                 paginatedItems.map((row) => {
-                  const scheduleId = row.schedule.id;
+                  const scheduleId = row.rowKey;
                   const plannedValue = rowPlannedQty[scheduleId] !== undefined ? rowPlannedQty[scheduleId] : row.remainingQty;
                   return (
                     <tr key={scheduleId} className={cn("hover:bg-slate-50 divide-x divide-black", selectedIds.has(scheduleId) && "bg-indigo-50/50", !row.selectable && "bg-amber-50")}>
