@@ -287,8 +287,16 @@ function postSyncPayloadToTargets_(config, payload, contextLabel) {
     Logger.log('%s partial failure: %s', contextLabel, failures.map((result) => `${result.target} ${result.apiUrl}: ${result.error}`).join(' | '));
   }
 
+  // The "Hostinger Sync" stamp is written from the primary result. It must be
+  // the LNGRP app (system.lngrp.in): if the app did not accept the rows, fail
+  // here so nothing is stamped and the rows are sent again on the next sync.
+  const appResult = results.find((result) => String(result.apiUrl || '').indexOf('system.lngrp.in') !== -1);
+  if (appResult && !appResult.ok) {
+    throw new Error(`${contextLabel}: LNGRP app did not accept the rows, so they are not marked synced (${appResult.error}).`);
+  }
+
   return {
-    primary: successes[successes.length - 1].parsed,
+    primary: appResult ? appResult.parsed : successes[successes.length - 1].parsed,
     results: results,
     failures: failures,
   };
