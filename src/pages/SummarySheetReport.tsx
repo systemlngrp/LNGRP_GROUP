@@ -282,7 +282,11 @@ export function SummarySheetReport() {
     () => (browserFallback ? computeSummarySheetRows({ productions, processing, orders, schedules, plans, slips, invoices, invoiceLines, trucks, companies, firms, preAppDispatches, inspections, boardlineQc, printingQc }, stockItems) : []),
     [browserFallback, boardlineQc, printingQc, inspections, preAppDispatches, companies, firms, invoiceLines, invoices, orders, plans, processing, productions, schedules, slips, stockItems, trucks]
   );
-  const baseRows = browserFallback ? clientBaseRows : (serverReport.result || []);
+  // Owner's rule (21-Nov-2026): the Summary Sheet shows only jobs dated
+  // 17-Nov-2026 or later; older jobs were bulk-closed and are left out.
+  const SUMMARY_SHEET_FIRST_JOB_DATE = "2026-11-17";
+  const allBaseRows = browserFallback ? clientBaseRows : (serverReport.result || []);
+  const baseRows = useMemo(() => allBaseRows.filter((row) => s(row.Date) >= SUMMARY_SHEET_FIRST_JOB_DATE), [allBaseRows]);
 
   const filteredRows = useMemo<SummaryRow[]>(() => {
     return baseRows.map((baseRow) => {
