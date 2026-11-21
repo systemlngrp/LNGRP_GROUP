@@ -2008,7 +2008,13 @@ app.post("/api/npd-sync", async (req, res) => {
     }
 
     let removed = 0;
-    if (syncMode === "full" || syncMode === "full_finalize") {
+    // The sheet script's "full" sync sends only rows whose Hostinger Sync cell
+    // is blank, so its finalize list is never the whole sheet. Marking every
+    // other row "removed" from it wrongly flagged almost all NPD, PHP and Plate
+    // items (e.g. 34 PHP items on 21-Nov 14:03). A sheet sync therefore never
+    // marks rows removed; removal is done in the app.
+    const SHEET_SYNC_MARKS_REMOVED = false;
+    if (SHEET_SYNC_MARKS_REMOVED && (syncMode === "full" || syncMode === "full_finalize")) {
       if (incomingIds.length > 0) {
         await conn.query(
           `UPDATE \`${config.table}\`
