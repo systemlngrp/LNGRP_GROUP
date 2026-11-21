@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Boxes,
   ClipboardList,
@@ -597,6 +597,12 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
     setCollapsedSections(next);
   }, [location.pathname, location.search, navigation]);
 
+  // Opening these menus also opens their overview page (when the user can see it).
+  const navigate = useNavigate();
+  const SECTION_HOME: Record<string, string> = { QC: "/quality/qc-view" };
+  const hasHref = (entries: unknown, href: string): boolean =>
+    Array.isArray(entries) && entries.some((entry: any) => entry?.href === href || hasHref(entry?.items, href));
+
   const toggleSection = (section: string) => {
     setCollapsedSections((prev) => {
       const currentlyCollapsed = !!prev[section];
@@ -758,7 +764,12 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
               {!isCollapsed ? (
                 <button
                   type="button"
-                  onClick={() => toggleSection(group.section)}
+                  onClick={() => {
+                    const opening = !!collapsedSections[group.section];
+                    toggleSection(group.section);
+                    const home = SECTION_HOME[group.section];
+                    if (opening && home && hasHref(group.items, home) && location.pathname !== home) navigate(home);
+                  }}
                   className="mb-1 flex w-full items-center justify-between rounded px-1 pt-0.5 pb-1 text-left text-[10px] font-bold uppercase tracking-wider text-white/70 hover:bg-black/10"
                 >
                   <span className="whitespace-nowrap">{group.section}</span>
