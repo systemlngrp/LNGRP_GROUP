@@ -183,6 +183,26 @@ app.get("/uploads/:filename", async (req, res, next) => {
   }
 });
 
+// Gate Entry WhatsApp PDFs: /uploads/ge/<folder>/GE-<no>.pdf (kept in the database too).
+app.get("/uploads/ge/:folder/:filename", async (req, res, next) => {
+  const folder = String(req.params.folder || "");
+  const filename = String(req.params.filename || "");
+  if (!/^[a-f0-9]{8}$/.test(folder) || !/^GE-[A-Za-z0-9_-]+\.pdf$/.test(filename)) return next();
+  try {
+    const db = await getPool();
+    if (!db) return next();
+    const [rows] = await db.query("SELECT mimeType, data FROM `uploaded_files` WHERE filename = ? LIMIT 1", [`ge/${folder}/${filename}`]);
+    const data = uploadedFileBuffer((rows as any[])?.[0]?.data);
+    if (!data) return next();
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    return res.send(data);
+  } catch (error) {
+    console.error("[uploads] Failed to serve Gate Entry PDF from DB:", error);
+    return next();
+  }
+});
+
 // Short-lived signed media URL for external attachment fetchers. This avoids
 // making uploaded complaint images permanently public while allowing Message
 // Auto Sender to download them without an application login.
@@ -11675,13 +11695,17 @@ async function sendGateEntryWhatsapp(db: mysql.Pool, config: any, gateEntryId: s
     sourceGatePassNo: entry.sourceGatePassNo,
     photoCount: String((photoRows as any[]).length),
   };
-  const fileName = `gate-entry-${String(entry.gateEntryNo || gateEntryId).replace(/[^a-zA-Z0-9_-]/g, "_")}-${crypto.randomUUID().slice(0, 8)}.pdf`;
+  // PDF name: GE-<last number of the Gate Entry No.>, e.g. GE/26-27/00012 -> GE-00012.pdf
+  const geNumberPart = String(entry.gateEntryNo || "").match(/(\d+)(?!.*\d)/)?.[1] || String(entry.gateEntryNo || gateEntryId).replace(/[^a-zA-Z0-9_-]/g, "_");
+  // Stored in its own folder (ge/<random>/GE-00012.pdf) so the same number in another firm or year never overwrites it.
+  const fileName = `ge/${crypto.randomUUID().slice(0, 8)}/GE-${geNumberPart}.pdf`;
+  fs.mkdirSync(path.dirname(path.join(uploadsDir, fileName)), { recursive: true });
   await writeGateEntryPdf({ ...values, supplier: entry.supplierName, invoiceValue: entry.invoiceValue }, photos, path.join(uploadsDir, fileName));
   // Keep the PDF in the database too, so its link still works after a redeploy.
   try { await storeUploadedFile(db, fileName, "application/pdf", fs.readFileSync(path.join(uploadsDir, fileName))); } catch (error) { console.warn("[WHATSAPP] gate entry PDF not stored in database:", (error as Error).message); }
   const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngrp.in").replace(/\/$/, "");
   // Gate Entry sends only its PDF: no text, no separate photo files (the photos are inside the PDF).
-  const urls = [`${publicBase}/uploads/${encodeURIComponent(fileName)}`];
+  const urls = [`${publicBase}/uploads/${fileName.split("/").map(encodeURIComponent).join("/")}`];
   const message = "";
   const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message };
   const result = await sendWhatsappGateEntryMessage(senderConfig, message, urls);
