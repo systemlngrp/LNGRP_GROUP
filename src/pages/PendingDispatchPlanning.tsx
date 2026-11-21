@@ -17,7 +17,7 @@ import { useClientPagination } from "../hooks/useClientPagination";
 import { useAuth } from "../auth/AuthContext";
 import { buildInvoicedQtyByScheduleId, buildLoadedQtyByScheduleId, getDispatchPlanPendingQty, getEffectiveDispatchPlanQty, getScheduleAvailableQty, getScheduleDispatchPendingQty } from "../lib/dispatchPlanBalances";
 import { useQtyAtJobWorker } from "../hooks/useQtyAtJobWorker";
-import { displayJobNo } from "../lib/jobNumber";
+import { displayJobNo, normalizeProductionJobNumber } from "../lib/jobNumber";
 
 type SortKey = "scheduledDate" | "scheduleNo" | "orderNo" | "firmName" | "companyName" | "itemName" | "pendingQty";
 
@@ -36,7 +36,10 @@ export function PendingDispatchPlanning() {
   // Read-only here: only the columns this screen uses are downloaded.
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms-dispatch-planning", fields: ["status", "lines"] });
   const [invoiceLineItems] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all", storageKey: "invoice-line-items-all-firms-dispatch-planning" });
-  const [productions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms-dispatch-planning", fields: ["itemId", "status", "cancelTimestamp", "qty", "scheduleId", "jobNo", "date"] });
+  const [productions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms-dispatch-planning-v2", fields: ["itemId", "status", "cancelTimestamp", "qty", "scheduleId", "transactionNo", "date", "phpScheduledJobId", "plateScheduledJobId"] });
+  // PHP / Plate jobs only to resolve the schedule of FG jobs started from them.
+  const [phpJobsForSchedule] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-jobs-schedule-link-dispatch-planning", fields: ["scheduleId"] });
+  const [plateJobsForSchedule] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-jobs-schedule-link-dispatch-planning", fields: ["scheduleId"] });
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
   const [selectedFirmId, setSelectedFirmId] = useState<string>("");
@@ -132,21 +135,32 @@ export function PendingDispatchPlanning() {
   const jobNosByScheduleId = useMemo(() => {
     // Each entry: short job no, planning (job) date and planned qty, e.g. "26-27/11150 (21-11-2026) - 3,000".
     const map = new Map<string, string[]>();
+    // Same link as the schedule consumption: the job's own schedule, else the
+    // schedule of the PHP / Plate job it was started from.
+    const linkedSchedule = new Map<string, string>();
+    [...phpJobsForSchedule, ...plateJobsForSchedule].forEach((job) => {
+      if (job.id && job.scheduleId) linkedSchedule.set(String(job.id).trim(), String(job.scheduleId).trim());
+    });
+    const scheduleOf = (p: Production) =>
+      String(p.scheduleId || "").trim()
+      || linkedSchedule.get(String(p.phpScheduledJobId || "").trim())
+      || linkedSchedule.get(String(p.plateScheduledJobId || "").trim())
+      || "";
     [...productions]
-      .filter((p) => p.scheduleId && p.status !== "Cancelled" && !p.cancelTimestamp)
-      .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")) || String(a.jobNo || "").localeCompare(String(b.jobNo || ""), undefined, { numeric: true }))
+      .filter((p) => scheduleOf(p) && p.status !== "Cancelled" && !p.cancelTimestamp)
+      .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")) || String(a.transactionNo || "").localeCompare(String(b.transactionNo || ""), undefined, { numeric: true }))
       .forEach((p) => {
-        const jobNo = displayJobNo(p.jobNo);
+        const jobNo = displayJobNo(normalizeProductionJobNumber(p.transactionNo));
         if (!jobNo) return;
         const qty = Number(p.qty || 0);
         const label = `${p.date ? `${jobNo} (${formatDate(p.date)})` : jobNo} - ${qty.toLocaleString()}`;
-        const key = String(p.scheduleId);
+        const key = scheduleOf(p);
         const list = map.get(key) || [];
         if (!list.includes(label)) list.push(label);
         map.set(key, list);
       });
     return map;
-  }, [productions]);
+  }, [productions, phpJobsForSchedule, plateJobsForSchedule]);
 
   const pendingProductionPlanQtyByItemId = useMemo(() => {
     const map = new Map<string, number>();
