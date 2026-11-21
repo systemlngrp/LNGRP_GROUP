@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Search, Download } from "lucide-react";
+import { Search, Download, Filter } from "lucide-react";
 import { Select } from "../components/Select";
 import { MultiSelect } from "../components/MultiSelect";
 import { exportsAllowed } from "../lib/exportPolicy";
@@ -118,6 +118,8 @@ export function ReelwiseStockReport() {
   const [gsmFilter, setGsmFilter] = useState<string[]>([]);
   const [sizeFilter, setSizeFilter] = useState<string[]>([]);
   const [bfFilter, setBfFilter] = useState<string[]>([]);
+  // Desktop: Show / Hide Filters button (phones fold the filters behind the filter icon).
+  const [showFilters, setShowFilters] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
   // Column sort: the server sorts the whole filtered list before paging; exports follow it.
   const { sort, toggle: toggleSort } = useServerSort(() => setPage(1));
@@ -517,6 +519,7 @@ export function ReelwiseStockReport() {
       </div>
 
       <div data-mf-panel="true" className="space-y-2 rounded border border-black bg-white p-3">
+        <div className="flex items-center gap-2">
         <div className="relative w-full min-w-0">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
           <input
@@ -527,7 +530,9 @@ export function ReelwiseStockReport() {
             className="h-[36px] w-full rounded border-2 border-black pl-8 pr-2 text-sm font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-[1fr_1fr_minmax(0,1.6fr)]">
+        <button type="button" onClick={()=>setShowFilters(v=>!v)} aria-expanded={showFilters} title={showFilters?"Hide filters":"Show filters"} className={`relative hidden h-[36px] shrink-0 items-center gap-1.5 rounded border-2 px-3 text-xs font-black md:inline-flex ${showFilters?"border-indigo-700 bg-indigo-700 text-white":"border-black bg-white text-black hover:bg-slate-100"}`}><Filter size={15}/>{showFilters?"Hide Filters":"Show Filters"}{hasActiveFilters&&!showFilters?<span className="absolute -right-1.5 -top-1.5 h-3 w-3 rounded-full border-2 border-white bg-red-600" aria-label="Filters in use"/>:null}</button>
+        </div>
+        <div className={`grid grid-cols-2 gap-2 lg:grid-cols-[1fr_1fr_minmax(0,1.6fr)] ${showFilters ? "" : "md:hidden"}`}>
           <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">MRR</span><Select compact value={mrrFilter} onChange={setMrrFilter} options={mrrOptions} placeholder="All" /></div>
           <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">ERP</span><Select compact value={erpFilter} onChange={setErpFilter} options={erpOptions} placeholder="All" /></div>
           <div className="col-span-2 grid grid-cols-3 gap-2 lg:col-span-1">
@@ -536,7 +541,7 @@ export function ReelwiseStockReport() {
             <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">BF</span><MultiSelect value={bfFilter} onChange={setBfFilter} options={bfOptions} placeholder="All" /></div>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-[1fr_1fr_90px_90px]">
+        <div className={`grid grid-cols-2 gap-2 lg:grid-cols-[1fr_1fr_90px_90px] ${showFilters ? "" : "md:hidden"}`}>
           <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[260px]">
             <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">MRR Date From</span><input type="date" value={mrrDateFrom} max={mrrDateTo || undefined} onChange={(e) => setMrrDateFrom(e.target.value)} className="h-[34px] w-full min-w-0 rounded border-2 border-black px-2 text-xs font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" /></label>
           <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">MRR Date To</span><input type="date" value={mrrDateTo} min={mrrDateFrom || undefined} onChange={(e) => setMrrDateTo(e.target.value)} className="h-[34px] w-full min-w-0 rounded border-2 border-black px-2 text-xs font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" /></label>
@@ -544,7 +549,7 @@ export function ReelwiseStockReport() {
           <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">Age Min (days)</span><input type="number" min="0" value={minAge} onChange={(e) => setMinAge(e.target.value)} className="h-[34px] w-full min-w-0 rounded border-2 border-black px-2 text-xs font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" /></label>
           <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">Age Max (days)</span><input type="number" min="0" value={maxAge} onChange={(e) => setMaxAge(e.target.value)} className="h-[34px] w-full min-w-0 rounded border-2 border-black px-2 text-xs font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" /></label>
         </div>
-        <div data-mf-fold="true" data-mf-active={availabilityFilter !== "all" || stockYetToIssueOnly || excludeZeroAvailable ? "true" : "false"} className="flex flex-wrap items-end gap-2">
+        <div data-mf-fold="true" data-mf-active={availabilityFilter !== "all" || stockYetToIssueOnly || excludeZeroAvailable ? "true" : "false"} className={`flex flex-wrap items-end gap-2 ${showFilters ? "" : "md:hidden"}`}>
           <div className="min-w-0">
             <span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">Available Stock</span>
             <div className="inline-flex h-[34px] gap-1 rounded border-2 border-black bg-white p-0.5">
