@@ -6726,6 +6726,39 @@ async function backfillMissingConsumptionTransactionNos(db: mysql.Pool) {
   return (rows as any[]).length;
 }
 
+async function bulkCloseJobsBefore17Nov(db: mysql.Pool) {
+  // One-time (21-Nov-2026, asked by the owner): close every open job dated
+  // before 17-Nov-2026 (Pending PH and Pending Consumption). Most are old jobs
+  // migrated from the sheets that were never moved on in the app. The rows are
+  // copied to productions_backup_20261121 first, so the change can be undone.
+  const migrationKey = "migration/bulk-close-jobs-before-2026-11-17-v1";
+  const conn = await db.getConnection();
+  try {
+    const [markerRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [migrationKey]);
+    if ((markerRows as any[]).length) return { changed: 0, alreadyApplied: true };
+    const where = "`date` < '2026-11-17' AND status IN ('Pending PH', 'Pending Consumption') AND (cancelTimestamp IS NULL OR cancelTimestamp = '')";
+    await conn.query("DROP TABLE IF EXISTS productions_backup_20261121");
+    await conn.query(`CREATE TABLE productions_backup_20261121 AS SELECT * FROM productions WHERE ${where}`);
+    const [countRows] = await conn.query("SELECT COUNT(*) AS n FROM productions_backup_20261121");
+    const backedUp = Number((countRows as any[])[0]?.n || 0);
+    await conn.beginTransaction();
+    const [result] = await conn.query(
+      "UPDATE productions p JOIN productions_backup_20261121 b ON b.id = p.id SET p.status = 'Completed', p.closeBy = 'Bulk close (before 17-Nov)', p.closeDate = '2026-11-21', p.updatedBy = 'Bulk close', p.updateTimestamp = ?",
+      [new Date().toISOString()],
+    );
+    await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)", [migrationKey, backedUp]);
+    await conn.commit();
+    const changed = Number((result as any)?.affectedRows || 0);
+    console.log(`[DB] Bulk close before 17-Nov: backed up ${backedUp} jobs, closed ${changed}.`);
+    return { changed, alreadyApplied: false };
+  } catch (error) {
+    try { await conn.rollback(); } catch {}
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
 async function realignJobCounterAfterRenumberedMigration(db: mysql.Pool) {
   // One-time fix: on 17-Nov-2026 seven old plate jobs were posted without
   // migrationKeepJobNo, so the server first gave two of them new numbers
@@ -10945,6 +10978,12 @@ await db.query(`
           sqlState: details?.sqlState || "",
           message: details?.message || String(err),
         });
+      }
+
+      try {
+        await bulkCloseJobsBefore17Nov(db);
+      } catch (err) {
+        console.warn("[DB] Bulk close before 17-Nov failed:", (err as Error).message);
       }
 
       try {
