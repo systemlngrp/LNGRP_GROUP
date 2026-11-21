@@ -11031,13 +11031,11 @@ async function sendGateEntryWhatsapp(db, config, gateEntryId) {
         console.warn("[WHATSAPP] gate entry PDF not stored in database:", error.message);
     }
     const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngrp.in").replace(/\/$/, "");
-    const urls = [`${publicBase}/uploads/${encodeURIComponent(fileName)}`, ...photos.map((photo) => `${publicBase}/uploads/${encodeURIComponent(photo.filename)}`)];
-    const message = resolveWhatsappGateEntryTemplate(String(config.message || DEFAULT_GATE_ENTRY_MESSAGE), values);
+    // Gate Entry sends only its PDF: no text, no separate photo files (the photos are inside the PDF).
+    const urls = [`${publicBase}/uploads/${encodeURIComponent(fileName)}`];
+    const message = "";
     const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message };
-    let result = await sendWhatsappGateEntryMessage(senderConfig, message, urls);
-    // A photo the sender cannot fetch (424): send the message with the PDF only.
-    if (result.status === "Failed" && result.httpStatus === 424 && urls.length > 1)
-        result = await sendWhatsappGateEntryMessage(senderConfig, message, urls.slice(0, 1));
+    const result = await sendWhatsappGateEntryMessage(senderConfig, message, urls);
     return { result, fileName, notReady: false };
 }
 /** Send once per Gate Entry (saved entries only; claimed so two runs never both send). */
