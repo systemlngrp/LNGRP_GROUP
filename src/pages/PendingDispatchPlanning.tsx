@@ -130,6 +130,7 @@ export function PendingDispatchPlanning() {
 
   // Jobs already started for each schedule (not cancelled), oldest first.
   const jobNosByScheduleId = useMemo(() => {
+    // Each entry: short job no with its planning (job) date, e.g. "26-27/11150 (21-11-2026)".
     const map = new Map<string, string[]>();
     [...productions]
       .filter((p) => p.scheduleId && p.status !== "Cancelled" && !p.cancelTimestamp)
@@ -137,9 +138,10 @@ export function PendingDispatchPlanning() {
       .forEach((p) => {
         const jobNo = displayJobNo(p.jobNo);
         if (!jobNo) return;
+        const label = p.date ? `${jobNo} (${formatDate(p.date)})` : jobNo;
         const key = String(p.scheduleId);
         const list = map.get(key) || [];
-        if (!list.includes(jobNo)) list.push(jobNo);
+        if (!list.includes(label)) list.push(label);
         map.set(key, list);
       });
     return map;
@@ -766,7 +768,7 @@ export function PendingDispatchPlanning() {
                 <th className="w-[84px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Schedule Date", "scheduledDate")}</th>
                 <th className="w-[110px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Schedule No", "scheduleNo")}</th>
                 <th className="w-[110px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Order No", "orderNo")}</th>
-                <th className="w-[90px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black" title="Jobs already started for this schedule (not cancelled)">Job No</th>
+                <th className="w-[150px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black" title="Jobs already started for this schedule (not cancelled), with planning date">Job No (Date)</th>
                 <th className="w-[52px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Firm", "firmName")}</th>
                 <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Item Name", "itemName")}</th>
