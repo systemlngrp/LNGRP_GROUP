@@ -19098,6 +19098,30 @@ app.get("/api/daily-consumptions/:id/lines", requireAuth, async (req, res) => {
         return res.status(500).json({ error: error.message || "Failed to load Daily Consumption details." });
     }
 });
+// Summary Sheet: Admin edits a job's Remarks; everyone sees it (live job list).
+app.patch("/api/productions/:id/remarks", requireAuth, async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user || user.role !== "Admin")
+        return res.status(403).json({ error: "Only Admin can edit Remarks." });
+    const db = await getPool();
+    if (!db)
+        return res.status(503).json({ error: "Database unavailable" });
+    const id = String(req.params.id || "").trim();
+    const remarks = String(req.body?.remarks ?? "").replace(/\r\n/g, "\n").trim().slice(0, 1000);
+    try {
+        const now = new Date().toISOString();
+        const actor = String(user.name || user.email || "System User").trim() || "System User";
+        const [result] = await db.query("UPDATE `productions` SET remarks = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [remarks, actor, now, id]);
+        if (!result?.affectedRows)
+            return res.status(404).json({ error: "Job not found." });
+        publishRealtimeDataChange(["productions"]);
+        return res.json({ id, remarks, updatedBy: actor, updateTimestamp: now });
+    }
+    catch (error) {
+        console.error("[productions] Failed to save remarks:", error);
+        return res.status(500).json({ error: "Unable to save Remarks." });
+    }
+});
 app.patch("/api/daily-consumptions/:id/cancel", requireAuth, async (req, res) => {
     const user = await getRequestUser(req);
     if (!user || String(user.email || "").trim().toLowerCase() !== "pankaj@bizskilledu.com")

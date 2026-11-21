@@ -1127,6 +1127,13 @@ function buildScheduleConsumptionByScheduleId(productions, phpJobs = [], plateJo
   return map;
 }
 
+// src/lib/pendingLinkedPlanning.ts
+var PLATE_PLANNING_FIRST_DATE = "2026-11-17";
+function isScheduleInLinkedPlanningWindow(source, schedule) {
+  if (source !== "PLATE") return true;
+  return String(schedule.scheduledDate || "").slice(0, 10) >= PLATE_PLANNING_FIRST_DATE;
+}
+
 // src/lib/indentTotals.ts
 function getIndentLineOrderedQty(line) {
   return Number(line.orderedQty || 0);
@@ -1690,6 +1697,7 @@ function getPendingLinkedPlanningCount(source, schedules, orders, fgProductions,
   const sourceItemById = firstBy(sourceItems, (item) => item.id);
   const sourceItemByErp = indexItemsByErp(sourceItems);
   return schedules.filter((schedule) => {
+    if (!isScheduleInLinkedPlanningWindow(source, schedule)) return false;
     const order = orderById.get(schedule.orderId);
     const fgItem = resolveOrderItem?.(order);
     const scheduledQty = getScheduledQty(schedule);

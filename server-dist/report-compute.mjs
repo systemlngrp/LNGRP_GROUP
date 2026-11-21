@@ -3937,12 +3937,17 @@ function plannedQtyByScheduleId(jobRows) {
   });
   return map;
 }
+var PLATE_PLANNING_FIRST_DATE = "2026-11-17";
+function isScheduleInLinkedPlanningWindow(source, schedule) {
+  if (source !== "PLATE") return true;
+  return String(schedule.scheduledDate || "").slice(0, 10) >= PLATE_PLANNING_FIRST_DATE;
+}
 function computePendingLinkedPlanningRows(args) {
   const { source, schedules, sourceItems } = args;
   const orderById = new Map(args.orders.map((order) => [order.id, order]));
   const companyById = new Map(args.companies.map((company) => [company.id, company]));
   const planned = plannedQtyByScheduleId(args.jobRows);
-  return schedules.map((schedule) => {
+  return schedules.filter((schedule) => isScheduleInLinkedPlanningWindow(source, schedule)).map((schedule) => {
     const order = orderById.get(schedule.orderId);
     const fgItem = args.resolveOrderItem(order);
     const company = order?.companyId ? companyById.get(order.companyId) : void 0;

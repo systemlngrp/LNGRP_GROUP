@@ -36,6 +36,7 @@ import { getRequiredMachinesForProduction, resolveProductionProcessingRoute } fr
 import { normalizeMachineName } from "./productionMachineNames";
 import { getCurrentProcessingMachine, isCorrugationLinerComplete, isMachineStepFull } from "./productionProcessingProgress";
 import { buildScheduleConsumptionByScheduleId } from "./productionScheduleQty";
+import { isScheduleInLinkedPlanningWindow } from "./pendingLinkedPlanning";
 import { isJobDueByToday, isJobOnOrAfterPendingReturnStart, isProductionClosed, isProductionPendingMaterialIssue, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
 import { withIndentTotals } from "./indentTotals";
 import { getPendingReturnJobReelLines } from "./materialMovement";
@@ -285,6 +286,7 @@ function getPendingLinkedPlanningCount(
   const sourceItemByErp = indexItemsByErp(sourceItems);
 
   return schedules.filter((schedule) => {
+    if (!isScheduleInLinkedPlanningWindow(source, schedule)) return false;
     const order = orderById.get(schedule.orderId);
     const fgItem = resolveOrderItem?.(order);
     const scheduledQty = getScheduledQty(schedule);
