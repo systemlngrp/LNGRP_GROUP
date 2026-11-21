@@ -7214,6 +7214,9 @@ app.get("/api/health", async (_req, res) => {
       server: "ok",
       database: "connected",
       userLookup: "ok",
+      // How many database connections this ERP server has opened since it started.
+      erpConnectionsOpened: erpConnectionsOpened,
+      erpServerStartedAt,
       databaseConfigured: true,
       initialization: databaseInitializationState,
       initializationError: databaseInitializationError || undefined,
