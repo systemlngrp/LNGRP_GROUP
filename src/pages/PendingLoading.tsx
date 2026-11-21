@@ -421,14 +421,7 @@ export function PendingLoading() {
     // FG stock limits only the FG Stock row; job rows are limited by their
     // Corrugation (Liner) balance, so loading no longer waits for Prod (FG).
 
-    Object.entries(byJobId).forEach(([jobId, qty]) => {
-      const value = Number(qty || 0);
-      if (value <= 0) return;
-      const remainingCapacity = getRemainingCapacityForJob(jobId, value, modal.itemSource);
-      if (value > remainingCapacity + 0.0001) {
-        errors.push("Adjust Now cannot exceed Yet to Load for a job.");
-      }
-    });
+    // A job may be loaded beyond its Available (Corrugation Liner) balance; the row shows how much over.
 
     if (modal.itemSource === "FG" && npdStockLoading) errors.unshift("FG stock is still loading. Please wait a moment.");
     const stockLabel = modal.itemSource === "FG" ? "FG Stock" : `${modal.itemSource} Stock`;
@@ -1105,7 +1098,7 @@ export function PendingLoading() {
                             <tbody className="divide-y divide-slate-200 bg-white">
                               {jobs.map((job) => {
                                 const currentValue = jobSplitQtys[modalKey]?.[job.jobId] ?? "";
-                                const jobMax = job.yetToLoad;
+                                const overAvailable = Math.max(0, Number(currentValue || 0) - job.yetToLoad);
                                 return (
                                   <tr key={job.jobId} className="divide-x divide-slate-200 transition-colors hover:bg-indigo-50/40">
                                     <td className="px-4 py-3 text-xs font-black text-black">{job.jobNo}</td>
@@ -1117,7 +1110,6 @@ export function PendingLoading() {
                                         type="number"
                                         value={currentValue}
                                         min={0}
-                                        max={jobMax}
                                         onChange={(e) => {
                                           const rawValue = e.target.value;
                                           setJobSplitQtys((prev) => {
@@ -1125,13 +1117,13 @@ export function PendingLoading() {
                                             if (rawValue === "") return { ...prev, [modalKey]: { ...currentRows, [job.jobId]: "" } };
                                             const parsedValue = Number(rawValue);
                                             if (!Number.isFinite(parsedValue)) return prev;
-                                            const latestMax = job.yetToLoad;
-                                            const next = Math.max(0, Math.min(parsedValue, latestMax));
+                                            const next = Math.max(0, parsedValue); // no Available limit
                                             return { ...prev, [modalKey]: { ...currentRows, [job.jobId]: next } };
                                           });
                                         }}
                                         className="h-9 w-28 rounded border-2 border-amber-400 bg-amber-50 px-2 py-1.5 text-right text-xs font-black text-black focus:border-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-100"
                                       />
+                                      {overAvailable > 0 ? <div className="mt-1 text-[10px] font-black text-red-700">{overAvailable.toLocaleString()} more than Available</div> : null}
                                     </td>
                                   </tr>
                                 );
