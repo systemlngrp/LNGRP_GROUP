@@ -121,6 +121,7 @@ const orderItems: NavItem[] = [
   { name: "Scheduled Orders Master", href: "/orders/scheduled", icon: Database },
   { name: "Canceled Orders", href: "/orders/canceled", icon: X },
   { name: "Scheduled But Not Dispatched", href: "/orders/scheduled-pending", icon: Activity },
+  { name: "Scheduled But Never Dispatched", href: "/orders/scheduled-never-dispatched", icon: Activity },
 ];
 
 const fgProductionItems: NavItem[] = [

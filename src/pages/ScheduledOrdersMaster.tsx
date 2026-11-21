@@ -35,9 +35,12 @@ const formatItemOptionLabel = (item: { name?: string; erp?: string | number }) =
 
 type ScheduledOrdersMasterProps = {
   pendingOnly?: boolean;
+  // Pending schedules against which nothing has been loaded or invoiced yet.
+  neverDispatched?: boolean;
 };
 
-export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMasterProps = {}) {
+export function ScheduledOrdersMaster({ pendingOnly: pendingOnlyProp = false, neverDispatched = false }: ScheduledOrdersMasterProps = {}) {
+  const pendingOnly = pendingOnlyProp || neverDispatched;
   // The master must show schedules created for every firm.  In particular,
   // BK migration schedules belong to Firm-II and should not disappear when
   // the active-firm selector is set to Firm-I (or another firm).
@@ -250,6 +253,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
     const words = searchWords(searchTerm);
     return scheduleDispatchDetails
       .filter((s) => !pendingOnly || s.pendingOrderQty > 0)
+      .filter((s) => !neverDispatched || (s.invoiced <= 0 && s.loaded <= 0))
       .filter(s => {
         const text = searchTextById.get(s.id) || "";
         const matchSearch = words.every((word) => text.includes(word));
@@ -268,7 +272,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
         if (comparison !== 0) return -comparison;
         return b.scheduledDate.localeCompare(a.scheduledDate);
       });
-  }, [scheduleDispatchDetails, searchTextById, pendingOnly, searchTerm, firmFilter, companyFilter, itemFilter, fromDate, toDate]);
+  }, [scheduleDispatchDetails, searchTextById, pendingOnly, neverDispatched, searchTerm, firmFilter, companyFilter, itemFilter, fromDate, toDate]);
   const { sorted: sortedSchedules, sort, toggle } = useTableSort(detailedSchedules, (s, key) => {
     switch (key) {
       case "scheduledDate": return s.scheduledDate;
@@ -372,7 +376,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 border-b border-black pb-3">
-        <h2 className="text-xl font-bold uppercase tracking-tight text-black">{pendingOnly ? "Scheduled But Not Dispatched" : "Scheduled Orders Master"}</h2>
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">{neverDispatched ? "Scheduled But Never Dispatched" : pendingOnly ? "Scheduled But Not Dispatched" : "Scheduled Orders Master"}</h2>
       </div>
 
       <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
@@ -622,4 +626,8 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
 
 export function PendingScheduledOrders() {
   return <ScheduledOrdersMaster pendingOnly />;
+}
+
+export function NeverDispatchedScheduledOrders() {
+  return <ScheduledOrdersMaster neverDispatched />;
 }
