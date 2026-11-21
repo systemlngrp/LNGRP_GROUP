@@ -1,4 +1,5 @@
 import { normalizeQcResult } from "./jobCellColors";
+import { PDI_CHECK_KEYS } from "./pdiResult";
 
 /** Latest PDI of a job: COA can be made only when it is PASS. NONE = no PDI recorded. */
 export type JobPdiStatus = "PASS" | "FAIL" | "PENDING" | "NONE";
@@ -37,10 +38,27 @@ export function latestPdiByProduction<T extends InspectionLike>(productions: Pro
   return result;
 }
 
-/** Job's PDI status by production id. */
-export function pdiStatusByProduction(productions: ProductionLike[], inspections: InspectionLike[]): Map<string, JobPdiStatus> {
+/** All 5 PDI checks are OK. */
+export const pdiChecksAllOk = (inspection: Record<string, unknown>) =>
+  PDI_CHECK_KEYS.every((key) => String(inspection[key] ?? "").trim().toUpperCase() === "OK");
+
+/**
+ * Job's PDI status by production id.
+ * Pass csStandardFor to allow COA when the item has no CS Std: a PDI that is not PASS / FAIL,
+ * with all 5 checks OK and no CS Std (item CS Std and PDI CS Required both empty), counts as PASS.
+ */
+export function pdiStatusByProduction<T extends InspectionLike>(
+  productions: ProductionLike[],
+  inspections: T[],
+  csStandardFor?: (productionId: string, inspection: T) => number | undefined,
+): Map<string, JobPdiStatus> {
   const result = new Map<string, JobPdiStatus>();
-  latestPdiByProduction(productions, inspections).forEach((latest, id) => result.set(id, latest ? pdiStatusOfResult(latest.result) : "NONE"));
+  latestPdiByProduction(productions, inspections).forEach((latest, id) => {
+    if (!latest) return result.set(id, "NONE");
+    const status = pdiStatusOfResult(latest.result);
+    const noCsStd = status === "PENDING" && csStandardFor && csStandardFor(id, latest) === undefined && pdiChecksAllOk(latest as Record<string, unknown>);
+    result.set(id, noCsStd ? "PASS" : status);
+  });
   return result;
 }
 

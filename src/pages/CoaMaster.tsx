@@ -29,11 +29,12 @@ export function CoaMaster() {
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
   const [inspections, , inspectionsLoading] = useData<PreDispatchInspection>("pre_dispatch_inspections", [], { firmScope: "all", storageKey: "coa-master-pdis", fields: ["productionId", "jobNo", "result", "updateTimestamp", "inspectionDate"] });
-  // COAs of jobs whose latest PDI is not PASS are hidden.
+  // COAs of jobs whose latest PDI is FAIL or missing are hidden (a saved COA already passed the PDI check,
+  // including jobs allowed because their item has no CS Std).
   const pdiPassedProductions = useMemo(() => {
     const jobs = records.map((record) => ({ id: record.productionId, transactionNo: record.jobNo }));
     const status = pdiStatusByProduction(jobs, inspections);
-    return new Set(jobs.filter((job) => status.get(String(job.id)) === "PASS").map((job) => String(job.id)));
+    return new Set(jobs.filter((job) => { const value = status.get(String(job.id)); return value === "PASS" || value === "PENDING"; }).map((job) => String(job.id)));
   }, [inspections, records]);
   const [search, setSearch] = useState("");
   const [company, setCompany] = useState("");

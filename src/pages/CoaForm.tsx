@@ -10,6 +10,7 @@ import { activeTemplateForCompany, buildCoaSourceMap, buildInitialCellValues, ge
 import { printCoaRecord } from "../lib/coaPrint";
 import { getOrganizationLogoUrl } from "../lib/pdfLogo";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
+import { resolveCsStandard } from "../lib/pdiResult";
 import { COA_PDI_MESSAGE, coaPdiBlockMessage, latestPdiByProduction, pdiStatusByProduction, type JobPdiStatus } from "../lib/coaPdiGate";
 import { buildJobLoadingRecords } from "../lib/jobLoadingRecords";
 import type { BoardLineQcCheck, Company, CoaCellValue, CoaRecord, CoaTemplate, DispatchPlan, Firm, Invoice, InvoiceLineItem, LoadingSlip, Order, OrderSchedule, PreDispatchInspection, PrintingQcCheck, Production, Setting } from "../types";
@@ -56,7 +57,15 @@ export function CoaForm() {
   const production = productions.find((value) => value.id === productionId);
   // COA only for jobs whose latest PDI is PASS; the COA's PDI values come from that same PDI.
   const latestPdi = useMemo(() => latestPdiByProduction(productions, pdis), [pdis, productions]);
-  const pdiStatus = useMemo(() => pdiStatusByProduction(productions, pdis), [pdis, productions]);
+  // No CS Std on the item (and no CS Required on the PDI) + all checks OK also allows COA.
+  const pdiStatus = useMemo(() => {
+    const productionById = new Map(productions.map((job) => [job.id, job]));
+    return pdiStatusByProduction(productions, pdis, (jobId, inspection) => {
+      const job = productionById.get(jobId) as any;
+      const item = (npdItems as any[]).find((value) => String(value.id) === String(job?.itemId || job?.npdId) || (text(value.erp) && text(value.erp) === text(job?.erpCode || job?.masterErp || inspection.erpCode)));
+      return resolveCsStandard(item?.csKgStd, inspection.csRequired);
+    });
+  }, [npdItems, pdis, productions]);
   const pdiPassed = (jobId: string) => pdiStatus.get(jobId) === "PASS";
   const jobLoading = useMemo(() => buildJobLoadingRecords(productions, loadingSlips, dispatchPlans), [productions, loadingSlips, dispatchPlans]);
   const contextFor = (job: Production) => resolveCoaSourceContext(job, companies, firms, orders, schedules, invoices, invoiceLines, pdis, boardlineRows, printingRows, npdItems as any[], jobLoading.get(job.id) || [], latestPdi.get(job.id) || null);

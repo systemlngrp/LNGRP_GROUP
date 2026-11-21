@@ -20311,14 +20311,32 @@ app.post("/api/coa-records", async (req, res) => {
     if (required.some((value) => value === undefined || value === null || value === "")) return res.status(400).json({ error: "Template, company, Job No., date, and COA values are required." });
     // COA only after the job's latest PDI is PASS (PDIs saved on the job first, else by job no.).
     const [pdiRows] = await db.query(
-      "SELECT result FROM `pre_dispatch_inspections` WHERE productionId = ? OR LOWER(TRIM(jobNo)) = LOWER(TRIM(?)) ORDER BY (productionId = ?) DESC, COALESCE(NULLIF(updateTimestamp, ''), inspectionDate) DESC LIMIT 1",
+      "SELECT result, csRequired, erpCode, printingArtworkCheck, printingColorCheck, boxSquaringCheck, flapGapCheck, jointPastingDelaminationCheck FROM `pre_dispatch_inspections` WHERE productionId = ? OR LOWER(TRIM(jobNo)) = LOWER(TRIM(?)) ORDER BY (productionId = ?) DESC, COALESCE(NULLIF(updateTimestamp, ''), inspectionDate) DESC LIMIT 1",
       [String(body.productionId), String(body.jobNo), String(body.productionId)]
     );
     const latestPdi = (pdiRows as any[])[0];
     const latestPdiResult = String(latestPdi?.result || "").trim().toLowerCase();
     if (!latestPdi) return res.status(400).json({ error: `Job ${body.jobNo}: PDI not recorded – complete the PDI first.` });
     if (["qc fail", "pdi fail", "fail", "qc hold", "hold"].includes(latestPdiResult)) return res.status(400).json({ error: `Job ${body.jobNo}: PDI FAIL – COA cannot be made for this job.` });
-    if (!["qc pass", "pdi pass", "pass"].includes(latestPdiResult)) return res.status(400).json({ error: "COA can be generated only after PDI PASS." });
+    if (!["qc pass", "pdi pass", "pass"].includes(latestPdiResult)) {
+      // Also allowed: all 5 checks OK and no CS Std (item CS Std and PDI CS Required both empty).
+      const checksOk = ["printingArtworkCheck", "printingColorCheck", "boxSquaringCheck", "flapGapCheck", "jointPastingDelaminationCheck"]
+        .every((key) => String(latestPdi[key] ?? "").trim().toUpperCase() === "OK");
+      const positive = (value: unknown) => { const num = Number(String(value ?? "").trim()); return Number.isFinite(num) && num > 0; };
+      let noCsStd = checksOk && !positive(latestPdi.csRequired);
+      if (noCsStd) {
+        const [jobRows] = await db.query("SELECT itemId, npdId, erpCode, masterErp FROM `productions` WHERE id = ? LIMIT 1", [String(body.productionId)]);
+        const job = (jobRows as any[])[0] || {};
+        const ids = [job.itemId, job.npdId].map((value) => String(value ?? "").trim()).filter(Boolean);
+        const erps = [job.erpCode, job.masterErp, latestPdi.erpCode].map((value) => String(value ?? "").trim()).filter(Boolean);
+        if (ids.length || erps.length) {
+          const where = [ids.length ? `id IN (${ids.map(() => "?").join(",")})` : "", erps.length ? `erp IN (${erps.map(() => "?").join(",")})` : ""].filter(Boolean).join(" OR ");
+          const [itemRows] = await db.query(`SELECT csKgStd FROM \`npd\` WHERE ${where}`, [...ids, ...erps]);
+          if ((itemRows as any[]).some((item) => positive(item.csKgStd))) noCsStd = false;
+        }
+      }
+      if (!noCsStd) return res.status(400).json({ error: "COA can be generated only after PDI PASS." });
+    }
     const now = new Date().toISOString();
     const values = [id, String(body.coaNo || `COA-${new Date().getFullYear()}-${Date.now()}`), body.templateId, Number(body.templateVersion || 1), JSON.stringify(body.templateSnapshot), body.companyId, body.companyName, body.firmId || null, body.firmName || null, body.productionId, body.jobNo, body.erpCode || null, body.itemName || null, body.invoiceNo || null, body.invoiceQty ?? null, body.batchNo || null, body.coaDate, JSON.stringify(body.headerData), JSON.stringify(body.cellValues), manager && body.status === "Final" ? "Final" : "Draft", existing?.createdBy || actor, body.createdTimestamp || existing?.createdTimestamp || now, actor, now];
     await db.query("INSERT INTO `coa_records` (id, coaNo, templateId, templateVersion, templateSnapshot, companyId, companyName, firmId, firmName, productionId, jobNo, erpCode, itemName, invoiceNo, invoiceQty, batchNo, coaDate, headerData, cellValues, status, createdBy, createdTimestamp, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE coaNo=VALUES(coaNo), templateId=VALUES(templateId), templateVersion=VALUES(templateVersion), templateSnapshot=VALUES(templateSnapshot), companyId=VALUES(companyId), companyName=VALUES(companyName), firmId=VALUES(firmId), firmName=VALUES(firmName), jobNo=VALUES(jobNo), erpCode=VALUES(erpCode), itemName=VALUES(itemName), invoiceNo=VALUES(invoiceNo), invoiceQty=VALUES(invoiceQty), batchNo=VALUES(batchNo), coaDate=VALUES(coaDate), headerData=VALUES(headerData), cellValues=VALUES(cellValues), status=VALUES(status), updatedBy=VALUES(updatedBy), updateTimestamp=VALUES(updateTimestamp)", values);
