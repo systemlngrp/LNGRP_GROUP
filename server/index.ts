@@ -5986,11 +5986,15 @@ async function getPool() {
     // quota. Keep the pool deliberately small; the application is primarily
     // a single-user ERP and does not need ten concurrent DB sessions.
     connectionLimit: 3,
-    maxIdle: 2,
-    idleTimeout: 60000, // idle connections timeout, in milliseconds, the default value 60000
+    // Keep every pooled connection open and reuse it. Closing idle ones after
+    // 60 s (and dropping the third one at once) made the server open about 7 new
+    // connections a minute, close to Hostinger's hourly cap on its own.
+    maxIdle: 3,
+    idleTimeout: 10 * 60 * 1000,
     queueLimit: 20,
     connectTimeout: 10000, // 10 seconds timeout
-    enableKeepAlive: false,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 30000,
   };
 
   poolCreationPromise = Promise.resolve().then(() => {
