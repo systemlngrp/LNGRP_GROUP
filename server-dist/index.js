@@ -6274,6 +6274,73 @@ async function backfillMissingConsumptionTransactionNos(db) {
     }
     return rows.length;
 }
+async function mergePhpAnalysisDuplicatesIntoSheetItems(db) {
+    // One-time (21-Nov-2026, approved by the owner): 13 PHP items exist twice,
+    // an old PHP-analysis copy (which every PHP job / loading slip points to by
+    // its id, and which holds the Opening Qty) and a sheet copy (real NPD ID,
+    // no links). Keep the linked copy, give it the sheet copy's details (NPD ID,
+    // phpid, dimensions...), then delete the sheet copy. id, itemId, openingQty
+    // and productionOutputQty are never changed. All 26 rows are copied to
+    // php_item_master_merge_backup_20261121 first.
+    const migrationKey = "migration/merge-php-analysis-duplicates-v1";
+    const pairs = [
+        ["78000013", "35389675-ae71-4049-bacc-fba72f7ed306", "64fd3500-07da-4c2c-9b87-493aa3d2fee5"],
+        ["78000065", "4299deec-d1ca-4be1-b0ee-c0e6eea6f678", "a2b7ff7a-c83e-4e06-bb83-adeffd261939"],
+        ["78000067", "4544af99-8994-481a-90a9-986593d0f6ce", "78ac5b71-75cd-4e1f-94cb-c642cf7ae02e"],
+        ["78000059", "4d997eae-8918-453d-8fe0-83344867bb1f", "738aeb7e-269b-4306-a337-de9485dc6753"],
+        ["78000044", "52ea2815-b515-4387-b3db-0c31ecd02e67", "a36029c0-28fa-4bf7-9fe5-b35f7903de43"],
+        ["78000049", "79773f2b-f5db-439f-8322-8392e5001e2f", "13814fcf-3c8a-476f-8c1e-3db8eb769632"],
+        ["75010319", "7a098f7d-2274-4cb3-bc31-4d98129831a7", "7dad36e6-3ebc-44a4-89c6-54f6186a3364"],
+        ["78000053", "97735560-3190-40ab-bc1d-dc3581ad2cfc", "9a6467cc-c21f-4900-9772-403d4348d8a3"],
+        ["78000047", "9dc80c9a-8546-4ebb-a0c4-2c3a1d919eeb", "b8df1580-08c8-438e-953b-45fd3cb439d7"],
+        ["75010090", "b3a74534-a4d6-4c70-850d-0c897ca25271", "56dc3ab9-a5ac-4344-8598-31281b91a4a2"],
+        ["78000058", "b3c461e5-1b6b-4a49-b913-93c27361111c", "cd6986e8-a820-41ab-8e65-05ad5e73fd1f"],
+        ["78000054", "c842b03e-1164-4ce2-9415-07b7a01f47de", "30c9182c-b296-40b9-a3c1-c42b978f4f23"],
+        ["78000052", "ef5f2915-7ccf-493a-a355-78af2098b241", "aeeb52d2-1dfd-49e7-add8-56bb425eaf2a"],
+    ];
+    const keepColumns = new Set(["id", "itemId", "openingQty", "productionOutputQty"]);
+    const conn = await db.getConnection();
+    try {
+        const [markerRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [migrationKey]);
+        if (markerRows.length)
+            return { merged: 0, alreadyApplied: true };
+        const allIds = pairs.flatMap(([, keepId, sheetId]) => [keepId, sheetId]);
+        const [colRows] = await conn.query("SHOW COLUMNS FROM `php_item_master`");
+        const copyColumns = colRows.map((row) => String(row.Field)).filter((column) => !keepColumns.has(column));
+        await conn.query("DROP TABLE IF EXISTS php_item_master_merge_backup_20261121");
+        await conn.query(`CREATE TABLE php_item_master_merge_backup_20261121 AS SELECT * FROM php_item_master WHERE id IN (${allIds.map(() => "?").join(", ")})`, allIds);
+        await conn.beginTransaction();
+        let merged = 0;
+        for (const [erp, keepId, sheetId] of pairs) {
+            const [rows] = await conn.query("SELECT id, syncSource, TRIM(erpItemCode) AS erp FROM php_item_master WHERE id IN (?, ?)", [keepId, sheetId]);
+            const keep = rows.find((row) => row.id === keepId);
+            const sheet = rows.find((row) => row.id === sheetId);
+            if (!keep || !sheet || keep.syncSource !== "php_analysis" || keep.erp !== erp || sheet.erp !== erp) {
+                console.warn(`[DB] PHP merge skipped ${erp}: rows not as expected.`);
+                continue;
+            }
+            const setSql = copyColumns.map((column) => `k.\`${column}\` = s.\`${column}\``).join(", ");
+            await conn.query(`UPDATE php_item_master k JOIN php_item_master s ON s.id = ? SET ${setSql} WHERE k.id = ?`, [sheetId, keepId]);
+            await conn.query("UPDATE php_item_master SET syncStatus = 'active', updatedBy = 'Merged with sheet copy', updateTimestamp = ? WHERE id = ?", [new Date().toISOString(), keepId]);
+            await conn.query("DELETE FROM php_item_master WHERE id = ?", [sheetId]);
+            merged++;
+        }
+        await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)", [migrationKey, merged]);
+        await conn.commit();
+        console.log(`[DB] PHP analysis duplicates merged: ${merged} of ${pairs.length}.`);
+        return { merged, alreadyApplied: false };
+    }
+    catch (error) {
+        try {
+            await conn.rollback();
+        }
+        catch { }
+        throw error;
+    }
+    finally {
+        conn.release();
+    }
+}
 async function restoreSheetSyncRemovedFlags(db) {
     // One-time (21-Nov-2026, asked by the owner): the sheet sync wrongly marked
     // NPD, PHP and Plate items "removed" (its finalize list was partial). Only
@@ -10482,6 +10549,12 @@ async function initDb(retries = 5) {
                     sqlState: details?.sqlState || "",
                     message: details?.message || String(err),
                 });
+            }
+            try {
+                await mergePhpAnalysisDuplicatesIntoSheetItems(db);
+            }
+            catch (err) {
+                console.warn("[DB] PHP duplicate merge failed:", err.message);
             }
             try {
                 await restoreSheetSyncRemovedFlags(db);
