@@ -1,5 +1,5 @@
-import React from "react";
-import ReactSelect, { MultiValue } from "react-select";
+import React, { useRef, useState } from "react";
+import ReactSelect, { components, MenuListProps, MultiValue } from "react-select";
 
 interface OptionType {
   value: string;
@@ -7,7 +7,32 @@ interface OptionType {
   searchText?: string;
 }
 
-/** Searchable multi-select in the same style as <Select compact>. Empty selection = All. */
+const matchesSearch = (option: OptionType, inputValue: string) => {
+  const query = inputValue.trim().toLowerCase();
+  return !query || `${option.searchText || option.label}`.toLowerCase().includes(query);
+};
+
+// "Select all" / "Clear" links above the options. Select all takes the options shown
+// (all of them, or the ones matching the typed search).
+function MenuListWithActions(props: MenuListProps<OptionType, true>) {
+  const { onSelectAll, onClearAll } = props.selectProps as unknown as { onSelectAll: (inputValue: string) => void; onClearAll: () => void };
+  const keepOpen = (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); };
+  return (
+    <>
+      <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-slate-50 px-2 py-1.5 text-[11px] font-black">
+        <button type="button" onMouseDown={keepOpen} onClick={() => onSelectAll(props.selectProps.inputValue)} className="rounded px-1.5 py-0.5 text-indigo-700 hover:bg-indigo-50">Select all</button>
+        <button type="button" onMouseDown={keepOpen} onClick={onClearAll} className="rounded px-1.5 py-0.5 text-slate-700 hover:bg-slate-200">Clear</button>
+      </div>
+      <components.MenuList {...props}>{props.children}</components.MenuList>
+    </>
+  );
+}
+
+/**
+ * Searchable multi-select in the same style as <Select compact>. Empty selection = All.
+ * While the list is open, ticks are kept here and applied once when it closes, so the
+ * page reloads once instead of after every tick. Removing a chip or ✕ applies at once.
+ */
 export function MultiSelect({ options, value, onChange, placeholder = "All", id }: {
   options: OptionType[];
   value: string[];
@@ -15,22 +40,42 @@ export function MultiSelect({ options, value, onChange, placeholder = "All", id 
   placeholder?: string;
   id?: string;
 }) {
-  const selected = value
+  const [draft, setDraft] = useState<string[] | null>(null); // ticks while the list is open
+  const draftRef = useRef<string[] | null>(null);
+  const setDraftValues = (next: string[] | null) => { draftRef.current = next; setDraft(next); };
+  const current = draft ?? value;
+  const selected = current
     .map((entry) => options.find((option) => option.value === entry) || { value: entry, label: entry })
     .filter(Boolean);
+  const sameValues = (a: string[], b: string[]) => a.length === b.length && a.every((entry, index) => entry === b[index]);
+  const extraProps = {
+    onSelectAll: (inputValue: string) => {
+      const base = draftRef.current ?? value;
+      const shown = options.filter((option) => matchesSearch(option, inputValue)).map((option) => option.value);
+      setDraftValues([...base, ...shown.filter((entry) => !base.includes(entry))]);
+    },
+    onClearAll: () => setDraftValues([]),
+  };
   return (
     <ReactSelect<OptionType, true>
+      {...(extraProps as object)}
       inputId={id}
       isMulti
       value={selected}
-      onChange={(next: MultiValue<OptionType>) => onChange(next.map((option) => option.value))}
-      options={options}
-      filterOption={(candidate, inputValue) => {
-        const query = inputValue.trim().toLowerCase();
-        if (!query) return true;
-        const option = candidate.data as OptionType;
-        return `${option.searchText || option.label}`.toLowerCase().includes(query);
+      onChange={(next: MultiValue<OptionType>) => {
+        const values = next.map((option) => option.value);
+        if (draftRef.current !== null) setDraftValues(values);
+        else onChange(values);
       }}
+      onMenuOpen={() => setDraftValues(value)}
+      onMenuClose={() => {
+        const pending = draftRef.current;
+        setDraftValues(null);
+        if (pending && !sameValues(pending, value)) onChange(pending);
+      }}
+      components={{ MenuList: MenuListWithActions }}
+      options={options}
+      filterOption={(candidate, inputValue) => matchesSearch(candidate.data as OptionType, inputValue)}
       closeMenuOnSelect={false}
       hideSelectedOptions={false}
       isClearable
@@ -43,7 +88,7 @@ export function MultiSelect({ options, value, onChange, placeholder = "All", id 
       formatOptionLabel={(option, meta) =>
         meta.context === "menu" ? (
           <span className="flex items-center gap-2">
-            <input type="checkbox" readOnly tabIndex={-1} checked={value.includes(option.value)} className="h-3.5 w-3.5 accent-indigo-600" />
+            <input type="checkbox" readOnly tabIndex={-1} checked={current.includes(option.value)} className="h-3.5 w-3.5 accent-indigo-600" />
             <span>{option.label}</span>
           </span>
         ) : option.label
