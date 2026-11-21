@@ -3,7 +3,7 @@ import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Plus, Edit, Trash2 } from "lucide-react";
-import { LoadingSlip, Truck } from "../types";
+import { LoadingSlip, Truck, TruckCategory } from "../types";
 import { Spinner } from "../components/Spinner";
 
 
@@ -19,6 +19,8 @@ export function Trucks() {
   const [trucks, setTrucks, isLoading] = useData<Truck>("trucks", []);
   // Only used to count slips per truck.
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { fields: ["truckId"] });
+  const [categories] = useData<TruckCategory>("truck_categories", [], { firmScope: "all" });
+  const categoryName = (id?: string | null) => categories.find((category) => category.id === id)?.name || "";
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -29,10 +31,19 @@ export function Trucks() {
   const [driverName, setDriverName] = useState("");
   const [mobileNo, setMobileNo] = useState("");
   const [truckType, setTruckType] = useState<"Internal" | "External">("Internal");
+  const [categoryId, setCategoryId] = useState("");
+  // Active categories, plus this truck's current one even if it was later made Inactive.
+  const categoryOptions = useMemo(() => categories
+    .filter((category) => String(category.active).toLowerCase() === "yes" || category.id === categoryId)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })), [categories, categoryId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!truckNo.trim() || !driverName.trim()) return;
+    if (!categoryId) {
+      alert("Select the Truck Category.");
+      return;
+    }
 
     // Duplicate check
     const isDuplicate = trucks.some(t => 
@@ -52,6 +63,7 @@ export function Trucks() {
         driverName: driverName.trim().toUpperCase(), 
         mobileNo: mobileNo.trim(), 
         truckType,
+        categoryId,
         ...audit 
       };
 
@@ -71,6 +83,7 @@ export function Trucks() {
     setDriverName("");
     setMobileNo("");
     setTruckType("Internal");
+    setCategoryId("");
     setEditingId(null);
     setIsFormOpen(false);
   };
@@ -96,24 +109,27 @@ export function Trucks() {
   );
   const [typeFilter, setTypeFilter] = useState("");
   const [driverFilter, setDriverFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const narrowedTrucks = useMemo(() => sortedTrucks.filter((truck) =>
     (!typeFilter || (truck.truckType || "External") === typeFilter) &&
+    (!categoryFilter || (categoryFilter === "__none" ? !truck.categoryId : truck.categoryId === categoryFilter)) &&
     (!driverFilter || String(truck.driverName || "").trim().toUpperCase() === driverFilter)
-  ), [sortedTrucks, typeFilter, driverFilter]);
+  ), [sortedTrucks, typeFilter, driverFilter, categoryFilter]);
   const filteredTrucks = useTableSearch(
     narrowedTrucks,
     searchTerm,
-    (truck) => [truck.truckNo, String(truck.driverName || "").toUpperCase(), truck.mobileNo, truck.truckType || "External", loadingCountByTruckId.get(truck.id) || 0],
-    [loadingCountByTruckId],
+    (truck) => [truck.truckNo, String(truck.driverName || "").toUpperCase(), truck.mobileNo, truck.truckType || "External", categoryName(truck.categoryId), loadingCountByTruckId.get(truck.id) || 0],
+    [loadingCountByTruckId, categories],
   );
   const { sorted: sortedTruckRows, sort, toggle: toggleSort } = useTableSort(filteredTrucks, (truck, key) => {
     switch (key) {
       case "driverName": return String(truck.driverName || "").toUpperCase();
       case "truckType": return truck.truckType || "External";
+      case "category": return categoryName(truck.categoryId);
       case "loadings": return loadingCountByTruckId.get(truck.id) || 0;
       default: return (truck as any)[key];
     }
-  }, [loadingCountByTruckId]);
+  }, [loadingCountByTruckId, categories]);
 
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -143,6 +159,7 @@ export function Trucks() {
     setDriverName(truck.driverName);
     setMobileNo(truck.mobileNo);
     setTruckType(truck.truckType === "Internal" ? "Internal" : "External");
+    setCategoryId(String(truck.categoryId || ""));
     setEditingId(truck.id);
     setIsFormOpen(true);
   };
@@ -214,6 +231,26 @@ export function Trucks() {
                 <option value="Internal">Internal</option>
               </select>
             </div>
+            <div className="flex flex-col space-y-1">
+              <label htmlFor="truckCategory" className="font-bold text-black text-sm uppercase">
+                Truck Category <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="truckCategory"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                required
+                className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors"
+              >
+                <option value="">Select category</option>
+                {categoryOptions.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}{String(category.active).toLowerCase() === "yes" ? "" : " (Inactive)"}
+                  </option>
+                ))}
+              </select>
+              {!categories.length ? <span className="text-xs font-semibold text-amber-700">No categories yet. Add them in Masters → Truck Category.</span> : null}
+            </div>
           </div>
           <div className="flex space-x-3 pt-2 items-center">
             <button
@@ -236,8 +273,9 @@ export function Trucks() {
       )}
 
       {!isFormOpen ? (<>
-      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || typeFilter || driverFilter)} onClear={() => { setSearchTerm(""); setTypeFilter(""); setDriverFilter(""); }}>
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || typeFilter || driverFilter || categoryFilter)} onClear={() => { setSearchTerm(""); setTypeFilter(""); setDriverFilter(""); setCategoryFilter(""); }}>
         <SelectFilter label="Truck Type" value={typeFilter} onChange={setTypeFilter} options={[{ value: "Internal", label: "Internal" }, { value: "External", label: "External" }]} />
+        <SelectFilter label="Category" value={categoryFilter} onChange={setCategoryFilter} options={[...categories.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })).map((category) => ({ value: category.id, label: category.name })), { value: "__none", label: "No category" }]} />
         <SelectFilter label="Driver" value={driverFilter} onChange={setDriverFilter} options={toFilterOptions(trucks.map((truck) => String(truck.driverName || "").trim().toUpperCase()))} />
       </ReportFilterBox>
 
@@ -262,6 +300,7 @@ export function Trucks() {
                             <div className="text-sm font-bold">{truck.driverName.toUpperCase()}</div>
                             <div className="text-xs text-slate-600">{truck.mobileNo || "-"}</div>
                             <div className="text-xs font-bold text-black">Type: {truck.truckType || "External"}</div>
+                            <div className="text-xs font-bold text-black">Category: {categoryName(truck.categoryId) || "Not set"}</div>
                             <div className="text-xs font-bold text-black">Loadings: {loadingCount}</div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -295,6 +334,7 @@ export function Trucks() {
               <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Driver Name" sortKey="driverName" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Mobile No." sortKey="mobileNo" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Truck Type" sortKey="truckType" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Category" sortKey="category" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-6 py-3 text-center text-sm font-bold text-black uppercase border border-black"><SortHeader label="Loadings" sortKey="loadings" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black">Actions</th>
             </tr>
@@ -302,7 +342,7 @@ export function Trucks() {
           <tbody className="divide-y divide-black bg-white">
             {filteredTrucks.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-black font-medium tracking-wide">
+                <td colSpan={8} className="px-6 py-8 text-center text-black font-medium tracking-wide">
                   {isLoading ? <div className="flex justify-center"><Spinner /></div> : 'No trucks found. Click "Add New Truck" to create one.'}
                 </td>
               </tr>
@@ -316,6 +356,7 @@ export function Trucks() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-black border border-black">{truck.driverName.toUpperCase()}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-black border border-black">{truck.mobileNo || "-"}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-black border border-black">{truck.truckType || "External"}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-black border border-black">{categoryName(truck.categoryId) || <span className="font-bold text-amber-700">Not set</span>}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold text-black border border-black">{loadingCount}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium border border-black">
                     {canManage ? <button

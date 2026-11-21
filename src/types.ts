@@ -1565,6 +1565,16 @@ export interface Truck {
   statusUpdatedAt?: string;
   statusUpdatedBy?: string;
   partyName?: string;
+  categoryId?: string | null;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
+export interface TruckCategory {
+  id: string;
+  name: string;
+  description?: string | null;
+  active: "Yes" | "No" | string;
   updatedBy?: string;
   updateTimestamp?: string;
 }

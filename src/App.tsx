@@ -70,6 +70,7 @@ const GstRateMasters = lazy(() => import("./pages/GstRateMasters").then((module)
 const ExpenseMasters = lazy(() => import("./pages/ExpenseMasters").then((module) => ({ default: module.ExpenseMasters })));
 const Companies = lazy(() => import("./pages/Companies").then((module) => ({ default: module.Companies })));
 const Trucks = lazy(() => import("./pages/Trucks").then((module) => ({ default: module.Trucks })));
+const TruckCategories = lazy(() => import("./pages/TruckCategories").then((module) => ({ default: module.TruckCategories })));
 const Machines = lazy(() => import("./pages/Machines").then((module) => ({ default: module.Machines })));
 const RapcRangeMaster = lazy(() => import("./pages/RapcRangeMaster").then((module) => ({ default: module.RapcRangeMaster })));
 const NpdMaster = lazy(() => import("./pages/NpdMaster").then((module) => ({ default: module.NpdMaster })));
@@ -286,6 +287,7 @@ export default function App() {
           <Route path="masters/expenses" element={<ExpenseMasters />} />
           <Route path="masters/companies" element={<Companies />} />
           <Route path="masters/trucks" element={<Trucks />} />
+          <Route path="masters/truck-categories" element={<TruckCategories />} />
           <Route path="masters/machines" element={<Machines />} />
           <Route path="masters/rapc-ranges" element={<RapcRangeMaster />} />
           <Route path="masters/spec" element={<NewSpec />} />

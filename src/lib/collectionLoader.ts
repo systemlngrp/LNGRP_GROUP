@@ -81,7 +81,7 @@ const JOIN_DEPENDENCIES: Record<string, string[]> = {
  * shared between screens whichever firm is selected. */
 const SMALL_GLOBAL_LISTS = new Set([
   "settings", "firms", "suppliers", "companies", "units", "colors", "services", "material_groups",
-  "item_groups", "states", "trucks", "machines", "gst_rate_masters",
+  "item_groups", "states", "trucks", "truck_categories", "machines", "gst_rate_masters",
 ]);
 
 /** For a list loaded from a custom address: does this change need a reload? */
