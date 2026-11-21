@@ -24,6 +24,8 @@ type CustomerRow = {
   loadedQty: number;
   invoicedQty: number;
   pendingQty: number;
+  // Total FFG minus Total Invoiced; negative when more was invoiced than produced.
+  ffgLessInvoiced: number;
 };
 
 const num = (value: unknown) => Number(value) || 0;
@@ -88,7 +90,7 @@ export function ScheduledCustomerSummary() {
       if (firmFilter && String(schedule.firmId || order?.firmId || "") !== firmFilter) continue;
       const company = order?.companyId ? companyById.get(order.companyId) : undefined;
       const id = company?.id || "__none__";
-      const row = byCustomer.get(id) || { id, companyName: company?.name || "-", schedules: 0, scheduledQty: 0, canceledQty: 0, ffgQty: 0, loadedQty: 0, invoicedQty: 0, pendingQty: 0 };
+      const row = byCustomer.get(id) || { id, companyName: company?.name || "-", schedules: 0, scheduledQty: 0, canceledQty: 0, ffgQty: 0, loadedQty: 0, invoicedQty: 0, pendingQty: 0, ffgLessInvoiced: 0 };
       const load = loadBySchedule.get(schedule.id);
       if (pendingOnly && num(schedule.qty) - num(schedule.canceledQty) - (load?.invoiced || 0) <= 0) continue;
       row.schedules += 1;
@@ -98,6 +100,7 @@ export function ScheduledCustomerSummary() {
       row.loadedQty += load?.loaded || 0;
       row.invoicedQty += load?.invoiced || 0;
       row.pendingQty += Math.max(num(schedule.qty) - num(schedule.canceledQty) - (load?.invoiced || 0), 0);
+      row.ffgLessInvoiced = row.ffgQty - row.invoicedQty;
       byCustomer.set(id, row);
     }
     return Array.from(byCustomer.values()).sort((a, b) => a.companyName.localeCompare(b.companyName, undefined, { sensitivity: "base" }));
@@ -107,7 +110,7 @@ export function ScheduledCustomerSummary() {
     const words = searchWords(searchTerm);
     if (words.length === 0) return customerRows;
     return customerRows.filter((row) => {
-      const text = rowSearchText([row.companyName, row.schedules, row.scheduledQty, row.canceledQty, row.ffgQty, row.loadedQty, row.invoicedQty, row.pendingQty]);
+      const text = rowSearchText([row.companyName, row.schedules, row.scheduledQty, row.canceledQty, row.ffgQty, row.loadedQty, row.invoicedQty, row.pendingQty, row.ffgLessInvoiced]);
       return words.every((word) => text.includes(word));
     });
   }, [customerRows, searchTerm]);
@@ -130,8 +133,9 @@ export function ScheduledCustomerSummary() {
           loadedQty: sum.loadedQty + row.loadedQty,
           invoicedQty: sum.invoicedQty + row.invoicedQty,
           pendingQty: sum.pendingQty + row.pendingQty,
+          ffgLessInvoiced: sum.ffgLessInvoiced + row.ffgLessInvoiced,
         }),
-        { schedules: 0, scheduledQty: 0, canceledQty: 0, ffgQty: 0, loadedQty: 0, invoicedQty: 0, pendingQty: 0 },
+        { schedules: 0, scheduledQty: 0, canceledQty: 0, ffgQty: 0, loadedQty: 0, invoicedQty: 0, pendingQty: 0, ffgLessInvoiced: 0 },
       ),
     [filteredRows],
   );
@@ -204,11 +208,12 @@ export function ScheduledCustomerSummary() {
               <th className="border border-black bg-amber-50 px-2 py-2 text-right"><SortHeader label="Total Loaded" sortKey="loadedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="border border-black bg-purple-50 px-2 py-2 text-right"><SortHeader label="Total Invoiced" sortKey="invoicedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="border border-black bg-sky-50 px-2 py-2 text-right text-sky-800"><SortHeader label="Total Pending" sortKey="pendingQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black bg-orange-50 px-2 py-2 text-right text-orange-800"><SortHeader label="FFG - Invoiced" sortKey="ffgLessInvoiced" sort={sort} onToggle={toggleSort} align="right" /></th>
             </tr>
           </thead>
           <tbody className="bg-white">
             {paginatedItems.length === 0 ? (
-              <tr><td colSpan={9} className="border border-black px-3 py-8 text-center font-bold text-slate-500">{schedulesLoading ? "Loading…" : "No schedules found."}</td></tr>
+              <tr><td colSpan={10} className="border border-black px-3 py-8 text-center font-bold text-slate-500">{schedulesLoading ? "Loading…" : "No schedules found."}</td></tr>
             ) : (
               paginatedItems.map((row, index) => (
                 <tr key={row.id} className="hover:bg-slate-50">
@@ -221,6 +226,7 @@ export function ScheduledCustomerSummary() {
                   <td className="border border-black bg-amber-50/30 px-3 py-2 text-right font-medium text-amber-700">{row.loadedQty.toLocaleString()}</td>
                   <td className="border border-black bg-purple-50/30 px-3 py-2 text-right font-medium text-purple-700">{row.invoicedQty.toLocaleString()}</td>
                   <td className="border border-black bg-sky-50/40 px-3 py-2 text-right font-bold text-sky-800">{row.pendingQty.toLocaleString()}</td>
+                  <td className={`border border-black bg-orange-50/40 px-3 py-2 text-right font-bold ${row.ffgLessInvoiced < 0 ? "text-red-600" : "text-orange-800"}`}>{row.ffgLessInvoiced.toLocaleString()}</td>
                 </tr>
               ))
             )}
@@ -236,6 +242,7 @@ export function ScheduledCustomerSummary() {
                 <td className="border border-black bg-amber-50 px-3 py-2 text-right text-amber-700">{totals.loadedQty.toLocaleString()}</td>
                 <td className="border border-black bg-purple-50 px-3 py-2 text-right text-purple-700">{totals.invoicedQty.toLocaleString()}</td>
                 <td className="border border-black bg-sky-50 px-3 py-2 text-right text-sky-800">{totals.pendingQty.toLocaleString()}</td>
+                <td className="border border-black bg-orange-50 px-3 py-2 text-right text-orange-800">{totals.ffgLessInvoiced.toLocaleString()}</td>
               </tr>
             </tfoot>
           ) : null}
