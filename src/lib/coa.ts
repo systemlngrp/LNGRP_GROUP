@@ -1,4 +1,5 @@
 import type { BoardLineQcCheck, Company, CoaAutoRule, CoaCellValue, CoaTemplate, CoaTemplateLayout, CoaTemplateRow, Firm, Invoice, InvoiceLineItem, Order, OrderSchedule, PreDispatchInspection, PrintingQcCheck, Production } from "../types";
+import type { JobLoadingRecord } from "./jobLoadingRecords";
 
 type AnyRecord = Record<string, any>;
 
@@ -63,6 +64,9 @@ export type CoaSourceContext = {
   order?: Order;
   invoice?: Invoice;
   invoiceLine?: InvoiceLineItem;
+  /** All invoices raised against this job's loading slips, oldest first, and their total qty for the job. */
+  jobInvoices?: Invoice[];
+  jobInvoiceQty?: number;
   pdi?: PreDispatchInspection;
   boardline?: BoardLineQcCheck;
   printing?: PrintingQcCheck;
@@ -126,30 +130,47 @@ export function buildCoaObservations(seed: string, standards: { length?: unknown
   };
 }
 
-export function resolveCoaSourceContext(production: Production, companies: Company[], firms: Firm[], orders: Order[], schedules: OrderSchedule[], invoices: Invoice[], invoiceLines: InvoiceLineItem[], pdis: PreDispatchInspection[], boardlineRows: BoardLineQcCheck[], printingRows: PrintingQcCheck[], items: AnyRecord[] = []): CoaSourceContext {
+export function resolveCoaSourceContext(production: Production, companies: Company[], firms: Firm[], orders: Order[], schedules: OrderSchedule[], invoices: Invoice[], invoiceLines: InvoiceLineItem[], pdis: PreDispatchInspection[], boardlineRows: BoardLineQcCheck[], printingRows: PrintingQcCheck[], items: AnyRecord[] = [], loadingRecords?: JobLoadingRecord[], latestPdi?: PreDispatchInspection | null): CoaSourceContext {
   const schedule = schedules.find((value) => id(value.id) === id(production.scheduleId));
   const order = orders.find((value) => id(value.id) === id(schedule?.orderId) || (id(value.companyId) === id((production as AnyRecord).companyId) && id(value.itemId) === id(production.itemId)));
   const companyId = id((production as AnyRecord).companyId || order?.companyId);
   const company = companies.find((value) => id(value.id) === companyId) || companies.find((value) => text(value.name).toLowerCase() === text((production as AnyRecord).companyName).toLowerCase());
   const firm = firms.find((value) => id(value.id) === id(production.firmId));
-  const invoiceLine = invoiceLines
-    .filter((value) => id(value.itemId) === id(production.itemId) || id(value.npdId) === id(production.npdId))
-    .sort((a, b) => id(b.updateTimestamp).localeCompare(id(a.updateTimestamp)))[0];
-  const invoice = invoices
-    .filter((value) => id(value.id) === id(production.linkedInvoiceId) || id(value.companyId) === companyId)
-    .sort((a, b) => id(b.date || b.updateTimestamp).localeCompare(id(a.date || a.updateTimestamp)))[0];
-  const pdi = pdis.filter((value) => id(value.productionId) === id(production.id) || text(value.jobNo) === text(production.transactionNo)).sort((a, b) => id(b.updateTimestamp || b.inspectionDate).localeCompare(id(a.updateTimestamp || a.inspectionDate)))[0];
-  const boardline = boardlineRows.filter((value) => text(value.jobNo) === text(production.transactionNo)).sort((a, b) => id(b.updateTimestamp || b.timestamp).localeCompare(id(a.updateTimestamp || a.timestamp)))[0];
-  const printing = printingRows.filter((value) => text(value.jobNo) === text(production.transactionNo)).sort((a, b) => id(b.updateTimestamp || b.timestamp).localeCompare(id(a.updateTimestamp || a.timestamp)))[0];
+  // Invoices of this job only: the invoice lines raised against this job's loading slips
+  // (same rule as the Summary Sheet). No invoice yet -> Invoice No. / Qty stay blank.
+  const slipItems = new Map((loadingRecords || []).map((record) => [id(record.slip.id), record.itemIds.map((value) => id(value).toLowerCase())]));
+  const jobLines = invoiceLines.filter((line) => {
+    const itemIds = slipItems.get(id(line.loadingSlipId));
+    if (!itemIds || !line.invoiceId) return false;
+    return !itemIds.length || !id(line.itemId) || itemIds.includes(id(line.itemId).toLowerCase());
+  });
+  const invoiceById = new Map(invoices.map((value) => [id(value.id), value]));
+  const jobInvoices = [...new Set(jobLines.map((line) => id(line.invoiceId)))]
+    .map((invoiceId) => invoiceById.get(invoiceId))
+    .filter((value): value is Invoice => Boolean(value) && text((value as AnyRecord).status).toLowerCase() !== "cancelled")
+    .sort((a, b) => id(a.date || a.updateTimestamp).localeCompare(id(b.date || b.updateTimestamp)));
+  const liveInvoiceIds = new Set(jobInvoices.map((value) => id(value.id)));
+  const liveLines = jobLines.filter((line) => liveInvoiceIds.has(id(line.invoiceId)));
+  const jobInvoiceQty = liveLines.reduce((sum, line) => sum + (Number(line.qty) || 0), 0);
+  const invoice = jobInvoices[jobInvoices.length - 1];
+  const invoiceLine = liveLines.filter((line) => id(line.invoiceId) === id(invoice?.id))[0];
+  // The PDI that decided PASS (passed in by the form); else the job's latest PDI.
+  const pdi = latestPdi !== undefined ? latestPdi || undefined : pdis.filter((value) => id(value.productionId) === id(production.id) || text(value.jobNo) === text(production.transactionNo)).sort((a, b) => id(b.updateTimestamp || b.inspectionDate).localeCompare(id(a.updateTimestamp || a.inspectionDate)))[0];
+  // QC checks by Transaction No. or Job Card No., ignoring spaces and capitals.
+  const jobKey = (value: unknown) => text(value).toUpperCase().replace(/\s+/g, "");
+  const jobKeys = new Set([production.transactionNo, production.jobCardNo].map(jobKey).filter(Boolean));
+  const latestQc = <T extends AnyRecord>(rows: T[]) => rows.filter((value) => jobKeys.has(jobKey(value.jobNo))).sort((a, b) => id(b.updateTimestamp || b.timestamp).localeCompare(id(a.updateTimestamp || a.timestamp)))[0];
+  const boardline = latestQc(boardlineRows as unknown as AnyRecord[]) as unknown as BoardLineQcCheck | undefined;
+  const printing = latestQc(printingRows as unknown as AnyRecord[]) as unknown as PrintingQcCheck | undefined;
   const itemKeys = [production.itemId, production.npdId].map(id).filter(Boolean);
   const erp = text(production.erpCode || production.masterErp || order?.erpCode);
   const item = items.find((value) => itemKeys.includes(id(value.id)) || itemKeys.includes(id(value.npdId)))
     || (erp ? items.find((value) => text(value.erp) === erp) : undefined);
-  return { production, company, firm, order, invoice, invoiceLine, pdi, boardline, printing, item };
+  return { production, company, firm, order, invoice, invoiceLine, jobInvoices, jobInvoiceQty, pdi, boardline, printing, item };
 }
 
 export function buildCoaSourceMap(context: CoaSourceContext, coaDate = new Date().toISOString().slice(0, 10)): Record<string, string> {
-  const { production, company, firm, order, invoice, invoiceLine, pdi, boardline, printing, item } = context;
+  const { production, company, firm, order, invoice, jobInvoices, jobInvoiceQty, pdi, boardline, printing, item } = context;
   const job = production as AnyRecord;
   const flute = text(job.flute || item?.flute);
   const layerGsm = ["l1", "f1", "l2", "f2", "l3"].map((key) => text(job[key] ?? item?.[key])).filter((value) => value && Number(value) !== 0).join(" / ");
@@ -197,8 +218,9 @@ export function buildCoaSourceMap(context: CoaSourceContext, coaDate = new Date(
     "pdi.flapGapCheck": sourceValue((pdi as AnyRecord)?.flapGapCheck),
     "pdi.jointCheck": sourceValue((pdi as AnyRecord)?.jointPastingDelaminationCheck),
     "pdi.printingColorCheck": sourceValue((pdi as AnyRecord)?.printingColorCheck),
-    invoiceNo: text(invoice?.invoiceNo),
-    invoiceQty: sourceValue(invoiceLine?.qty || production.plannedQty || production.qty),
+    // All invoices of this job; qty = total invoiced for this job. Blank when not invoiced yet.
+    invoiceNo: (jobInvoices?.length ? jobInvoices : invoice ? [invoice] : []).map((value) => text(value.invoiceNo || (value as AnyRecord).tallyInvNo)).filter(Boolean).join(", "),
+    invoiceQty: jobInvoiceQty ? String(Number(jobInvoiceQty.toFixed(2))) : "",
     batchNo: text((production as AnyRecord).batchNo || (production as AnyRecord).lotNo),
     "pdi.lengthId": sourceValue(pdi?.lengthId),
     "pdi.widthId": sourceValue(pdi?.widthId),

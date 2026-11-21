@@ -20069,7 +20069,10 @@ app.post("/api/coa-records", async (req, res) => {
       "SELECT result FROM `pre_dispatch_inspections` WHERE productionId = ? OR LOWER(TRIM(jobNo)) = LOWER(TRIM(?)) ORDER BY (productionId = ?) DESC, COALESCE(NULLIF(updateTimestamp, ''), inspectionDate) DESC LIMIT 1",
       [String(body.productionId), String(body.jobNo), String(body.productionId)]
     );
-    const latestPdiResult = String((pdiRows as any[])[0]?.result || "").trim().toLowerCase();
+    const latestPdi = (pdiRows as any[])[0];
+    const latestPdiResult = String(latestPdi?.result || "").trim().toLowerCase();
+    if (!latestPdi) return res.status(400).json({ error: `Job ${body.jobNo}: PDI not recorded – complete the PDI first.` });
+    if (["qc fail", "pdi fail", "fail", "qc hold", "hold"].includes(latestPdiResult)) return res.status(400).json({ error: `Job ${body.jobNo}: PDI FAIL – COA cannot be made for this job.` });
     if (!["qc pass", "pdi pass", "pass"].includes(latestPdiResult)) return res.status(400).json({ error: "COA can be generated only after PDI PASS." });
     const now = new Date().toISOString();
     const values = [id, String(body.coaNo || `COA-${new Date().getFullYear()}-${Date.now()}`), body.templateId, Number(body.templateVersion || 1), JSON.stringify(body.templateSnapshot), body.companyId, body.companyName, body.firmId || null, body.firmName || null, body.productionId, body.jobNo, body.erpCode || null, body.itemName || null, body.invoiceNo || null, body.invoiceQty ?? null, body.batchNo || null, body.coaDate, JSON.stringify(body.headerData), JSON.stringify(body.cellValues), manager && body.status === "Final" ? "Final" : "Draft", existing?.createdBy || actor, body.createdTimestamp || existing?.createdTimestamp || now, actor, now];
