@@ -358,7 +358,9 @@ export function dispatchPlanColumns(rows: DispatchPlanDayRow[]) {
 
 export function dispatchPlanPdfSpec(rows: DispatchPlanDayRow[], date: string, toDate?: string): ReportPdfSpec {
   const to = toDate && toDate >= date ? toDate : date;
-  const { cols, showInvoiced } = dispatchPlanColumns(rows);
+  // The PDF leaves out Plan No and Order No (owner's choice, 21-Nov-2026); the page and Excel keep them.
+  const { cols: allCols, showInvoiced } = dispatchPlanColumns(rows);
+  const cols = allCols.filter((col) => col.key !== "planNo" && col.key !== "orderNo");
   const totalOf = (key: string) => cols.find((col) => col.key === key)?.total?.(rows) || 0;
   const rangeLabel = dispatchPlanRangeLabel(date, to);
   return {

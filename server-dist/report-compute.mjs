@@ -3521,7 +3521,8 @@ function dispatchPlanColumns(rows2) {
 }
 function dispatchPlanPdfSpec(rows2, date, toDate) {
   const to = toDate && toDate >= date ? toDate : date;
-  const { cols, showInvoiced } = dispatchPlanColumns(rows2);
+  const { cols: allCols, showInvoiced } = dispatchPlanColumns(rows2);
+  const cols = allCols.filter((col) => col.key !== "planNo" && col.key !== "orderNo");
   const totalOf = (key5) => cols.find((col) => col.key === key5)?.total?.(rows2) || 0;
   const rangeLabel = dispatchPlanRangeLabel(date, to);
   return {
