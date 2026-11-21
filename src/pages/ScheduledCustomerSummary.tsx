@@ -19,6 +19,7 @@ type CustomerRow = {
   companyName: string;
   schedules: number;
   scheduledQty: number;
+  canceledQty: number;
   ffgQty: number;
   loadedQty: number;
   invoicedQty: number;
@@ -41,6 +42,8 @@ export function ScheduledCustomerSummary() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
+  // Pending = scheduled - cancelled - invoiced still above zero (same rule as Scheduled But Not Dispatched).
+  const [pendingOnly, setPendingOnly] = useState(false);
 
   const firmOptions = useMemo<SelectOption[]>(
     () =>
@@ -84,23 +87,25 @@ export function ScheduledCustomerSummary() {
       if (firmFilter && String(schedule.firmId || order?.firmId || "") !== firmFilter) continue;
       const company = order?.companyId ? companyById.get(order.companyId) : undefined;
       const id = company?.id || "__none__";
-      const row = byCustomer.get(id) || { id, companyName: company?.name || "-", schedules: 0, scheduledQty: 0, ffgQty: 0, loadedQty: 0, invoicedQty: 0 };
+      const row = byCustomer.get(id) || { id, companyName: company?.name || "-", schedules: 0, scheduledQty: 0, canceledQty: 0, ffgQty: 0, loadedQty: 0, invoicedQty: 0 };
       const load = loadBySchedule.get(schedule.id);
+      if (pendingOnly && num(schedule.qty) - num(schedule.canceledQty) - (load?.invoiced || 0) <= 0) continue;
       row.schedules += 1;
       row.scheduledQty += num(schedule.qty);
+      row.canceledQty += num(schedule.canceledQty);
       row.ffgQty += ffgBySchedule.get(schedule.id) || 0;
       row.loadedQty += load?.loaded || 0;
       row.invoicedQty += load?.invoiced || 0;
       byCustomer.set(id, row);
     }
     return Array.from(byCustomer.values()).sort((a, b) => a.companyName.localeCompare(b.companyName, undefined, { sensitivity: "base" }));
-  }, [schedules, orders, companies, productions, plans, loadingSlips, firmFilter]);
+  }, [schedules, orders, companies, productions, plans, loadingSlips, firmFilter, pendingOnly]);
 
   const filteredRows = useMemo(() => {
     const words = searchWords(searchTerm);
     if (words.length === 0) return customerRows;
     return customerRows.filter((row) => {
-      const text = rowSearchText([row.companyName, row.schedules, row.scheduledQty, row.ffgQty, row.loadedQty, row.invoicedQty]);
+      const text = rowSearchText([row.companyName, row.schedules, row.scheduledQty, row.canceledQty, row.ffgQty, row.loadedQty, row.invoicedQty]);
       return words.every((word) => text.includes(word));
     });
   }, [customerRows, searchTerm]);
@@ -118,11 +123,12 @@ export function ScheduledCustomerSummary() {
         (sum, row) => ({
           schedules: sum.schedules + row.schedules,
           scheduledQty: sum.scheduledQty + row.scheduledQty,
+          canceledQty: sum.canceledQty + row.canceledQty,
           ffgQty: sum.ffgQty + row.ffgQty,
           loadedQty: sum.loadedQty + row.loadedQty,
           invoicedQty: sum.invoicedQty + row.invoicedQty,
         }),
-        { schedules: 0, scheduledQty: 0, ffgQty: 0, loadedQty: 0, invoicedQty: 0 },
+        { schedules: 0, scheduledQty: 0, canceledQty: 0, ffgQty: 0, loadedQty: 0, invoicedQty: 0 },
       ),
     [filteredRows],
   );
@@ -168,6 +174,10 @@ export function ScheduledCustomerSummary() {
               styles={compactSelectStyles}
             />
           </div>
+          <label className="flex min-w-0 items-end gap-2 pb-2 text-xs font-bold text-black">
+            <input type="checkbox" checked={pendingOnly} onChange={(event) => setPendingOnly(event.target.checked)} className="h-4 w-4 accent-indigo-700" />
+            Pending schedules only
+          </label>
         </div>
       </div>
 
@@ -186,6 +196,7 @@ export function ScheduledCustomerSummary() {
               <th className="border border-black px-2 py-2 text-left"><SortHeader label="Customer" sortKey="companyName" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="border border-black px-2 py-2 text-right"><SortHeader label="Schedules" sortKey="schedules" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="border border-black bg-indigo-50 px-2 py-2 text-right"><SortHeader label="Total Scheduled" sortKey="scheduledQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black bg-red-50 px-2 py-2 text-right text-red-700"><SortHeader label="Total Cancelled" sortKey="canceledQty" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="border border-black bg-lime-50 px-2 py-2 text-right text-lime-800"><SortHeader label="Total FFG" sortKey="ffgQty" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="border border-black bg-amber-50 px-2 py-2 text-right"><SortHeader label="Total Loaded" sortKey="loadedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="border border-black bg-purple-50 px-2 py-2 text-right"><SortHeader label="Total Invoiced" sortKey="invoicedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
@@ -193,7 +204,7 @@ export function ScheduledCustomerSummary() {
           </thead>
           <tbody className="bg-white">
             {paginatedItems.length === 0 ? (
-              <tr><td colSpan={7} className="border border-black px-3 py-8 text-center font-bold text-slate-500">{schedulesLoading ? "Loading…" : "No schedules found."}</td></tr>
+              <tr><td colSpan={8} className="border border-black px-3 py-8 text-center font-bold text-slate-500">{schedulesLoading ? "Loading…" : "No schedules found."}</td></tr>
             ) : (
               paginatedItems.map((row, index) => (
                 <tr key={row.id} className="hover:bg-slate-50">
@@ -201,6 +212,7 @@ export function ScheduledCustomerSummary() {
                   <td className="border border-black px-3 py-2 font-semibold">{row.companyName}</td>
                   <td className="border border-black px-3 py-2 text-right">{row.schedules.toLocaleString()}</td>
                   <td className="border border-black bg-indigo-50/30 px-3 py-2 text-right font-medium">{row.scheduledQty.toLocaleString()}</td>
+                  <td className="border border-black bg-red-50/30 px-3 py-2 text-right font-medium text-red-600">{row.canceledQty.toLocaleString()}</td>
                   <td className="border border-black bg-lime-50/30 px-3 py-2 text-right font-medium text-lime-700">{row.ffgQty.toLocaleString()}</td>
                   <td className="border border-black bg-amber-50/30 px-3 py-2 text-right font-medium text-amber-700">{row.loadedQty.toLocaleString()}</td>
                   <td className="border border-black bg-purple-50/30 px-3 py-2 text-right font-medium text-purple-700">{row.invoicedQty.toLocaleString()}</td>
@@ -214,6 +226,7 @@ export function ScheduledCustomerSummary() {
                 <td colSpan={2} className="border border-black px-3 py-2 text-right uppercase">Total · {filteredRows.length} customers</td>
                 <td className="border border-black px-3 py-2 text-right">{totals.schedules.toLocaleString()}</td>
                 <td className="border border-black bg-indigo-50 px-3 py-2 text-right">{totals.scheduledQty.toLocaleString()}</td>
+                <td className="border border-black bg-red-50 px-3 py-2 text-right text-red-700">{totals.canceledQty.toLocaleString()}</td>
                 <td className="border border-black bg-lime-50 px-3 py-2 text-right text-lime-800">{totals.ffgQty.toLocaleString()}</td>
                 <td className="border border-black bg-amber-50 px-3 py-2 text-right text-amber-700">{totals.loadedQty.toLocaleString()}</td>
                 <td className="border border-black bg-purple-50 px-3 py-2 text-right text-purple-700">{totals.invoicedQty.toLocaleString()}</td>
