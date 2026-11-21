@@ -6832,6 +6832,33 @@ async function restoreSheetSyncRemovedFlags(db: mysql.Pool) {
   }
 }
 
+async function setMigrationClosedJobsCloseByYes(db: mysql.Pool) {
+  // One-time (21-Nov-2026, asked by the owner): 21 Completed jobs dated
+  // before 17-Nov had closeBy "Migration" from an earlier import; screens need
+  // "Yes". Originals are kept in productions_closeby_migration_backup_20261121.
+  const migrationKey = "migration/migration-closed-jobs-closeby-yes-v1";
+  const where = "closeBy = 'Migration' AND status = 'Completed' AND `date` < '2026-11-17'";
+  const conn = await db.getConnection();
+  try {
+    const [markerRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [migrationKey]);
+    if ((markerRows as any[]).length) return { changed: 0, alreadyApplied: true };
+    await conn.query("DROP TABLE IF EXISTS productions_closeby_migration_backup_20261121");
+    await conn.query(`CREATE TABLE productions_closeby_migration_backup_20261121 AS SELECT * FROM productions WHERE ${where}`);
+    await conn.beginTransaction();
+    const [result] = await conn.query(`UPDATE productions SET closeBy = 'Yes' WHERE ${where}`);
+    const changed = Number((result as any)?.affectedRows || 0);
+    await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)", [migrationKey, changed]);
+    await conn.commit();
+    console.log(`[DB] Migration-closed jobs closeBy set to Yes: ${changed}.`);
+    return { changed, alreadyApplied: false };
+  } catch (error) {
+    try { await conn.rollback(); } catch {}
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
 async function setBulkClosedJobsCloseByYes(db: mysql.Pool) {
   // One-time (21-Nov-2026, asked by the owner): the bulk close wrote
   // "Bulk close (before 17-Nov)" in closeBy; screens treat a job as closed
@@ -11151,6 +11178,12 @@ await db.query(`
         await setBulkClosedJobsCloseByYes(db);
       } catch (err) {
         console.warn("[DB] Bulk-closed closeBy Yes failed:", (err as Error).message);
+      }
+
+      try {
+        await setMigrationClosedJobsCloseByYes(db);
+      } catch (err) {
+        console.warn("[DB] Migration-closed closeBy Yes failed:", (err as Error).message);
       }
 
       try {
