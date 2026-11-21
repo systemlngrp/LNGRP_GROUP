@@ -37,11 +37,15 @@ export function isMigratedCompletedJobWithoutOrder(production: Production) {
   return !String(production.scheduleId || "").trim() && production.status === "Completed";
 }
 
+const FFG_CLOSED_JOB_CUTOFF = "2026-11-17";
+
 export function isProductionPendingFFG(
   production: Production,
   actualPaperUsed = production.actualPaperUsed,
   hasCorrugatedSheetUsage = false
 ) {
+  // Old closed jobs (dated before 17-Nov-2026, the bulk close) need no FFG entry.
+  if (isProductionClosed(production) && getJobDateKey(production.date) < FFG_CLOSED_JOB_CUTOFF) return false;
   return !production.cancelTimestamp && !production.tallyTimestamp && isFgUnlocked(production, actualPaperUsed, hasCorrugatedSheetUsage) && !hasWorkflowValue(production.prodFromFFG);
 }
 
