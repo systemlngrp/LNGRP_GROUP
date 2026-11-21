@@ -49,6 +49,17 @@ export function Layout() {
     setSidebarCollapsed(saved === "true");
   }, []);
 
+  // The icon-only (collapsed) menu is a desktop option. On phones the menu
+  // opens as a drawer and must always show names, even if collapse was saved.
+  const [isDesktopWidth, setIsDesktopWidth] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 768px)").matches);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsDesktopWidth(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
   useEffect(() => {
     const nativeAlert = window.alert;
     window.alert = (message?: unknown) => {
@@ -199,7 +210,7 @@ export function Layout() {
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        isCollapsed={sidebarCollapsed}
+        isCollapsed={sidebarCollapsed && isDesktopWidth}
       />
       
       {sidebarOpen && (
