@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 
 import { Select } from "../components/Select";
+import { MultiSelect } from "../components/MultiSelect";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -41,7 +42,7 @@ export function PendingDispatchPlanning() {
   const [phpJobsForSchedule] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-jobs-schedule-link-dispatch-planning", fields: ["scheduleId"] });
   const [plateJobsForSchedule] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-jobs-schedule-link-dispatch-planning", fields: ["scheduleId"] });
 
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
   const [selectedFirmId, setSelectedFirmId] = useState<string>("");
   const [itemFilter, setItemFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -296,7 +297,7 @@ export function PendingDispatchPlanning() {
     const rows = basePendingSchedules.filter(s => {
       const order = lookup.orderById.get(s.orderId);
       const day = dayIso(s.scheduledDate);
-      return (!selectedCompanyId || order?.companyId === selectedCompanyId) &&
+      return (selectedCompanyIds.length === 0 || selectedCompanyIds.includes(String(order?.companyId || ""))) &&
         (!selectedFirmId || String(s.firmId || order?.firmId || "") === selectedFirmId) &&
         (!itemFilter || (resolveOrderItem(order)?.name || "") === itemFilter) &&
         (!statusFilter || dueStatus(s.scheduledDate) === statusFilter) &&
@@ -361,7 +362,7 @@ export function PendingDispatchPlanning() {
 
       return sortDirection === "asc" ? compare : -compare;
     });
-  }, [basePendingSchedules, selectedCompanyId, selectedFirmId, itemFilter, statusFilter, ffgFilter, ffgStockByItemId, itemIdByScheduleId, fromDate, toDate, todayIso, orders, companies, firms, searchTerm, sortDirection, sortKey, effectivePlannedByScheduleId, loadedQtyByScheduleId, resolveOrderItem, lookup, jobNosByScheduleId]);
+  }, [basePendingSchedules, selectedCompanyIds, selectedFirmId, itemFilter, statusFilter, ffgFilter, ffgStockByItemId, itemIdByScheduleId, fromDate, toDate, todayIso, orders, companies, firms, searchTerm, sortDirection, sortKey, effectivePlannedByScheduleId, loadedQtyByScheduleId, resolveOrderItem, lookup, jobNosByScheduleId]);
 
   const {
     page,
@@ -582,9 +583,9 @@ export function PendingDispatchPlanning() {
 
   const LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
   const DATE_INPUT = "h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold";
-  const hasFilters = Boolean(searchTerm.trim() || selectedFirmId || selectedCompanyId || itemFilter || statusFilter || ffgFilter || fromDate || toDate);
+  const hasFilters = Boolean(searchTerm.trim() || selectedFirmId || selectedCompanyIds.length > 0 || itemFilter || statusFilter || ffgFilter || fromDate || toDate);
   const clearFilters = () => {
-    setSearchTerm(""); setSelectedFirmId(""); setSelectedCompanyId(""); setItemFilter(""); setStatusFilter(""); setFfgFilter(""); setFromDate(""); setToDate("");
+    setSearchTerm(""); setSelectedFirmId(""); setSelectedCompanyIds([]); setItemFilter(""); setStatusFilter(""); setFfgFilter(""); setFromDate(""); setToDate("");
     setSelectedIds(new Set());
   };
   const changeFilter = (setter: (value: string) => void) => (value: string) => { setter(value); setSelectedIds(new Set()); };
@@ -662,7 +663,7 @@ export function PendingDispatchPlanning() {
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
           <div className="min-w-0"><span className={LABEL}>Firm</span><Select compact value={selectedFirmId} onChange={changeFilter(setSelectedFirmId)} options={filterOptions.firms} placeholder="All" /></div>
           <div className="min-w-0"><span className={LABEL}>Status</span><Select compact value={statusFilter} onChange={changeFilter(setStatusFilter)} options={filterOptions.statuses} placeholder="All" /></div>
-          <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Company</span><Select compact value={selectedCompanyId} onChange={changeFilter(setSelectedCompanyId)} options={filterOptions.companies} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Company</span><MultiSelect value={selectedCompanyIds} onChange={(values) => { setSelectedCompanyIds(values); setSelectedIds(new Set()); }} options={filterOptions.companies} placeholder="All" /></div>
           <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Item</span><Select compact value={itemFilter} onChange={changeFilter(setItemFilter)} options={filterOptions.items} placeholder="All" /></div>
           <div className="min-w-0"><span className={LABEL}>FFG Stock</span><Select compact value={ffgFilter} onChange={changeFilter(setFfgFilter)} options={[{ value: "positive", label: "Greater than 0" }]} placeholder="All" /></div>
           <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
