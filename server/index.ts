@@ -2244,6 +2244,9 @@ let databaseInitializationPromise: Promise<void> | null = null;
 type DatabaseInitializationState = "not_started" | "running" | "ready" | "failed";
 let databaseInitializationState: DatabaseInitializationState = "not_started";
 let databaseInitializationError = "";
+// Counts connections this server opens, for /api/admin/db-connections.
+let erpConnectionsOpened = 0;
+const erpServerStartedAt = new Date().toISOString();
 const AUTH_DB_QUERY_TIMEOUT_MS = 8_000;
 const HEALTH_DB_QUERY_TIMEOUT_MS = 2_000;
 
@@ -5993,6 +5996,7 @@ async function getPool() {
   poolCreationPromise = Promise.resolve().then(() => {
     const createdPool = instrumentPool(mysql.createPool(config));
     pool = createdPool;
+    (createdPool as any).on?.("connection", () => { erpConnectionsOpened += 1; });
 
     // Add error handler to the pool to prevent it from crashing the process
     (createdPool as any).on('error', (err: any) => {
@@ -7231,6 +7235,45 @@ app.get("/api/health", async (_req, res) => {
 });
 
 // Health check endpoint to verify DB status
+// Admin-only: who is holding database connections right now (by host), and how
+// many connections this ERP server has opened since it started. Used to find
+// what uses up the database user's hourly connection quota.
+app.get("/api/admin/db-connections", async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (user.role !== "Admin") return res.status(403).json({ error: "Admins only." });
+  const db = await getPool();
+  if (!db) return res.status(503).json({ error: "Database connection is not configured" });
+  try {
+    const [rows] = await db.query(
+      "SELECT SUBSTRING_INDEX(HOST, ':', 1) AS host, USER AS user, COMMAND AS command, TIME AS seconds FROM information_schema.PROCESSLIST WHERE USER = CURRENT_USER() OR USER = SUBSTRING_INDEX(USER(), '@', 1)"
+    );
+    const byHost = new Map<string, { host: string; connections: number; sleeping: number; longestSeconds: number }>();
+    for (const row of rows as any[]) {
+      const key = String(row.host || "unknown");
+      const entry = byHost.get(key) || { host: key, connections: 0, sleeping: 0, longestSeconds: 0 };
+      entry.connections += 1;
+      if (String(row.command) === "Sleep") entry.sleeping += 1;
+      entry.longestSeconds = Math.max(entry.longestSeconds, Number(row.seconds || 0));
+      byHost.set(key, entry);
+    }
+    let resourceLimits: any = null;
+    try {
+      const [limitRows] = await db.query("SELECT max_connections, max_user_connections FROM mysql.user WHERE CONCAT(User, '@', Host) = CURRENT_USER() LIMIT 1");
+      resourceLimits = (limitRows as any[])[0] || null;
+    } catch { /* not readable on shared hosting */ }
+    res.json({
+      checkedAt: new Date().toISOString(),
+      openConnections: (rows as any[]).length,
+      byHost: Array.from(byHost.values()).sort((a, b) => b.connections - a.connections),
+      erpServer: { startedAt: erpServerStartedAt, connectionsOpenedSinceStart: erpConnectionsOpened },
+      resourceLimits,
+    });
+  } catch (error) {
+    res.status(500).json({ error: safeDatabaseError(error).message, code: safeDatabaseError(error).code });
+  }
+});
+
 app.get("/api/db-status", async (req, res) => {
   const db = await getPool();
   if (!db) {

@@ -18,7 +18,7 @@ import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processi
 import { registerSalesOrderSync } from "./salesOrderSync.js";
 import { ensurePerformanceIndexes } from "./performanceIndexes.js";
 import { getChangesSince, getTrackedChanges, instrumentPool, onSchemaChange, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
-import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappReportMessage, sendWhatsappTextMessage, sendWhatsappGateEntryMessage, resolveWhatsappGateEntryTemplate, DEFAULT_GATE_ENTRY_MESSAGE, WHATSAPP_GATE_ENTRY_MENU } from "./whatsappSender.js";
+import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappReportMessage, sendWhatsappTextMessage, sendWhatsappGateEntryMessage, WHATSAPP_GATE_ENTRY_MENU } from "./whatsappSender.js";
 import { writeGateEntryPdf } from "./gateEntryWhatsappPdf.js";
 import { DEFAULT_PRINTING_SHIFT_MESSAGE, PREVIOUS_PRINTING_SHIFT_MESSAGE, PREVIOUS_MACHINE_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, todaysDuePrintingShifts, latestFinishedPrintingShift, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
@@ -171,22 +171,25 @@ app.get("/uploads/:filename", async (req, res, next) => {
 app.get("/uploads/ge/:folder/:filename", async (req, res, next) => {
     const folder = String(req.params.folder || "");
     const filename = String(req.params.filename || "");
-    if (!/^[a-f0-9]{8}$/.test(folder) || !/^GE-[A-Za-z0-9_-]+\.pdf$/.test(filename)) return next();
+    if (!/^[a-f0-9]{8}$/.test(folder) || !/^GE-[A-Za-z0-9_-]+\.pdf$/.test(filename))
+        return next();
     try {
-      const db = await getPool();
-      if (!db) return next();
-      const [rows] = await db.query("SELECT mimeType, data FROM `uploaded_files` WHERE filename = ? LIMIT 1", [`ge/${folder}/${filename}`]);
-      const data = uploadedFileBuffer(rows?.[0]?.data);
-      if (!data) return next();
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      return res.send(data);
-    } catch (error) {
-      console.error("[uploads] Failed to serve Gate Entry PDF from DB:", error);
-      return next();
+        const db = await getPool();
+        if (!db)
+            return next();
+        const [rows] = await db.query("SELECT mimeType, data FROM `uploaded_files` WHERE filename = ? LIMIT 1", [`ge/${folder}/${filename}`]);
+        const data = uploadedFileBuffer(rows?.[0]?.data);
+        if (!data)
+            return next();
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        return res.send(data);
+    }
+    catch (error) {
+        console.error("[uploads] Failed to serve Gate Entry PDF from DB:", error);
+        return next();
     }
 });
-
 // Short-lived signed media URL for external attachment fetchers. This avoids
 // making uploaded complaint images permanently public while allowing Message
 // Auto Sender to download them without an application login.
@@ -2138,6 +2141,9 @@ let dailyConsumptionSchemaPromise = null;
 let databaseInitializationPromise = null;
 let databaseInitializationState = "not_started";
 let databaseInitializationError = "";
+// Counts connections this server opens, for /api/admin/db-connections.
+let erpConnectionsOpened = 0;
+const erpServerStartedAt = new Date().toISOString();
 const AUTH_DB_QUERY_TIMEOUT_MS = 8_000;
 const HEALTH_DB_QUERY_TIMEOUT_MS = 2_000;
 export function setTestDatabasePool(testPool) {
@@ -5621,6 +5627,7 @@ async function getPool() {
     poolCreationPromise = Promise.resolve().then(() => {
         const createdPool = instrumentPool(mysql.createPool(config));
         pool = createdPool;
+        createdPool.on?.("connection", () => { erpConnectionsOpened += 1; });
         // Add error handler to the pool to prevent it from crashing the process
         createdPool.on('error', (err) => {
             console.error('[DB] Unexpected error on idle client', err);
@@ -6778,6 +6785,48 @@ app.get("/api/health", async (_req, res) => {
     }
 });
 // Health check endpoint to verify DB status
+// Admin-only: who is holding database connections right now (by host), and how
+// many connections this ERP server has opened since it started. Used to find
+// what uses up the database user's hourly connection quota.
+app.get("/api/admin/db-connections", async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (user.role !== "Admin")
+        return res.status(403).json({ error: "Admins only." });
+    const db = await getPool();
+    if (!db)
+        return res.status(503).json({ error: "Database connection is not configured" });
+    try {
+        const [rows] = await db.query("SELECT SUBSTRING_INDEX(HOST, ':', 1) AS host, USER AS user, COMMAND AS command, TIME AS seconds FROM information_schema.PROCESSLIST WHERE USER = CURRENT_USER() OR USER = SUBSTRING_INDEX(USER(), '@', 1)");
+        const byHost = new Map();
+        for (const row of rows) {
+            const key = String(row.host || "unknown");
+            const entry = byHost.get(key) || { host: key, connections: 0, sleeping: 0, longestSeconds: 0 };
+            entry.connections += 1;
+            if (String(row.command) === "Sleep")
+                entry.sleeping += 1;
+            entry.longestSeconds = Math.max(entry.longestSeconds, Number(row.seconds || 0));
+            byHost.set(key, entry);
+        }
+        let resourceLimits = null;
+        try {
+            const [limitRows] = await db.query("SELECT max_connections, max_user_connections FROM mysql.user WHERE CONCAT(User, '@', Host) = CURRENT_USER() LIMIT 1");
+            resourceLimits = limitRows[0] || null;
+        }
+        catch { /* not readable on shared hosting */ }
+        res.json({
+            checkedAt: new Date().toISOString(),
+            openConnections: rows.length,
+            byHost: Array.from(byHost.values()).sort((a, b) => b.connections - a.connections),
+            erpServer: { startedAt: erpServerStartedAt, connectionsOpenedSinceStart: erpConnectionsOpened },
+            resourceLimits,
+        });
+    }
+    catch (error) {
+        res.status(500).json({ error: safeDatabaseError(error).message, code: safeDatabaseError(error).code });
+    }
+});
 app.get("/api/db-status", async (req, res) => {
     const db = await getPool();
     if (!db) {
@@ -12168,7 +12217,8 @@ app.get("/api/reports/erp-wise-reel-stock", requireAuth, async (req, res) => {
         const q = req.query;
         const search = String(q.search || '').trim().toLowerCase();
         // ERP / Size / GSM / BF: several values allowed (gsm=120,140); a row matches any of them.
-        const anyOf = (name, value) => { const wanted = String(q[name] || '').split(',').map((entry) => entry.trim()).filter(Boolean); if (!wanted.length) return true; const actual = String(value ?? '').trim(); return wanted.some((entry) => entry === actual || (actual !== '' && Number.isFinite(Number(entry)) && Number(entry) === Number(actual))); };
+        const anyOf = (name, value) => { const wanted = String(q[name] || '').split(',').map((entry) => entry.trim()).filter(Boolean); if (!wanted.length)
+            return true; const actual = String(value ?? '').trim(); return wanted.some((entry) => entry === actual || (actual !== '' && Number.isFinite(Number(entry)) && Number(entry) === Number(actual))); };
         rows = rows.filter((row) => (!search || [row.erp, row.itemName, row.size, row.gsm, row.bf].join(' ').toLowerCase().includes(search)) && anyOf('erp', row.erp) && anyOf('size', row.size) && anyOf('gsm', row.gsm) && anyOf('bf', row.bf));
         rows.sort((a, b) => Number(b.availableWeight > 0) - Number(a.availableWeight > 0) || a.erp.localeCompare(b.erp, undefined, { numeric: true }) || a.size - b.size || a.gsm - b.gsm || a.bf - b.bf);
         // Column sort (?sortKey=&sortDir=) on the whole filtered list before paging.
@@ -12489,10 +12539,11 @@ app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
         const equals = (name, value) => !String(query[name] || "").trim() || String(value ?? "") === String(query[name]).trim();
         // GSM / Size / BF: several values allowed (gsm=120,140); a row matches any of them, compared as numbers.
         const anyOf = (name, value) => {
-          const wanted = String(query[name] || "").split(",").map((entry) => entry.trim()).filter(Boolean);
-          if (!wanted.length) return true;
-          const actual = String(value ?? "").trim();
-          return wanted.some((entry) => entry === actual || (actual !== "" && Number.isFinite(Number(entry)) && Number(entry) === Number(actual)));
+            const wanted = String(query[name] || "").split(",").map((entry) => entry.trim()).filter(Boolean);
+            if (!wanted.length)
+                return true;
+            const actual = String(value ?? "").trim();
+            return wanted.some((entry) => entry === actual || (actual !== "" && Number.isFinite(Number(entry)) && Number(entry) === Number(actual)));
         };
         const from = String(query.dateFrom || "").trim();
         const to = String(query.dateTo || "").trim();
