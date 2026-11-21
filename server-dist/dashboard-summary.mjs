@@ -168,6 +168,11 @@ function isProductionClosed(production) {
 function isMigratedCompletedJobWithoutOrder(production) {
   return !String(production.scheduleId || "").trim() && production.status === "Completed";
 }
+var PENDING_RETURN_FIRST_JOB_DATE = "2026-11-17";
+function isJobOnOrAfterPendingReturnStart(production) {
+  const jobDate = getJobDateKey(production.date);
+  return !jobDate || jobDate >= PENDING_RETURN_FIRST_JOB_DATE;
+}
 function isProductionReadyForTally(production, actualPaperUsed = production.actualPaperUsed, hasCorrugatedSheetUsage = false) {
   return !production.cancelTimestamp && !production.tallyTimestamp && isFgUnlocked(production, actualPaperUsed, hasCorrugatedSheetUsage) && hasWorkflowValue(production.prodFromFFG);
 }
@@ -1836,7 +1841,7 @@ function buildPendingTaskCounts(args) {
       (p) => isProductionPendingMaterialIssue(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,
     "/production/pending-material-return": new Set(
-      getPendingReturnJobReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions).filter((line) => activeProductionIds.has(line.productionId) && isJobDueByToday(productionById.get(line.productionId) || {})).map((line) => line.productionId)
+      getPendingReturnJobReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions).filter((line) => activeProductionIds.has(line.productionId) && isJobDueByToday(productionById.get(line.productionId) || {}) && isJobOnOrAfterPendingReturnStart(productionById.get(line.productionId) || {})).map((line) => line.productionId)
     ).size,
     "/production/pending-job-transfer": (() => {
       const windowHours = Number(args.settings?.[0]?.reelTransferWindowHours || DEFAULT_REEL_TRANSFER_WINDOW_HOURS);

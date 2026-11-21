@@ -5,7 +5,7 @@ import { Camera, RotateCcw, Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getPendingReturnJobReelLines } from "../lib/materialMovement";
-import { isJobDueByToday } from "../lib/productionStageFilters";
+import { isJobDueByToday, isJobOnOrAfterPendingReturnStart } from "../lib/productionStageFilters";
 import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
@@ -30,7 +30,7 @@ export function PendingMaterialReturn() {
     // Only jobs dated today or earlier; future-dated jobs show from their job date.
     const productionById = new Map(productions.map((production) => [production.id, production]));
     const returnable = getPendingReturnJobReelLines(issueReels, returnReels, productions)
-      .filter((line) => isJobDueByToday(productionById.get(line.productionId) || {})); // no Corrugation Liner requirement
+      .filter((line) => { const job = productionById.get(line.productionId) || {}; return isJobDueByToday(job) && isJobOnOrAfterPendingReturnStart(job); }); // no Corrugation Liner requirement
     const byProduction = new Map<string, { reelIds: Set<string>; weight: number }>();
     returnable.forEach((line) => {
       const current = byProduction.get(line.productionId) || { reelIds: new Set<string>(), weight: 0 };

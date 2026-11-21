@@ -39,6 +39,14 @@ export function isMigratedCompletedJobWithoutOrder(production: Production) {
 
 const FFG_CLOSED_JOB_CUTOFF = "2026-11-17";
 
+// Owner's rule (21-Nov-2026): Pending Material Return shows only jobs dated
+// 17-Nov-2026 or later (older jobs were bulk-closed). Undated jobs still show.
+export const PENDING_RETURN_FIRST_JOB_DATE = "2026-11-17";
+export function isJobOnOrAfterPendingReturnStart(production: { date?: unknown }) {
+  const jobDate = getJobDateKey(production.date);
+  return !jobDate || jobDate >= PENDING_RETURN_FIRST_JOB_DATE;
+}
+
 export function isProductionPendingFFG(
   production: Production,
   actualPaperUsed = production.actualPaperUsed,
