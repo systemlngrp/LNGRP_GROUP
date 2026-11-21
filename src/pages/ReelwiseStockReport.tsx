@@ -3,6 +3,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Search, Download } from "lucide-react";
 import { Select } from "../components/Select";
+import { MultiSelect } from "../components/MultiSelect";
 import { exportsAllowed } from "../lib/exportPolicy";
 import { getDataAuthHeaders, useData } from "../hooks/useData";
 import { useAutoRefreshEffect } from "../hooks/useAutoRefresh";
@@ -114,9 +115,9 @@ export function ReelwiseStockReport() {
   const [excludeZeroAvailable, setExcludeZeroAvailable] = useState(false);
   const [mrrFilter, setMrrFilter] = useState("");
   const [erpFilter, setErpFilter] = useState("");
-  const [gsmFilter, setGsmFilter] = useState("");
-  const [sizeFilter, setSizeFilter] = useState("");
-  const [bfFilter, setBfFilter] = useState("");
+  const [gsmFilter, setGsmFilter] = useState<string[]>([]);
+  const [sizeFilter, setSizeFilter] = useState<string[]>([]);
+  const [bfFilter, setBfFilter] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   // Column sort: the server sorts the whole filtered list before paging; exports follow it.
   const { sort, toggle: toggleSort } = useServerSort(() => setPage(1));
@@ -126,9 +127,9 @@ export function ReelwiseStockReport() {
     if (searchTerm.trim()) params.set("search", searchTerm.trim());
     if (mrrFilter) params.set("mrr", mrrFilter);
     if (erpFilter) params.set("erp", erpFilter);
-    if (gsmFilter) params.set("gsm", gsmFilter);
-    if (sizeFilter) params.set("size", sizeFilter);
-    if (bfFilter) params.set("bf", bfFilter);
+    if (gsmFilter.length) params.set("gsm", gsmFilter.join(","));
+    if (sizeFilter.length) params.set("size", sizeFilter.join(","));
+    if (bfFilter.length) params.set("bf", bfFilter.join(","));
     if (mrrDateFrom) params.set("dateFrom", mrrDateFrom);
     if (mrrDateTo) params.set("dateTo", mrrDateTo);
     if (minAge) params.set("minAge", minAge);
@@ -232,9 +233,9 @@ export function ReelwiseStockReport() {
     mrrFilter ||
     excludeZeroAvailable ||
     erpFilter ||
-    gsmFilter ||
-    sizeFilter ||
-    bfFilter
+    gsmFilter.length ||
+    sizeFilter.length ||
+    bfFilter.length
   );
 
   const handleClearFilters = () => {
@@ -248,9 +249,9 @@ export function ReelwiseStockReport() {
     setMrrFilter("");
     setExcludeZeroAvailable(false);
     setErpFilter("");
-    setGsmFilter("");
-    setSizeFilter("");
-    setBfFilter("");
+    setGsmFilter([]);
+    setSizeFilter([]);
+    setBfFilter([]);
   };
 
 
@@ -314,9 +315,14 @@ export function ReelwiseStockReport() {
     doc.setFontSize(9);
     doc.text(`Generated: ${formatDate(new Date())}`, 14, 20);
     doc.text(`Rows: ${rows.length}`, 270, 20, { align: "right" });
+    const chosenFilters = [["GSM", gsmFilter], ["Size", sizeFilter], ["BF", bfFilter]]
+      .filter(([, values]) => values.length)
+      .map(([label, values]) => `${label}: ${(values as string[]).join(", ")}`)
+      .join("   |   ");
+    if (chosenFilters) doc.text(chosenFilters, 14, 25, { maxWidth: 240 });
 
     autoTable(doc, {
-      startY: 24,
+      startY: chosenFilters ? 29 : 24,
       theme: "grid",
       headStyles: { fillColor: [67, 56, 202] },
       styles: { fontSize: 7.4, cellPadding: 1.6, lineColor: [0, 0, 0], lineWidth: 0.1 },
@@ -525,9 +531,9 @@ export function ReelwiseStockReport() {
           <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">MRR</span><Select compact value={mrrFilter} onChange={setMrrFilter} options={mrrOptions} placeholder="All" /></div>
           <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">ERP</span><Select compact value={erpFilter} onChange={setErpFilter} options={erpOptions} placeholder="All" /></div>
           <div className="col-span-2 grid grid-cols-3 gap-2 lg:col-span-1">
-            <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">GSM</span><Select compact value={gsmFilter} onChange={setGsmFilter} options={gsmOptions} placeholder="All" /></div>
-            <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">Size</span><Select compact value={sizeFilter} onChange={setSizeFilter} options={sizeOptions} placeholder="All" /></div>
-            <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">BF</span><Select compact value={bfFilter} onChange={setBfFilter} options={bfOptions} placeholder="All" /></div>
+            <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">GSM</span><MultiSelect value={gsmFilter} onChange={setGsmFilter} options={gsmOptions} placeholder="All" /></div>
+            <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">Size</span><MultiSelect value={sizeFilter} onChange={setSizeFilter} options={sizeOptions} placeholder="All" /></div>
+            <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">BF</span><MultiSelect value={bfFilter} onChange={setBfFilter} options={bfOptions} placeholder="All" /></div>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-[1fr_1fr_90px_90px]">

@@ -12485,6 +12485,13 @@ app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
         const text = String(query.search || "").trim().toLowerCase();
         const textWords = text.split(/\s+/).filter(Boolean);
         const equals = (name, value) => !String(query[name] || "").trim() || String(value ?? "") === String(query[name]).trim();
+        // GSM / Size / BF: several values allowed (gsm=120,140); a row matches any of them, compared as numbers.
+        const anyOf = (name, value) => {
+          const wanted = String(query[name] || "").split(",").map((entry) => entry.trim()).filter(Boolean);
+          if (!wanted.length) return true;
+          const actual = String(value ?? "").trim();
+          return wanted.some((entry) => entry === actual || (actual !== "" && Number.isFinite(Number(entry)) && Number(entry) === Number(actual)));
+        };
         const from = String(query.dateFrom || "").trim();
         const to = String(query.dateTo || "").trim();
         const minAge = query.minAge === undefined || query.minAge === "" ? null : Number(query.minAge);
@@ -12497,7 +12504,7 @@ app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
                 if (!textWords.every((word) => haystack.includes(word)))
                     return false;
             }
-            if (!equals("mrr", row.mrrNo) || !equals("erp", row.erp) || !equals("gsm", row.gsm) || !equals("size", row.size) || !equals("bf", row.bf))
+            if (!equals("mrr", row.mrrNo) || !equals("erp", row.erp) || !anyOf("gsm", row.gsm) || !anyOf("size", row.size) || !anyOf("bf", row.bf))
                 return false;
             if (from && String(row.mrrDate || "") < from)
                 return false;
