@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getFirmDisplayName } from "../lib/firmDisplay";
-import { Download, Eye, EyeOff, FileText, Search } from "lucide-react";
+import { Download, Eye, EyeOff, FileText, Pencil, Search } from "lucide-react";
 import { userDashboardName } from "../lib/dashboardName";
 import { downloadSummaryExcel, downloadSummaryPdf, type SummaryExportInput } from "../lib/summarySheetExport";
-import { useData } from "../hooks/useData";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { computeSummarySheetRows, isoDateText, n, s } from "../lib/reports/summarySheet";
 import type { PreAppDispatch, SummaryRow } from "../lib/reports/summarySheet";
@@ -105,6 +105,54 @@ const isZeroDisplay = (value: unknown) => {
   return /^[₹\s]*[-+]?0+(?:[.,]0+)?\s*%?$/.test(text);
 };
 
+// Admin: click the pencil to edit a job's Remarks; Save stores it on the job for everyone.
+function RemarksCell({ productionId, value, onSaved }: { productionId: string; value: string; onSaved: (id: string, text: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const start = () => { setDraft(value); setError(""); setEditing(true); };
+  const save = async () => {
+    const text = draft.trim();
+    if (text === value.trim()) { setEditing(false); return; }
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/productions/${encodeURIComponent(productionId)}/remarks`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getDataAuthHeaders(true) },
+        body: JSON.stringify({ remarks: text }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Unable to save Remarks.");
+      onSaved(productionId, s(result.remarks ?? text));
+      setEditing(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to save Remarks.");
+    } finally { setSaving(false); }
+  };
+  if (!editing) {
+    return <button type="button" onClick={start} title="Edit Remarks" className="group flex w-full items-start gap-1 text-left">
+      <span className="min-w-0 flex-1 whitespace-pre-wrap">{value || <span className="text-slate-400">Add remarks</span>}</span>
+      <Pencil size={12} className="mt-0.5 shrink-0 text-indigo-700 opacity-60 group-hover:opacity-100" />
+    </button>;
+  }
+  return <div className="space-y-1">
+    <textarea autoFocus rows={3} maxLength={1000} value={draft} disabled={saving}
+      onChange={(event) => setDraft(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") setEditing(false);
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void save(); }
+      }}
+      className="w-full rounded border-2 border-black bg-white p-1 text-[11px] font-normal text-black focus:border-indigo-600 focus:outline-none" />
+    {error ? <div className="text-[10px] font-bold text-red-700">{error}</div> : null}
+    <div className="flex justify-end gap-1">
+      <button type="button" disabled={saving} onClick={() => setEditing(false)} className="rounded border border-black bg-white px-2 py-0.5 text-[10px] font-bold text-black">Cancel</button>
+      <button type="button" disabled={saving} onClick={() => void save()} className="rounded bg-indigo-700 px-2 py-0.5 text-[10px] font-bold text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
+    </div>
+  </div>;
+}
+
 export function SummarySheetReport() {
   // Rows are calculated on the server; if it cannot, the lists are loaded and
   // calculated here as before. Jobs stay loaded for Close / Unclose.
@@ -139,6 +187,10 @@ export function SummarySheetReport() {
   const [fullProductions, setProductions, fullProductionsLoading] = useData<Production>("productions", [], { firmScope: "all", enabled: browserFallback || needFullJobs });
   const [closeOverrides, setCloseOverrides] = useState<Record<string, { closeBy: string; closeDate: string }>>({});
   const pendingCloseActions = useRef<Array<{ id: string; close: boolean }>>([]);
+  // Remarks saved here: shown at once; everyone else gets them through the live job list.
+  const [remarksOverrides, setRemarksOverrides] = useState<Record<string, string>>({});
+  // The refreshed job list already has saved remarks (and later edits by others).
+  useEffect(() => { setRemarksOverrides({}); }, [jobStatuses]);
   const productions = useMemo(() => {
     const list = browserFallback ? fullProductions : jobStatuses;
     if (!Object.keys(closeOverrides).length) return list;
@@ -303,7 +355,7 @@ export function SummarySheetReport() {
           : s(baseRow.Status) === "Job Closed" ? "Pending Loading" : s(baseRow.Status),
         "Job Closed": s(production.closeBy).toLowerCase() === "yes" ? "Yes" : "",
         "Close Date": isoDateText(production.closeDate),
-        Remarks: s(production.remarks),
+        Remarks: remarksOverrides[production.id] ?? s(production.remarks),
       };
     }).filter((row) => {
       const production = productionById.get(s(row.__productionId));
@@ -321,7 +373,7 @@ export function SummarySheetReport() {
       if (erpFilter && s(row.ERP) !== erpFilter) return false;
       return true;
     });
-  }, [baseRows, closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, productionById, statusFilter, to]);
+  }, [baseRows, closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, productionById, statusFilter, to, remarksOverrides]);
 
   const selectedColumns = useMemo(() => {
     if (!isAdmin) {
@@ -552,7 +604,7 @@ export function SummarySheetReport() {
   <div className="max-h-[66vh] overflow-y-auto"><table className="w-full border-collapse text-xs"><tbody>{selectedColumns.filter((columnIndex) => columnIndex > 0 && COLUMNS[columnIndex] !== "Job Closed").map((columnIndex) => { const column = COLUMNS[columnIndex]; const value = s(valueForColumn(detailRow, columnIndex, 0)); return <tr key={column}><th className="w-[45%] border border-slate-300 bg-slate-50 px-2 py-1 text-left text-[10px] font-black uppercase text-slate-600">{columnTitle(column)}</th><td className={`border border-slate-300 px-2 py-1 font-semibold ${summarySheetCellClass(column, detailRow)}`}>{DOCUMENT_COLUMNS.has(column) && s(detailRow.__productionId) ? documentLink(column, detailRow) : value || "—"}</td></tr>; })}</tbody></table></div>
   {production && isAdmin ? <div className="flex justify-end gap-2 border-t-2 border-black px-3 py-2">{closed ? <button type="button" onClick={() => { uncloseJob(production.id); setDetailRow(null); }} className="rounded bg-amber-600 px-3 py-1.5 text-xs font-bold text-white">Unclose Job</button> : <button type="button" onClick={() => { closeJob(production.id); setDetailRow(null); }} className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white">Close Job</button>}</div> : null}
 </div></div>; })() : null}
-{showCards ? null : <div className="overflow-auto rounded border-2 border-black bg-white" {...(showAllRows ? { "data-disable-table-pagination": "true" } : {})}><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr>{selectedSections.map((section) => <th key={section.label} colSpan={section.columns.length} className="whitespace-nowrap border border-black bg-[#24165f] px-2 py-2 text-center font-black text-white">{section.label}</th>)}</tr><tr className="bg-[#0b4773] text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 font-black ${columnAlignment(COLUMNS[columnIndex])}`}>{columnIndex === 0 ? COLUMNS[columnIndex] : <SortHeader label={columnTitle(COLUMNS[columnIndex])} sortKey={COLUMNS[columnIndex]} sort={sort} onToggle={toggleSort} align={NUMERIC_COLUMNS.has(COLUMNS[columnIndex]) ? "right" : CENTER_COLUMNS.has(COLUMNS[columnIndex]) ? "center" : "left"} />}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => { const target = findRealizationTargetForDate(realizationTargets, row.Date)?.value; return <tr key={s(row.__productionId) || `${row["Job No."]}-${index}`}>{selectedColumns.map((columnIndex) => { const column = COLUMNS[columnIndex]; const rowColorClass = column === "Realization / kg" ? realizationCellClass(row[column], target) : summarySheetCellClass(column, row); return <td key={`${column}-${columnIndex}`} className={`${column === "Remarks" ? "min-w-[180px] max-w-[280px] whitespace-normal break-words" : "whitespace-nowrap"} border border-black px-2 py-2 ${columnAlignment(column)} ${rowColorClass}`}>{column === "Job Closed" && !isAdmin ? (s(row["Job Closed"]) === "Yes" ? `Yes${s(row["Close Date"]) ? ` (${displayDate(row["Close Date"])})` : ""}` : "") : column === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <div><button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) uncloseJob(production.id); }} className="rounded bg-amber-600 px-2 py-1 font-bold text-white">Unclose Job</button></div> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : DOCUMENT_COLUMNS.has(column) && s(row.__productionId) ? documentLink(column, row) : column === "Total Dispatch" && s(valueForColumn(row, columnIndex, rowOffset + index)) ? <a href={`#/quality/pdi-report?job=${encodeURIComponent(s(row["Job No."]))}`} target="_blank" rel="noopener noreferrer" title="Open PDI report for this job" className="font-bold underline decoration-dotted underline-offset-2">{valueForColumn(row, columnIndex, rowOffset + index)}</a> : valueForColumn(row, columnIndex, rowOffset + index)}</td>; })}</tr>; }) : <tr><td colSpan={selectedColumns.length || 1} className="bg-[#eaf2f8] p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div>}
+{showCards ? null : <div className="overflow-auto rounded border-2 border-black bg-white" {...(showAllRows ? { "data-disable-table-pagination": "true" } : {})}><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr>{selectedSections.map((section) => <th key={section.label} colSpan={section.columns.length} className="whitespace-nowrap border border-black bg-[#24165f] px-2 py-2 text-center font-black text-white">{section.label}</th>)}</tr><tr className="bg-[#0b4773] text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 font-black ${columnAlignment(COLUMNS[columnIndex])}`}>{columnIndex === 0 ? COLUMNS[columnIndex] : <SortHeader label={columnTitle(COLUMNS[columnIndex])} sortKey={COLUMNS[columnIndex]} sort={sort} onToggle={toggleSort} align={NUMERIC_COLUMNS.has(COLUMNS[columnIndex]) ? "right" : CENTER_COLUMNS.has(COLUMNS[columnIndex]) ? "center" : "left"} />}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => { const target = findRealizationTargetForDate(realizationTargets, row.Date)?.value; return <tr key={s(row.__productionId) || `${row["Job No."]}-${index}`}>{selectedColumns.map((columnIndex) => { const column = COLUMNS[columnIndex]; const rowColorClass = column === "Realization / kg" ? realizationCellClass(row[column], target) : summarySheetCellClass(column, row); return <td key={`${column}-${columnIndex}`} className={`${column === "Remarks" ? "min-w-[180px] max-w-[280px] whitespace-normal break-words" : "whitespace-nowrap"} border border-black px-2 py-2 ${columnAlignment(column)} ${rowColorClass}`}>{column === "Remarks" && isAdmin && s(row.__productionId) ? <RemarksCell productionId={s(row.__productionId)} value={s(row.Remarks)} onSaved={(id, text) => setRemarksOverrides((current) => ({ ...current, [id]: text }))} /> : column === "Job Closed" && !isAdmin ? (s(row["Job Closed"]) === "Yes" ? `Yes${s(row["Close Date"]) ? ` (${displayDate(row["Close Date"])})` : ""}` : "") : column === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <div><button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) uncloseJob(production.id); }} className="rounded bg-amber-600 px-2 py-1 font-bold text-white">Unclose Job</button></div> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : DOCUMENT_COLUMNS.has(column) && s(row.__productionId) ? documentLink(column, row) : column === "Total Dispatch" && s(valueForColumn(row, columnIndex, rowOffset + index)) ? <a href={`#/quality/pdi-report?job=${encodeURIComponent(s(row["Job No."]))}`} target="_blank" rel="noopener noreferrer" title="Open PDI report for this job" className="font-bold underline decoration-dotted underline-offset-2">{valueForColumn(row, columnIndex, rowOffset + index)}</a> : valueForColumn(row, columnIndex, rowOffset + index)}</td>; })}</tr>; }) : <tr><td colSpan={selectedColumns.length || 1} className="bg-[#eaf2f8] p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div>}
 {showAllRows && sortedRows.length ? <div ref={moreSentinel} className="flex items-center justify-center gap-3 py-2 text-xs font-bold text-slate-600"><span>Showing {Math.min(visibleCount, sortedRows.length).toLocaleString("en-IN")} of {sortedRows.length.toLocaleString("en-IN")} jobs</span>{hasMoreRows ? <button type="button" onClick={() => setVisibleCount((count) => count + 500)} className="rounded border-2 border-black bg-white px-3 py-1 text-xs font-bold text-black hover:bg-slate-100">Show more</button> : null}</div> : null}{showAllRows ? null : <ClientPagination page={page} pageSize={pageSize} totalItems={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
   </div>;
 }
