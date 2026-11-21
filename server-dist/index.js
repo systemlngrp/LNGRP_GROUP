@@ -6382,6 +6382,36 @@ async function restoreSheetSyncRemovedFlags(db) {
         conn.release();
     }
 }
+async function setBulkClosedJobsCloseByYes(db) {
+    // One-time (21-Nov-2026, asked by the owner): the bulk close wrote
+    // "Bulk close (before 17-Nov)" in closeBy; screens treat a job as closed
+    // only when closeBy is "Yes". Only that field changes (closeDate and status
+    // were already set; originals are in productions_backup_20261121).
+    const migrationKey = "migration/bulk-closed-jobs-closeby-yes-v1";
+    const conn = await db.getConnection();
+    try {
+        const [markerRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [migrationKey]);
+        if (markerRows.length)
+            return { changed: 0, alreadyApplied: true };
+        await conn.beginTransaction();
+        const [result] = await conn.query("UPDATE productions SET closeBy = 'Yes' WHERE closeBy = 'Bulk close (before 17-Nov)'");
+        const changed = Number(result?.affectedRows || 0);
+        await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)", [migrationKey, changed]);
+        await conn.commit();
+        console.log(`[DB] Bulk-closed jobs closeBy set to Yes: ${changed}.`);
+        return { changed, alreadyApplied: false };
+    }
+    catch (error) {
+        try {
+            await conn.rollback();
+        }
+        catch { }
+        throw error;
+    }
+    finally {
+        conn.release();
+    }
+}
 async function bulkCloseJobsBefore17Nov(db) {
     // One-time (21-Nov-2026, asked by the owner): close every open job dated
     // before 17-Nov-2026 (Pending PH and Pending Consumption). Most are old jobs
@@ -10567,6 +10597,12 @@ async function initDb(retries = 5) {
             }
             catch (err) {
                 console.warn("[DB] Bulk close before 17-Nov failed:", err.message);
+            }
+            try {
+                await setBulkClosedJobsCloseByYes(db);
+            }
+            catch (err) {
+                console.warn("[DB] Bulk-closed closeBy Yes failed:", err.message);
             }
             try {
                 await realignJobCounterAfterRenumberedMigration(db);
