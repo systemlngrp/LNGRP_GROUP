@@ -174,7 +174,7 @@ export function StandaloneProductionSequencing({ source }: Props) {
         </div>
       </div>
       <div className="overflow-x-auto rounded border border-black bg-white">
-        <table className="min-w-[1280px] w-full divide-y divide-black border-collapse">
+        <table className="min-w-[1280px] w-full divide-y divide-black border-collapse [&_th]:border [&_th]:border-black [&_td]:border [&_td]:border-black">
           <thead className="bg-slate-100">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Source" sortKey="jobSource" sort={sort} onToggle={toggleSort} align="left" /></th>

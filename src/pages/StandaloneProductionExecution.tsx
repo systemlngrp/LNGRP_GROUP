@@ -266,7 +266,7 @@ export function StandaloneProductionExecution({ source }: Props) {
       </div>
       {unsequencedJobs.length > 0 && <div className="rounded border border-amber-600 bg-amber-50 px-4 py-3 text-sm text-black" role="status">{unsequencedJobs.length} scheduled {unsequencedJobs.length === 1 ? "job is" : "jobs are"} waiting for a sequence and excluded from Pending Production. <Link to="/production/php-plate/sequencing" className="font-bold text-amber-800 underline">Set sequence</Link></div>}
       <div className="overflow-x-auto rounded border border-black bg-white">
-        <table className="min-w-[1560px] w-full divide-y divide-black border-collapse">
+        <table className="min-w-[1560px] w-full divide-y divide-black border-collapse [&_th]:border [&_th]:border-black [&_td]:border [&_td]:border-black">
           <thead className="bg-slate-100">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Source" sortKey="jobSource" sort={sort} onToggle={toggleSort} align="left" /></th>

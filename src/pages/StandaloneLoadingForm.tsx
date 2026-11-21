@@ -168,7 +168,7 @@ export function StandaloneLoadingForm({ source }: StandaloneLoadingFormProps) {
       <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
 
       <div className="bg-white border border-black rounded shadow-sm overflow-hidden">
-        <table className="min-w-full divide-y divide-black border-collapse">
+        <table className="min-w-full divide-y divide-black border-collapse [&_th]:border [&_th]:border-black [&_td]:border [&_td]:border-black">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-black uppercase">Plan No</th>

@@ -236,7 +236,7 @@ export function StandaloneLoadingMaster({ source }: StandaloneLoadingMasterProps
 
       <div className="hidden overflow-hidden rounded border border-black bg-white md:block">
         <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse">
+          <table className="min-w-full border-collapse [&_th]:border [&_th]:border-black [&_td]:border [&_td]:border-black">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr>
                 <th className={TH}><SortHeader label={"Slip No"} sortKey="slipNo" sort={sort} onToggle={toggleSort} /></th>

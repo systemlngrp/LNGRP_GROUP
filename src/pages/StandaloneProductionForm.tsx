@@ -301,7 +301,7 @@ export function StandaloneProductionForm({ source }: StandaloneProductionFormPro
         <div className="border-b border-black px-4 py-3">
           <h3 className="text-sm font-black uppercase tracking-wide text-black">Recent {sourceLabel} Production</h3>
         </div>
-        <table className="min-w-full divide-y divide-black border-collapse">
+        <table className="min-w-full divide-y divide-black border-collapse [&_th]:border [&_th]:border-black [&_td]:border [&_td]:border-black">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-black uppercase">Job No</th>

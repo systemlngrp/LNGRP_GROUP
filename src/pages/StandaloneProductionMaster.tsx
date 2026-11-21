@@ -284,7 +284,7 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
       </div>
       {hiddenColumnsCss ? <style>{hiddenColumnsCss}</style> : null}
       <div className="overflow-x-auto rounded border border-black bg-white">
-        <table className="pp-master-table w-full border-collapse [&_th]:border [&_th]:border-black [&_td]:border [&_td]:border-slate-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap [&_td]:align-middle">
+        <table className="pp-master-table w-full border-collapse [&_th]:border [&_th]:border-black [&_td]:border [&_td]:border-black [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap [&_td]:align-middle">
           <thead className="bg-slate-100">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Job No" sortKey="0" sort={sort} onToggle={toggleSort} align="left" /></th>
