@@ -1,3 +1,4 @@
+import { isProductionClosed } from "../lib/productionStageFilters";
 import { displayJobNo } from "../lib/jobNumber";
 import React, { useMemo, useState, useEffect, useCallback, useDeferredValue, useRef } from "react";
 import { useData } from "../hooks/useData";
@@ -154,14 +155,15 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     const linkedPhpIds = new Set(productions.map((row) => String(row.phpScheduledJobId || "").trim()).filter(Boolean));
     const linkedPlateIds = new Set(productions.map((row) => String(row.plateScheduledJobId || "").trim()).filter(Boolean));
     const directPhpJobs = phpJobs
-      .filter((job) => !linkedPhpIds.has(String(job.id)) && job.status !== "Completed" && job.status !== "Cancelled")
+      .filter((job) => !linkedPhpIds.has(String(job.id)) && job.status !== "Completed" && job.status !== "Cancelled" && !isProductionClosed(job as any))
       .map((job) => ({ ...job, itemSource: "PHP" as const }));
     const directPlateJobs = plateJobs
-      .filter((job) => !linkedPlateIds.has(String(job.id)) && job.status !== "Completed" && job.status !== "Cancelled")
+      .filter((job) => !linkedPlateIds.has(String(job.id)) && job.status !== "Completed" && job.status !== "Cancelled" && !isProductionClosed(job as any))
       .map((job) => ({ ...job, itemSource: "PLATE" as const }));
     const activeProductions = [...productions, ...directPhpJobs, ...directPlateJobs].filter(p =>
       p.status !== "Completed" && 
       p.status !== "Cancelled" && 
+      !isProductionClosed(p as any) &&
       !p.cancelTimestamp &&
       !p.tallyTimestamp
     );

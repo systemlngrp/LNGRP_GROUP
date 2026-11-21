@@ -36,7 +36,7 @@ import { getRequiredMachinesForProduction, resolveProductionProcessingRoute } fr
 import { normalizeMachineName } from "./productionMachineNames";
 import { getCurrentProcessingMachine, isCorrugationLinerComplete, isMachineStepFull } from "./productionProcessingProgress";
 import { buildScheduleConsumptionByScheduleId } from "./productionScheduleQty";
-import { isJobDueByToday, isProductionPendingMaterialIssue, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
+import { isJobDueByToday, isProductionClosed, isProductionPendingMaterialIssue, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
 import { withIndentTotals } from "./indentTotals";
 import { getPendingReturnJobReelLines } from "./materialMovement";
 import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, getCorrugationFullTime } from "./reelTransfer";
@@ -333,7 +333,7 @@ function getPendingMachineProcessingCount(
   const processingByProductionId = groupBy(processing, (row) => row.productionId);
 
   return productions
-    .filter((p) => p.status !== "Completed" && p.status !== "Cancelled" && !p.cancelTimestamp && !p.tallyTimestamp)
+    .filter((p) => p.status !== "Completed" && p.status !== "Cancelled" && !isProductionClosed(p as any) && !p.cancelTimestamp && !p.tallyTimestamp)
     .reduce((count, production) => {
       // Only this job's processing rows; every helper below filters by productionId anyway.
       const processing = processingByProductionId.get(production.id) || [];

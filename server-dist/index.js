@@ -6444,6 +6444,46 @@ async function setBulkClosedJobsCloseByYes(db) {
         conn.release();
     }
 }
+async function bulkClosePhpPlateJobsBefore17Nov(db) {
+    // One-time (21-Nov-2026, asked by the owner): close every open PHP and
+    // Plate job dated before 17-Nov-2026, as was done for FG jobs. Rows are
+    // copied to <table>_backup_20261121 first, so the change can be undone.
+    const migrationKey = "migration/bulk-close-php-plate-jobs-before-2026-11-17-v1";
+    const where = "`date` < '2026-11-17' AND status NOT IN ('Completed', 'Cancelled') AND (cancelTimestamp IS NULL OR cancelTimestamp = '')";
+    const conn = await db.getConnection();
+    try {
+        const [markerRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [migrationKey]);
+        if (markerRows.length)
+            return { changed: 0, alreadyApplied: true };
+        const tables = ["php_job_master", "plate_job_master"];
+        for (const table of tables) {
+            await conn.query(`DROP TABLE IF EXISTS ${table}_backup_20261121`);
+            await conn.query(`CREATE TABLE ${table}_backup_20261121 AS SELECT * FROM \`${table}\` WHERE ${where}`);
+        }
+        await conn.beginTransaction();
+        let changed = 0;
+        const now = new Date().toISOString();
+        for (const table of tables) {
+            const [result] = await conn.query(`UPDATE \`${table}\` t JOIN ${table}_backup_20261121 b ON b.id = t.id SET t.status = 'Completed', t.closeBy = 'Yes', t.closeDate = '2026-11-21', t.updatedBy = 'Bulk close', t.updateTimestamp = ?`, [now]);
+            const n = Number(result?.affectedRows || 0);
+            changed += n;
+            console.log(`[DB] Bulk close before 17-Nov: ${table} ${n} jobs closed.`);
+        }
+        await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)", [migrationKey, changed]);
+        await conn.commit();
+        return { changed, alreadyApplied: false };
+    }
+    catch (error) {
+        try {
+            await conn.rollback();
+        }
+        catch { }
+        throw error;
+    }
+    finally {
+        conn.release();
+    }
+}
 async function bulkCloseJobsBefore17Nov(db) {
     // One-time (21-Nov-2026, asked by the owner): close every open job dated
     // before 17-Nov-2026 (Pending PH and Pending Consumption). Most are old jobs
@@ -10641,6 +10681,12 @@ async function initDb(retries = 5) {
             }
             catch (err) {
                 console.warn("[DB] Migration-closed closeBy Yes failed:", err.message);
+            }
+            try {
+                await bulkClosePhpPlateJobsBefore17Nov(db);
+            }
+            catch (err) {
+                console.warn("[DB] PHP/Plate bulk close failed:", err.message);
             }
             try {
                 await realignJobCounterAfterRenumberedMigration(db);

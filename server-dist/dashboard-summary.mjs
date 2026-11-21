@@ -1715,7 +1715,7 @@ function getPendingMachineProcessingCount(productions, machines = [], processing
   };
   const visibleMachineIds = new Set(machines.filter(isMachineAssignedToOperator).map((machine) => machine.id));
   const processingByProductionId = groupBy(processing, (row) => row.productionId);
-  return productions.filter((p) => p.status !== "Completed" && p.status !== "Cancelled" && !p.cancelTimestamp && !p.tallyTimestamp).reduce((count, production) => {
+  return productions.filter((p) => p.status !== "Completed" && p.status !== "Cancelled" && !isProductionClosed(p) && !p.cancelTimestamp && !p.tallyTimestamp).reduce((count, production) => {
     const processing2 = processingByProductionId.get(production.id) || [];
     const item = findItemAcrossSources?.(String(production.itemId || "").trim(), production.itemSource, production.erpCode);
     const requiredMachines = Array.from(
