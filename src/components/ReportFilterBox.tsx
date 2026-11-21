@@ -17,13 +17,28 @@ export function ReportFilterBox({
   hasFilters,
   onClear,
   children,
+  inlineClear = false,
 }: {
   search: string;
   onSearch: (value: string) => void;
   hasFilters: boolean;
   onClear: () => void;
   children?: React.ReactNode;
+  /** Put Clear / Apply at the end of the filter row instead of on a row of their own. */
+  inlineClear?: boolean;
 }) {
+  const actions = (
+    <div data-mf-actions="true" className={inlineClear ? "flex items-end justify-end gap-2 self-end" : "flex justify-end gap-2"}>
+      {hasFilters ? (
+        <button type="button" onClick={onClear} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">
+          Clear
+        </button>
+      ) : null}
+      <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">
+        Apply
+      </button>
+    </div>
+  );
   return (
     <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
       <div className="relative w-full">
@@ -36,17 +51,17 @@ export function ReportFilterBox({
           className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
         />
       </div>
-      {children ? <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">{children}</div> : null}
-      <div data-mf-actions="true" className="flex justify-end gap-2">
-        {hasFilters ? (
-          <button type="button" onClick={onClear} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">
-            Clear
-          </button>
-        ) : null}
-        <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">
-          Apply
-        </button>
-      </div>
+      {children && inlineClear ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">{children}</div>
+          {actions}
+        </div>
+      ) : (
+        <>
+          {children ? <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">{children}</div> : null}
+          {actions}
+        </>
+      )}
     </div>
   );
 }

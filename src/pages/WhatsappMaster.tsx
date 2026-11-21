@@ -480,7 +480,7 @@ export function WhatsappMaster() {
         <>
           <MasterHeader title="WhatsApp Master" addLabel="Add WhatsApp" onAdd={openCreate} />
 
-          <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm || statusFilter !== "all" || menuFilter !== "all")} onClear={clearFilters}>
+          <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm || statusFilter !== "all" || menuFilter !== "all")} onClear={clearFilters} inlineClear>
             <SelectFilter label="Status" value={statusFilter === "all" ? "" : statusFilter} onChange={(value) => setStatusFilter((value || "all") as StatusFilter)} options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]} />
             <SelectFilter label="Menu" value={menuFilter === "all" ? "" : menuFilter} onChange={(value) => setMenuFilter(value || "all")} options={menuOptions.map((option) => ({ value: option.value, label: option.label }))} wide />
           </ReportFilterBox>
