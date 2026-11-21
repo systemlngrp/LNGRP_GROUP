@@ -592,6 +592,9 @@ function SummaryUserColumnsDialog({ onClose }: { onClose: () => void }) {
   const [columns, setColumns] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  // "Copy" on a user with a Dashboard fills the columns from them without selecting them,
+  // so the copy can be changed and saved for other users while theirs stays as it is.
+  const [copiedFrom, setCopiedFrom] = useState<string | null>(null);
   const choosable = COLUMNS.slice(1); // Sl No is always shown
   const userOptions = useMemo(() => users
     .filter((entry: any) => entry?.id && entry.role !== "Admin" && entry.role !== "TruckDriver")
@@ -603,7 +606,9 @@ function SummaryUserColumnsDialog({ onClose }: { onClose: () => void }) {
   const chooseUsers = (ids: string[]) => {
     setUserIds(ids);
     setMessage("");
-    if (ids.length && !userIds.length) setColumns(setup.users?.[ids[0]] || []);
+    if (copiedFrom) return; // keep the copied columns whatever users are picked
+    const existing = setup.users?.[ids[0]];
+    if (ids.length && !userIds.length && existing?.length) setColumns(existing);
     if (!ids.length) setColumns([]);
   };
   const toggle = (column: string) => setColumns((current) => current.includes(column) ? current.filter((entry) => entry !== column) : [...current, column]);
@@ -622,6 +627,7 @@ function SummaryUserColumnsDialog({ onClose }: { onClose: () => void }) {
       if (!response.ok) throw new Error(payload?.error || "Unable to save.");
       await refreshSummarySheetUserColumns();
       setColumns(nextColumns);
+      setCopiedFrom(null);
       setMessage(nextColumns.length ? `Saved for ${userIds.length} user${userIds.length > 1 ? "s" : ""}.` : `Dashboard removed for ${userIds.length} user${userIds.length > 1 ? "s" : ""}.`);
     } catch (error) {
       setMessage((error as Error).message || "Unable to save.");
@@ -643,6 +649,10 @@ function SummaryUserColumnsDialog({ onClose }: { onClose: () => void }) {
             <button type="button" onClick={() => setColumns([...choosable])} className="rounded border-2 border-black px-2 py-1 text-xs font-bold hover:bg-slate-100">Select all</button>
             <button type="button" onClick={() => setColumns([])} className="rounded border-2 border-black px-2 py-1 text-xs font-bold hover:bg-slate-100">Clear</button>
           </div>
+          {copiedFrom ? <div className="flex flex-wrap items-center gap-2 rounded border border-indigo-300 bg-indigo-50 px-2 py-1.5 text-xs font-bold text-indigo-900">
+            <span>Copied from {userLabel(copiedFrom)} ({(setup.users?.[copiedFrom] || []).length} cols). Pick the new users above, tick any extra columns, then Save.</span>
+            <button type="button" onClick={() => { setCopiedFrom(null); setColumns(userIds.length ? setup.users?.[userIds[0]] || [] : []); }} className="ml-auto rounded border border-indigo-700 bg-white px-2 py-0.5 text-[11px] font-black text-indigo-700 hover:bg-indigo-100">Cancel copy</button>
+          </div> : null}
           <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
             {choosable.map((column) => {
               const shown = columns.includes(column);
@@ -657,7 +667,10 @@ function SummaryUserColumnsDialog({ onClose }: { onClose: () => void }) {
         <div className="min-w-0">
           <div className="mb-1 text-[10px] font-black uppercase tracking-wide text-slate-600">Users with a Dashboard ({configured.length})</div>
           <div className="space-y-1">
-            {configured.length ? configured.map(([id, list]) => <button key={id} type="button" onClick={() => { setUserIds([id]); setColumns(list); setMessage(""); }} className={`flex w-full items-center justify-between gap-2 rounded border px-2 py-1.5 text-left text-xs hover:bg-slate-50 ${userIds.length === 1 && userIds[0] === id ? "border-indigo-700 bg-indigo-50" : "border-slate-300"}`}><span className="truncate font-bold">{userLabel(id)}</span><span className="shrink-0 font-black text-emerald-700">{list.length} cols</span></button>) : <div className="text-xs text-slate-500">No user has a Dashboard yet.</div>}
+            {configured.length ? configured.map(([id, list]) => <div key={id} className="flex items-stretch gap-1">
+              <button type="button" onClick={() => { setCopiedFrom(null); setUserIds([id]); setColumns(list); setMessage(""); }} title="Edit this user's columns" className={`flex min-w-0 flex-1 items-center justify-between gap-2 rounded border px-2 py-1.5 text-left text-xs hover:bg-slate-50 ${!copiedFrom && userIds.length === 1 && userIds[0] === id ? "border-indigo-700 bg-indigo-50" : "border-slate-300"}`}><span className="truncate font-bold">{userLabel(id)}</span><span className="shrink-0 font-black text-emerald-700">{list.length} cols</span></button>
+              <button type="button" onClick={() => { setCopiedFrom(id); setUserIds([]); setColumns(list); setMessage(""); }} title={`Copy ${userLabel(id)}'s columns for new users`} className={`shrink-0 rounded border px-2 text-[11px] font-black ${copiedFrom === id ? "border-indigo-700 bg-indigo-700 text-white" : "border-indigo-700 bg-white text-indigo-700 hover:bg-indigo-50"}`}>Copy</button>
+            </div>) : <div className="text-xs text-slate-500">No user has a Dashboard yet.</div>}
           </div>
         </div>
       </div>
