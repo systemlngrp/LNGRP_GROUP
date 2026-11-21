@@ -17,6 +17,7 @@ import { useClientPagination } from "../hooks/useClientPagination";
 import { useAuth } from "../auth/AuthContext";
 import { buildInvoicedQtyByScheduleId, buildLoadedQtyByScheduleId, getDispatchPlanPendingQty, getEffectiveDispatchPlanQty, getScheduleAvailableQty, getScheduleDispatchPendingQty } from "../lib/dispatchPlanBalances";
 import { useQtyAtJobWorker } from "../hooks/useQtyAtJobWorker";
+import { displayJobNo } from "../lib/jobNumber";
 
 type SortKey = "scheduledDate" | "scheduleNo" | "orderNo" | "firmName" | "companyName" | "itemName" | "pendingQty";
 
@@ -35,7 +36,7 @@ export function PendingDispatchPlanning() {
   // Read-only here: only the columns this screen uses are downloaded.
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms-dispatch-planning", fields: ["status", "lines"] });
   const [invoiceLineItems] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all", storageKey: "invoice-line-items-all-firms-dispatch-planning" });
-  const [productions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms-dispatch-planning", fields: ["itemId", "status", "cancelTimestamp", "qty"] });
+  const [productions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms-dispatch-planning", fields: ["itemId", "status", "cancelTimestamp", "qty", "scheduleId", "jobNo", "date"] });
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
   const [selectedFirmId, setSelectedFirmId] = useState<string>("");
@@ -126,6 +127,23 @@ export function PendingDispatchPlanning() {
     });
     return map;
   }, [dispatchPlans, itemIdByScheduleId, loadingSlips]);
+
+  // Jobs already started for each schedule (not cancelled), oldest first.
+  const jobNosByScheduleId = useMemo(() => {
+    const map = new Map<string, string[]>();
+    [...productions]
+      .filter((p) => p.scheduleId && p.status !== "Cancelled" && !p.cancelTimestamp)
+      .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")) || String(a.jobNo || "").localeCompare(String(b.jobNo || ""), undefined, { numeric: true }))
+      .forEach((p) => {
+        const jobNo = displayJobNo(p.jobNo);
+        if (!jobNo) return;
+        const key = String(p.scheduleId);
+        const list = map.get(key) || [];
+        if (!list.includes(jobNo)) list.push(jobNo);
+        map.set(key, list);
+      });
+    return map;
+  }, [productions]);
 
   const pendingProductionPlanQtyByItemId = useMemo(() => {
     const map = new Map<string, number>();
@@ -275,12 +293,13 @@ export function PendingDispatchPlanning() {
         const order = lookup.orderById.get(schedule.orderId);
         const company = lookup.companyById.get(order?.companyId as string);
         const item = resolveOrderItem(order);
-        // Visible columns: Scheduled Date, Schedule No, Order No, Firm, Company, Item Name, Pending Qty, Unplanned Qty.
+        // Visible columns: Scheduled Date, Schedule No, Order No, Job No, Firm, Company, Item Name, Pending Qty, Unplanned Qty.
         return matchesTableSearch([
           formatDate(schedule.scheduledDate),
           dueStatus(schedule.scheduledDate),
           schedule.scheduleNo,
           order?.orderNo,
+          (jobNosByScheduleId.get(String(schedule.id)) || []).join(" "),
           getFirmDisplayNameById(schedule.firmId || order?.firmId, firms),
           company?.name,
           item?.name,
@@ -325,7 +344,7 @@ export function PendingDispatchPlanning() {
 
       return sortDirection === "asc" ? compare : -compare;
     });
-  }, [basePendingSchedules, selectedCompanyId, selectedFirmId, itemFilter, statusFilter, ffgFilter, ffgStockByItemId, itemIdByScheduleId, fromDate, toDate, todayIso, orders, companies, firms, searchTerm, sortDirection, sortKey, effectivePlannedByScheduleId, loadedQtyByScheduleId, resolveOrderItem, lookup]);
+  }, [basePendingSchedules, selectedCompanyId, selectedFirmId, itemFilter, statusFilter, ffgFilter, ffgStockByItemId, itemIdByScheduleId, fromDate, toDate, todayIso, orders, companies, firms, searchTerm, sortDirection, sortKey, effectivePlannedByScheduleId, loadedQtyByScheduleId, resolveOrderItem, lookup, jobNosByScheduleId]);
 
   const {
     page,
@@ -713,6 +732,7 @@ export function PendingDispatchPlanning() {
                     <span className="text-sm font-black">{s.scheduleNo || "-"}</span>
                   </div>
                   <div className="mt-0.5 text-[11px] font-semibold text-slate-600">{formatDate(s.scheduledDate)} · {info.order?.orderNo || "-"} · {info.firm}</div>
+                  {(jobNosByScheduleId.get(String(s.id)) || []).length > 0 && <div className="mt-0.5 text-[11px] font-semibold text-slate-700">Job: {(jobNosByScheduleId.get(String(s.id)) || []).join(", ")}</div>}
                   <div className="mt-1 break-words text-xs font-bold text-black">{info.company?.name || "-"}</div>
                   <div className="break-words text-xs text-slate-700">{info.item?.name || "-"}</div>
                 </div>
@@ -746,6 +766,7 @@ export function PendingDispatchPlanning() {
                 <th className="w-[84px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Schedule Date", "scheduledDate")}</th>
                 <th className="w-[110px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Schedule No", "scheduleNo")}</th>
                 <th className="w-[110px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Order No", "orderNo")}</th>
+                <th className="w-[90px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black" title="Jobs already started for this schedule (not cancelled)">Job No</th>
                 <th className="w-[52px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Firm", "firmName")}</th>
                 <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Item Name", "itemName")}</th>
@@ -763,7 +784,7 @@ export function PendingDispatchPlanning() {
             </thead>
             <tbody className="bg-white">
               {filteredSchedules.length === 0 ? (
-                <tr><td colSpan={17} className="px-6 py-8 text-center font-medium text-black">No pending dispatch plans found.</td></tr>
+                <tr><td colSpan={18} className="px-6 py-8 text-center font-medium text-black">No pending dispatch plans found.</td></tr>
               ) : paginatedSchedules.map((s) => {
                 const info = rowInfo(s);
                 const selected = selectedIds.has(s.id);
@@ -776,6 +797,7 @@ export function PendingDispatchPlanning() {
                     <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-center text-[11px] font-bold text-black">{formatDate(s.scheduledDate)}</td>
                     <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-[11px] font-bold text-black">{s.scheduleNo || "-"}</td>
                     <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-[11px] text-black">{info.order?.orderNo || "-"}</td>
+                    <td className="border border-black px-1.5 py-1.5 text-[11px] leading-tight text-black">{(jobNosByScheduleId.get(String(s.id)) || []).length ? (jobNosByScheduleId.get(String(s.id)) || []).map((jobNo) => <div key={jobNo} className="whitespace-nowrap">{jobNo}</div>) : "-"}</td>
                     <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-[11px] text-black">{info.firm}</td>
                     <td className="border border-black px-1.5 py-1.5 text-[11px] leading-tight text-black"><div className="min-w-[130px] max-w-[200px] whitespace-normal break-words">{info.company?.name || "-"}</div></td>
                     <td className="border border-black px-1.5 py-1.5 text-[11px] leading-tight text-black"><div className="min-w-[140px] max-w-[220px] whitespace-normal break-words">{info.item?.name || "-"}</div></td>
@@ -798,7 +820,7 @@ export function PendingDispatchPlanning() {
             {selectedIds.size > 0 && (
               <tfoot className="border-t-2 border-black bg-slate-100">
                 <tr className="font-black">
-                  <td colSpan={7} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
+                  <td colSpan={8} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
                   <td className="border border-black bg-indigo-50 px-4 py-3 text-right text-sm text-indigo-700">{totalSessionPlannedQty.toLocaleString()}</td>
                   <td colSpan={9} />
                 </tr>
