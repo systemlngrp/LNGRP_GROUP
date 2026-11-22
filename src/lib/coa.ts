@@ -1,5 +1,5 @@
 import type { BoardLineQcCheck, Company, CoaAutoRule, CoaCellValue, CoaTemplate, CoaTemplateLayout, CoaTemplateRow, Firm, Invoice, InvoiceLineItem, Order, OrderSchedule, PreDispatchInspection, PrintingQcCheck, Production } from "../types";
-import { checkCoaDimensions, checkCoaObservation, coaParameterForLabel } from "./coaParameters";
+import { checkCoaDimensions, checkCoaObservation, COA_PARAMETERS, coaParameterForLabel, type CoaParameter } from "./coaParameters";
 import type { JobLoadingRecord } from "./jobLoadingRecords";
 
 type AnyRecord = Record<string, any>;
@@ -252,7 +252,7 @@ export function evaluateCoaAutoRule(rule: CoaAutoRule, valueOf: (cellId: string)
   return "";
 }
 
-export function buildInitialCellValues(layout: CoaTemplateLayout, sourceMap: Record<string, string>): Record<string, CoaCellValue> {
+export function buildInitialCellValues(layout: CoaTemplateLayout, sourceMap: Record<string, string>, parameters: CoaParameter[] = COA_PARAMETERS): Record<string, CoaCellValue> {
   const values: Record<string, CoaCellValue> = {};
   const cells = [...layout.metadataRows, ...layout.parameterRows, ...layout.footerRows].flatMap((row) => row.cells);
   for (const cellValue of cells) {
@@ -270,7 +270,7 @@ export function buildInitialCellValues(layout: CoaTemplateLayout, sourceMap: Rec
       values[cellValue.id] = { value, sourceValue: value, source: value ? "auto" : "default" };
     }
   }
-  fillObservationsFromMaster(layout, values, sourceMap);
+  fillObservationsFromMaster(layout, values, sourceMap, parameters);
   return values;
 }
 
@@ -342,9 +342,9 @@ export function coaRowCheck(code: string, parameter: Parameters<typeof checkCoaO
  * parameter's real reading (or left blank for QC to type); a Remark cell gets OK / NOT OK
  * from the PASS / FAIL check. Rows the master does not know keep their template values.
  */
-function fillObservationsFromMaster(layout: CoaTemplateLayout, values: Record<string, CoaCellValue>, sourceMap: Record<string, string>) {
+function fillObservationsFromMaster(layout: CoaTemplateLayout, values: Record<string, CoaCellValue>, sourceMap: Record<string, string>, parameters: CoaParameter[]) {
   for (const parts of coaParameterRowParts(layout)) {
-    const parameter = coaParameterForLabel(parts.label);
+    const parameter = coaParameterForLabel(parts.label, parameters);
     if (!parameter) continue;
     const valueOf = (cell: CoaCell) => values[cell.id]?.value ?? (cell.binding ? sourceMap[cell.binding] || "" : cell.defaultValue || "");
     const stdValues = parts.std.map(valueOf);

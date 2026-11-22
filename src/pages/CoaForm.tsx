@@ -7,7 +7,7 @@ import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { activeTemplateForCompany, buildCoaSourceMap, buildInitialCellValues, coaParameterRowParts, coaRowCheck, coaRowLabel, getCoaCellValue, resolveCoaSourceContext, type CoaSourceContext, defaultCoaLayout } from "../lib/coa";
-import { coaParameterForLabel } from "../lib/coaParameters";
+import { coaParameterForLabel, mergeCoaParameters, type CoaParameterRecord } from "../lib/coaParameters";
 import { printCoaRecord } from "../lib/coaPrint";
 import { getOrganizationLogoUrl } from "../lib/pdfLogo";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
@@ -36,6 +36,9 @@ export function CoaForm() {
   const [invoices] = useData<Invoice>("invoices", [], { firmScope: "all" });
   const [invoiceLines] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all" });
   const [pdis] = useData<PreDispatchInspection>("pre_dispatch_inspections", [], { firmScope: "all" });
+  // COA Parameter Master (built-in list + saved edits).
+  const [parameterRecords] = useData<CoaParameterRecord>("coa_parameters", [], { firmScope: "all" });
+  const coaParameters = useMemo(() => mergeCoaParameters(parameterRecords), [parameterRecords]);
   // Loading slips and plans: which invoices belong to the job.
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all" });
   const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all" });
@@ -101,7 +104,7 @@ export function CoaForm() {
     setBlocked(null);
     const nextContext = contextFor(nextProduction);
     const nextTemplate = nextContext.company ? activeTemplateForCompany(templates, nextContext.company.id) : undefined;
-    setEditingRecord(null); setProductionId(nextProductionId); setTemplateId(nextTemplate?.id || ""); setLayout(nextTemplate?.layout || defaultCoaLayout()); setHeaderData(buildCoaSourceMap(nextContext)); setCellValues(nextTemplate ? buildInitialCellValues(nextTemplate.layout, buildCoaSourceMap(nextContext)) : {}); setMessage(nextTemplate ? "" : "No active COA template is configured for this customer company.");
+    setEditingRecord(null); setProductionId(nextProductionId); setTemplateId(nextTemplate?.id || ""); setLayout(nextTemplate?.layout || defaultCoaLayout()); setHeaderData(buildCoaSourceMap(nextContext)); setCellValues(nextTemplate ? buildInitialCellValues(nextTemplate.layout, buildCoaSourceMap(nextContext), coaParameters) : {}); setMessage(nextTemplate ? "" : "No active COA template is configured for this customer company.");
   };
   // ?productionId= (PDI Report → Generate COA) opens the form with that job selected.
   const [searchParams] = useSearchParams();
@@ -122,7 +125,7 @@ export function CoaForm() {
     if (!text(headerData.invoiceQty)) missing.push("Invoice Qty.");
     // First observation cell of every master parameter (typed by QC when no reading exists).
     const firstObs = new Map<string, string>();
-    coaParameterRowParts(layout).forEach((parts) => { if (parts.obs[0] && coaParameterForLabel(parts.label)) firstObs.set(parts.obs[0].id, parts.label); });
+    coaParameterRowParts(layout).forEach((parts) => { if (parts.obs[0] && coaParameterForLabel(parts.label, coaParameters)) firstObs.set(parts.obs[0].id, parts.label); });
     cellRows(layout).forEach((row) => {
       const name = coaRowLabel(row as any) || text(row.cells.find((cell: any) => cell.kind === "static" && text(cell.label))?.label);
       row.cells.forEach((cell: any) => {
@@ -131,13 +134,13 @@ export function CoaForm() {
       });
     });
     return [...new Set(missing)];
-  }, [cellValues, headerData, layout, production, sourceMap, templateId]);
+  }, [cellValues, coaParameters, headerData, layout, production, sourceMap, templateId]);
   // Observations outside their standard (COA Parameter Master pass rules). Shown, not blocking.
   const outOfStandard = useMemo(() => {
     if (!templateId || !production) return [] as string[];
     const out: string[] = [];
     coaParameterRowParts(layout).forEach((parts) => {
-      const parameter = coaParameterForLabel(parts.label);
+      const parameter = coaParameterForLabel(parts.label, coaParameters);
       if (!parameter) return;
       const valueOf = (cell: any) => text(getCoaCellValue(cell, cellValues, sourceMap, headerData));
       const std = parts.std.map(valueOf);
@@ -145,7 +148,7 @@ export function CoaForm() {
       if (coaRowCheck(parameter.code, parameter, std, obs) === "FAIL") out.push(`${parts.label} (${obs.filter(Boolean).join(", ")} vs ${std.filter(Boolean).join(" X ")})`);
     });
     return out;
-  }, [cellValues, headerData, layout, production, sourceMap, templateId]);
+  }, [cellValues, coaParameters, headerData, layout, production, sourceMap, templateId]);
   const updateHeader = (key: string, value: string) => setHeaderData((current) => ({ ...current, [key]: value }));
   const updateCell = (cellId: string, value: string) => setCellValues((current) => ({ ...current, [cellId]: { ...(current[cellId] || {}), value, source: "manual" } }));
   const buildRecord = (): CoaRecord | null => {

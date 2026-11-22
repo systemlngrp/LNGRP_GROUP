@@ -38,3 +38,21 @@ test("dimensions: each within ± 3 mm", () => {
   assert.equal(checkCoaDimensions(["547", "397", "477"], ["548", "395", "481"]), "FAIL");
   assert.equal(checkCoaDimensions(["547"], [""]), "");
 });
+
+test("saved edits override the built-in parameter; reset = no record", async () => {
+  const { mergeCoaParameters, coaParameterToRecord, COA_PARAMETERS } = await import("./coaParameters");
+  assert.equal(mergeCoaParameters([]), COA_PARAMETERS);
+  const moisture = COA_PARAMETERS.find((parameter) => parameter.code === "MOISTURE")!;
+  const record = { ...coaParameterToRecord(moisture), observationSource: "manual", plainRule: "tol:1", name: "Moisture %" };
+  const merged = mergeCoaParameters([record]);
+  const edited = merged.find((parameter) => parameter.code === "MOISTURE")!;
+  assert.equal(edited.name, "Moisture %");
+  assert.deepEqual(edited.observation, { manual: true });
+  assert.deepEqual(edited.plain, { tolerance: 1 });
+  assert.equal(coaParameterForLabel("MOISTURE CONTENT", merged), edited);   // labels kept
+  assert.equal(checkCoaObservation(edited, "8", "9.5"), "FAIL");
+  // New parameter, and switching one off.
+  const extra = mergeCoaParameters([{ id: "ODOUR_X", code: "ODOUR_X", name: "Carton Odour", observationSource: "manual", labels: "CARTON ODOUR" }, { id: "ECT", code: "ECT", name: "ECT", active: "No" }]);
+  assert.ok(coaParameterForLabel("Carton odour", extra));
+  assert.equal(coaParameterForLabel("ECT VALUE", extra), undefined);
+});

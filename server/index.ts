@@ -1010,7 +1010,7 @@ const USER_ROLE_MAX_LENGTH = 20;
 // existing create rules; updates and deletes require the Master management role.
 const MASTER_RECORD_ENTITIES = new Set([
   "item_groups", "material_groups", "items", "materials", "suppliers", "states", "units",
-  "color_masters", "flute_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "trucks", "truck_categories",
+  "color_masters", "flute_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "trucks", "truck_categories", "coa_parameters",
   "machines", "npd", "php_item_master", "plate_item_master", "users", "services", "whatsapp_configs", "settings",
   "boardline_qc_checks", "printing_qc_checks", "pre_dispatch_inspections", "quality_complaints",
   "qc_printing_wastage_records", "qc_update_records", "qc_file_no_masters", "special_remark_records",
@@ -6178,6 +6178,8 @@ function entityPermissionKey(entity: string): string {
       return "/masters/firms";
     case "truck_categories":
       return "/masters/truck-categories";
+    case "coa_parameters":
+      return "/quality/coa/parameters";
     case "trucks":
       return "/masters/trucks";
     case "machines":
@@ -8970,6 +8972,23 @@ async function initDb(retries = 5) {
         )
       `);
 
+      // COA Parameter Master: edits over the built-in parameter list (id = parameter code).
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`coa_parameters\` (
+          \`id\` VARCHAR(64) PRIMARY KEY,
+          \`code\` VARCHAR(64) NOT NULL,
+          \`name\` VARCHAR(255) NOT NULL,
+          \`standardText\` VARCHAR(500),
+          \`observationSource\` VARCHAR(500),
+          \`plainRule\` VARCHAR(40),
+          \`passRule\` VARCHAR(255),
+          \`labels\` TEXT,
+          \`active\` VARCHAR(10) NOT NULL DEFAULT 'Yes',
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+
       // Truck Category Master (trucks.categoryId points here).
       await db.query(`
         CREATE TABLE IF NOT EXISTS \`truck_categories\` (
@@ -10608,6 +10627,12 @@ await db.query(`
         { table: "truck_categories", column: "active", type: "VARCHAR(10) NOT NULL DEFAULT 'Yes'" },
         { table: "truck_categories", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "truck_categories", column: "updateTimestamp", type: "VARCHAR(255)" },
+        { table: "coa_parameters", column: "standardText", type: "VARCHAR(500)" },
+        { table: "coa_parameters", column: "observationSource", type: "VARCHAR(500)" },
+        { table: "coa_parameters", column: "plainRule", type: "VARCHAR(40)" },
+        { table: "coa_parameters", column: "passRule", type: "VARCHAR(255)" },
+        { table: "coa_parameters", column: "labels", type: "TEXT" },
+        { table: "coa_parameters", column: "active", type: "VARCHAR(10) NOT NULL DEFAULT 'Yes'" },
         { table: "php_job_master", column: "itemSource", type: "VARCHAR(20) NOT NULL DEFAULT 'FG'" },
         { table: "php_job_master", column: "masterErp", type: "VARCHAR(255)" },
         { table: "php_job_master", column: "shift", type: "VARCHAR(50)" },
@@ -17077,7 +17102,7 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
   }
 });
 
-const entities = ["item_groups", "material_groups", "truck_categories", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "daily_consumptions", "daily_consumption_items", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "flute_masters", "gst_rate_masters", "rapc_ranges", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "qc_update_audit_logs", "qc_file_no_masters", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "whatsapp_configs", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs", "pre_app_dispatches"];
+const entities = ["item_groups", "material_groups", "truck_categories", "coa_parameters", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "daily_consumptions", "daily_consumption_items", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "flute_masters", "gst_rate_masters", "rapc_ranges", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "qc_update_audit_logs", "qc_file_no_masters", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "whatsapp_configs", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs", "pre_app_dispatches"];
 
 app.get("/api/tally-sync-debug", (req, res) => {
   const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();

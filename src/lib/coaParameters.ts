@@ -68,11 +68,141 @@ export const COA_PARAMETERS: CoaParameter[] = [
 ];
 
 const normLabel = (value: unknown) => String(value ?? "").toUpperCase().replace(/\s+/g, " ").trim();
-const BY_LABEL = new Map(COA_PARAMETERS.flatMap((parameter) => parameter.labels.map((label) => [normLabel(label), parameter] as const)));
+const indexCache = new WeakMap<CoaParameter[], Map<string, CoaParameter>>();
+function labelIndex(list: CoaParameter[]) {
+  let index = indexCache.get(list);
+  if (!index) {
+    index = new Map(list.flatMap((parameter) => [parameter.name, ...parameter.labels].map((label) => [normLabel(label), parameter] as const)));
+    indexCache.set(list, index);
+  }
+  return index;
+}
 
-/** Master parameter for a template row label ("" when the row is not a known parameter). */
-export function coaParameterForLabel(label: unknown): CoaParameter | undefined {
-  return BY_LABEL.get(normLabel(label));
+/** Master parameter for a template row label (undefined when the row is not a known parameter). */
+export function coaParameterForLabel(label: unknown, list: CoaParameter[] = COA_PARAMETERS): CoaParameter | undefined {
+  return labelIndex(list).get(normLabel(label));
+}
+
+// ---- Saved edits (table coa_parameters, id = code) -------------------------------------
+
+/** Row of the coa_parameters table: an edit over the built-in parameter with the same code. */
+export interface CoaParameterRecord {
+  id: string;
+  code: string;
+  name: string;
+  standardText?: string | null;
+  observationSource?: string | null; // "readings:pdi.csAchieved,printing.csAchieved" | "standard" | "check:pdi.x" | "manual"
+  plainRule?: string | null;         // "min" | "max" | "equal" | "none" | "tol:3" | "pct:3"
+  passRule?: string | null;
+  labels?: string | null;            // template row labels, separated by "|"
+  active?: string | null;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
+export function observationSourceToText(source: CoaObservationSource): string {
+  if ("readings" in source) return `readings:${source.readings.join(",")}`;
+  if ("standard" in source) return "standard";
+  if ("check" in source) return `check:${source.check}`;
+  return "manual";
+}
+export function observationSourceFromText(value: unknown, fallback: CoaObservationSource): CoaObservationSource {
+  const textValue = String(value ?? "").trim();
+  if (!textValue) return fallback;
+  if (textValue === "standard") return { standard: true };
+  if (textValue === "manual") return { manual: true };
+  if (textValue.startsWith("check:")) return { check: textValue.slice(6).trim() };
+  if (textValue.startsWith("readings:")) {
+    const readings = textValue.slice(9).split(",").map((key) => key.trim()).filter(Boolean);
+    return readings.length ? { readings } : { manual: true };
+  }
+  return fallback;
+}
+export function plainRuleToText(rule: CoaPlainRule): string {
+  if (typeof rule === "string") return rule;
+  return "tolerance" in rule ? `tol:${rule.tolerance}` : `pct:${rule.percent}`;
+}
+export function plainRuleFromText(value: unknown, fallback: CoaPlainRule): CoaPlainRule {
+  const textValue = String(value ?? "").trim().toLowerCase();
+  if (["min", "max", "equal", "none"].includes(textValue)) return textValue as CoaPlainRule;
+  const match = textValue.match(/^(tol|pct):\s*(\d+(?:\.\d+)?)$/);
+  if (match) return match[1] === "tol" ? { tolerance: Number(match[2]) } : { percent: Number(match[2]) };
+  return fallback;
+}
+
+/** Readings the observation can come from (shown in the master's dropdown). */
+export const COA_READING_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "pdi.lengthId,pdi.widthId,pdi.heightId", label: "PDI: Achieved L / W / H" },
+  { value: "pdi.csAchieved,printing.csAchieved", label: "PDI CS · Printing QC CS" },
+  { value: "pdi.csAchieved", label: "PDI: CS Achieved" },
+  { value: "pdi.gsmAchieved", label: "PDI: GSM Achieved" },
+  { value: "pdi.boxWeightGrams", label: "PDI: Box Weight (g)" },
+  { value: "printing.bsAchieved", label: "Printing QC: BS Achieved" },
+  { value: "printing.csAchieved", label: "Printing QC: CS Achieved" },
+  { value: "printing.boxWeightGrams", label: "Printing QC: Box Weight (g)" },
+  { value: "boardline.moisture", label: "Boardline QC: Moisture" },
+  { value: "boardline.boardThickness", label: "Boardline QC: Board Thickness" },
+  { value: "boardline.typeOfFlute", label: "Boardline QC: Type of Flute" },
+  { value: "boardline.sheetWeightGrams", label: "Boardline QC: Sheet Weight (g)" },
+];
+export const COA_CHECK_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "pdi.printingColorCheck", label: "PDI: Printing Colour check" },
+  { value: "pdi.printingArtworkCheck", label: "PDI: Printing Artwork check" },
+  { value: "pdi.jointCheck", label: "PDI: Joint Pasting check" },
+  { value: "pdi.flapGapCheck", label: "PDI: Flap Gap check" },
+];
+
+export function describeObservationSource(source: CoaObservationSource): string {
+  if ("standard" in source) return "Same as standard";
+  if ("manual" in source) return "Typed by QC";
+  if ("check" in source) return COA_CHECK_OPTIONS.find((option) => option.value === source.check)?.label || source.check;
+  const key = source.readings.join(",");
+  return COA_READING_OPTIONS.find((option) => option.value === key)?.label || source.readings.join(" · ");
+}
+
+/**
+ * Built-in parameters with the saved edits applied (matched on code). Saved rows with a new
+ * code are added; a saved row with active = "No" switches the parameter off.
+ */
+export function mergeCoaParameters(records: CoaParameterRecord[] | undefined): CoaParameter[] {
+  if (!records?.length) return COA_PARAMETERS;
+  const byCode = new Map(records.map((record) => [String(record.code || record.id).trim().toUpperCase(), record]));
+  const apply = (base: CoaParameter | undefined, record: CoaParameterRecord): CoaParameter => {
+    const observation = observationSourceFromText(record.observationSource, base?.observation || { manual: true });
+    const labels = String(record.labels ?? "").split("|").map((label) => label.trim()).filter(Boolean);
+    return {
+      code: String(record.code || record.id).trim().toUpperCase(),
+      name: String(record.name || base?.name || record.code),
+      standard: String(record.standardText ?? base?.standard ?? ""),
+      observation,
+      observationLabel: describeObservationSource(observation),
+      plain: plainRuleFromText(record.plainRule, base?.plain || "none"),
+      passRule: String(record.passRule ?? base?.passRule ?? ""),
+      labels: labels.length ? labels : base?.labels || [],
+    };
+  };
+  const merged = COA_PARAMETERS.flatMap((base) => {
+    const record = byCode.get(base.code);
+    if (!record) return [base];
+    if (String(record.active ?? "Yes").toLowerCase() === "no") return [];
+    return [apply(base, record)];
+  });
+  records.forEach((record) => {
+    const code = String(record.code || record.id).trim().toUpperCase();
+    if (!code || COA_PARAMETERS.some((base) => base.code === code) || String(record.active ?? "Yes").toLowerCase() === "no") return;
+    merged.push(apply(undefined, record));
+  });
+  return merged;
+}
+
+/** Record to save for a parameter (id = code). */
+export function coaParameterToRecord(parameter: CoaParameter, actor = "System User"): CoaParameterRecord {
+  return {
+    id: parameter.code, code: parameter.code, name: parameter.name, standardText: parameter.standard,
+    observationSource: observationSourceToText(parameter.observation), plainRule: plainRuleToText(parameter.plain),
+    passRule: parameter.passRule, labels: parameter.labels.join("|"), active: "Yes",
+    updatedBy: actor, updateTimestamp: new Date().toISOString(),
+  };
 }
 
 const num = (value: string) => {
