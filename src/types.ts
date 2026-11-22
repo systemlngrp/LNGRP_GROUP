@@ -1392,6 +1392,9 @@ export interface PreDispatchInspection {
   csAchieved?: number | string;
   gsmAchieved?: number | string;
   boxWeightGrams?: number | string;
+  /** Measured joint width and gap between closing flaps (mm); optional, used on the COA. */
+  jointWidthMm?: number | string;
+  flapGapMm?: number | string;
   printingArtworkCheck?: string;
   printingColorCheck?: string;
   boxSquaringCheck?: string;

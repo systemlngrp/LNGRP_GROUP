@@ -140,6 +140,8 @@ export function buildPdiReportRow(
     "CS Actual": displayNumber(achievedCs),
     "CS Standard": standardCs ?? "",
     "Box Weight (Grams)": displayNumber(inspection?.boxWeightGrams),
+    "Joint Width (mm)": displayNumber((inspection as any)?.jointWidthMm),
+    "Flap Gap (mm)": displayNumber((inspection as any)?.flapGapMm),
     Artwork: text(item?.artwork),
     "Printing Artwork Check": text(inspection?.printingArtworkCheck),
     "Printing Color Check": text(inspection?.printingColorCheck),

@@ -23,10 +23,19 @@ export function isZeroOrPositiveDecimal(value: unknown): boolean {
   return /^(?:\d+(?:\.\d*)?|\.\d+)$/.test(raw) && Number.isFinite(Number(raw)) && Number(raw) >= 0;
 }
 
+// Optional measurements: may be left blank; when filled they must be a number (0 allowed).
+export const OPTIONAL_INSPECTION_NUMBER_FIELDS = [
+  ["jointWidthMm", "Joint Width (mm)"],
+  ["flapGapMm", "Flap Gap (mm)"],
+] as const;
+
 export function invalidInspectionNumberField(form: Partial<PreDispatchInspection>): string | undefined {
   return INSPECTION_NUMBER_FIELDS.find(([field]) =>
     ZERO_ALLOWED_INSPECTION_FIELDS.has(field) ? !isZeroOrPositiveDecimal(form[field]) : !isPositiveDecimal(form[field])
-  )?.[1];
+  )?.[1] || OPTIONAL_INSPECTION_NUMBER_FIELDS.find(([field]) => {
+    const value = String((form as Record<string, unknown>)[field] ?? "").trim();
+    return value !== "" && !isZeroOrPositiveDecimal(value);
+  })?.[1];
 }
 
 export function inspectionNumberMessage(label: string) {

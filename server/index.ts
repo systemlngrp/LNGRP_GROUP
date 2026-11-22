@@ -9842,6 +9842,8 @@ await db.query(`
         { table: "pre_dispatch_inspections", column: "csAchieved", type: "VARCHAR(50)" },
         { table: "pre_dispatch_inspections", column: "gsmAchieved", type: "VARCHAR(50)" },
         { table: "pre_dispatch_inspections", column: "boxWeightGrams", type: "VARCHAR(50)" },
+        { table: "pre_dispatch_inspections", column: "jointWidthMm", type: "VARCHAR(50)" },
+        { table: "pre_dispatch_inspections", column: "flapGapMm", type: "VARCHAR(50)" },
         { table: "pre_dispatch_inspections", column: "printingArtworkCheck", type: "VARCHAR(20)" },
         { table: "pre_dispatch_inspections", column: "printingColorCheck", type: "VARCHAR(20)" },
         { table: "pre_dispatch_inspections", column: "boxSquaringCheck", type: "VARCHAR(20)" },

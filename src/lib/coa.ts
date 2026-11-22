@@ -96,12 +96,12 @@ function checkText(value: unknown, okText: string) {
 /**
  * Observation values from real readings only (never generated):
  * colour / printing from the PDI checks; L, B, H from the PDI; ply = job ply;
- * flute, board thickness and moisture from Boardline QC; joint width and flap gap
- * are typed by QC (the PDI records them only as OK / NOT OK).
+ * flute, board thickness and moisture from Boardline QC; joint width and flap gap (mm)
+ * from the PDI.
  */
 export function buildCoaObservations(readings: {
   ply?: unknown; printingColorCheck?: unknown; printingArtworkCheck?: unknown;
-  lengthId?: unknown; widthId?: unknown; heightId?: unknown;
+  lengthId?: unknown; widthId?: unknown; heightId?: unknown; jointWidthMm?: unknown; flapGapMm?: unknown;
   boardFlute?: unknown; boardThickness?: unknown; moisture?: unknown;
 }) {
   return {
@@ -111,8 +111,8 @@ export function buildCoaObservations(readings: {
     "obs.breadth": sourceValue(readings.widthId),
     "obs.height": sourceValue(readings.heightId),
     "obs.ply": sourceValue(readings.ply),
-    "obs.jointWidth": "",
-    "obs.flapGap": "",
+    "obs.jointWidth": sourceValue(readings.jointWidthMm),
+    "obs.flapGap": sourceValue(readings.flapGapMm),
     "obs.flute": text(readings.boardFlute),
     "obs.boardThickness": sourceValue(readings.boardThickness),
     "obs.moisture": sourceValue(readings.moisture),
@@ -232,11 +232,14 @@ export function buildCoaSourceMap(context: CoaSourceContext, coaDate = new Date(
     "printing.colour1Actual": sourceValue(printing?.colour1Actual),
     "printing.colour2Actual": sourceValue(printing?.colour2Actual),
     "pdi.printingArtworkCheck": sourceValue((pdi as AnyRecord)?.printingArtworkCheck),
+    "pdi.jointWidthMm": sourceValue((pdi as AnyRecord)?.jointWidthMm),
+    "pdi.flapGapMm": sourceValue((pdi as AnyRecord)?.flapGapMm),
     ...buildCoaObservations({
       ply: job.ply || item?.ply,
       printingColorCheck: (pdi as AnyRecord)?.printingColorCheck,
       printingArtworkCheck: (pdi as AnyRecord)?.printingArtworkCheck,
       lengthId: pdi?.lengthId, widthId: pdi?.widthId, heightId: pdi?.heightId,
+      jointWidthMm: (pdi as AnyRecord)?.jointWidthMm, flapGapMm: (pdi as AnyRecord)?.flapGapMm,
       boardFlute: boardline?.typeOfFlute, boardThickness: boardline?.boardThickness, moisture: boardline?.moisture,
     }),
   };
@@ -355,7 +358,8 @@ function fillObservationsFromMaster(layout: CoaTemplateLayout, values: Record<st
       if (cell.binding) return sourceMap[cell.binding] || "";
       if ("readings" in spec) {
         // A reading saved as 0 (e.g. moisture "0.00", CS "00") was not measured: treat it as blank.
-        const reading = (key: string) => { const value = sourceMap[key] || ""; return /^\s*0*(?:\.0*)?\s*$/.test(value) ? "" : value; };
+        // Flap gap can truly be 0 mm.
+        const reading = (key: string) => { const value = sourceMap[key] || ""; return key !== "pdi.flapGapMm" && /^\s*0*(?:\.0*)?\s*$/.test(value) ? "" : value; };
         if (parts.obs.length === 1) return spec.readings.map(reading).find(Boolean) || "";
         return reading(spec.readings[index] || "");
       }

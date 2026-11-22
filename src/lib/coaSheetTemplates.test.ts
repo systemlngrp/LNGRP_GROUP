@@ -84,3 +84,11 @@ test("a reading saved as 0 counts as not measured", () => {
   assert.equal(values["p17-o1"].value, "");
   assert.deepEqual(["p12-o1", "p12-o2"].map((id) => values[id].value), ["", "231"]);
 });
+
+test("joint width and flap gap come from the PDI (mm); a 0 mm flap gap is kept", () => {
+  const values = buildInitialCellValues(coaSheetTemplates()["COMMON COA"], { ...source, "pdi.jointWidthMm": "30", "pdi.flapGapMm": "0" });
+  const rows = coaSheetTemplates()["COMMON COA"].parameterRows;
+  const obsOf = (label: string) => values[rows.find((row) => row.cells[1]?.label === label)!.cells.find((cell) => /-o\d?$/.test(cell.id))!.id].value;
+  assert.equal(obsOf("Manufacturing Joint Width"), "30");
+  assert.equal(obsOf("Gap between closing Flap"), "0");
+});
