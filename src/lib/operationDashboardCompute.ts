@@ -1,3 +1,4 @@
+import { displayJobNo } from "./jobNumber";
 import type {
   Company, Consumption, DispatchPlan, Firm, GateEntry, GatePass, Indent, IndentLine, Invoice, InvoiceLineItem, Item,
   LoadingSlip, LoadingSlipLine, Machine, Material, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine,
@@ -367,7 +368,7 @@ export function computeOperationDashboard(lists: OperationDashboardLists, option
   const exportRows = options.includeExportRows ? (() => {
     return rows.map((r) => ({
       "Sr. No.": r.srNo,
-      "Job No.": r.production.transactionNo || "-",
+      "Job No.": displayJobNo(r.production.transactionNo) || "-",
       "Order No.": r.order?.orderNo || "-",
       "ERP Code": r.production.erpCode || "-",
       Company: r.company?.name || "-",

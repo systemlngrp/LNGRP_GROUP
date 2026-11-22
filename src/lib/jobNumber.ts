@@ -16,14 +16,22 @@ export function normalizeProductionJobNumber(value: unknown): string {
 
 
 /**
- * Job number as shown on screen and in downloads: financial year and serial
- * only. Job numbers run in one series for all firms, so the firm label and the
- * word "JOB" add nothing: "LNCB-2/JOB/26-27/11053" and "JOB/26-27/11053" both
- * show as "26-27/11053". Anything else (PHP, PLATE, MRR, ...) is returned as is.
- * The saved number is unchanged; this is display only.
+ * Job number as shown on screen and in downloads: the serial only. Job numbers
+ * run in one series for all firms and years, so the firm label, the word "JOB"
+ * and the financial year add nothing: "LNCB-2/JOB/26-27/11053" and
+ * "JOB/26-27/11053" both show as "11053". Anything else (PHP, PLATE, MRR, ...)
+ * is returned as is. The saved number is unchanged; this is display only.
  */
 export function displayJobNo(value: unknown): string {
   const raw = String(value ?? "").trim();
-  const match = raw.match(/^(?:[A-Za-z0-9-]+\/)?JOB\/(\d{2}-\d{2})\/0*(\d+)$/i);
-  return match ? `${match[1]}/${match[2]}` : raw;
+  const match = raw.match(/^(?:[A-Za-z0-9-]+\/)?JOB\/\d{2}-\d{2}\/0*(\d+)$/i);
+  return match ? match[1] : raw;
+}
+
+/** True when a search text matches a job number typed in full, as FY/serial, or as the serial alone. */
+export function jobNoMatches(value: unknown, query: string): boolean {
+  const q = String(query ?? "").trim().toLowerCase();
+  if (!q) return true;
+  const raw = String(value ?? "").trim().toLowerCase();
+  return raw.includes(q) || displayJobNo(value).toLowerCase().includes(q);
 }

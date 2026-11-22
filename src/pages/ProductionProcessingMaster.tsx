@@ -367,7 +367,7 @@ export function ProductionProcessingMaster() {
                             ))}
                           </select>
                         ) : (
-                          item.jobNo
+                          <span title={item.jobNo}>{displayJobNo(item.jobNo)}</span>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-black border border-black">{firmName}</td>
