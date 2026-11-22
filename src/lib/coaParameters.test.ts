@@ -56,3 +56,26 @@ test("saved edits override the built-in parameter; reset = no record", async () 
   assert.ok(coaParameterForLabel("Carton odour", extra));
   assert.equal(coaParameterForLabel("ECT VALUE", extra), undefined);
 });
+
+test("flute, company and target rules from the QC notes", async () => {
+  const { COA_PARAMETERS, coaStandardFor, coaTargetFor, normaliseFlute, checkCoaObservation, mergeCoaParameters, coaParameterToRecord } = await import("./coaParameters");
+  const p = (code: string) => COA_PARAMETERS.find((value) => value.code === code)!;
+  assert.equal(normaliseFlute("BC"), "B+C");
+  assert.equal(normaliseFlute("C+B Flute"), "B+C");
+  assert.equal(normaliseFlute("AB"), "B+A");
+  assert.deepEqual(coaStandardFor(p("FLUTE_HT"), "", "", "BC"), { text: "Min 6.8 mm", from: "flute" });
+  assert.deepEqual(coaStandardFor(p("THICK"), "", "", "E"), { text: "Min 1.8 mm", from: "flute" });
+  assert.deepEqual(coaStandardFor(p("FLUTE_COUNT"), "35 (+-3)", "", "C"), { text: "35 (+-3)", from: "template" });
+  assert.equal(coaTargetFor(p("FLUTE_HT"), "A"), "5.1-5.3");
+  assert.equal(coaTargetFor(p("JOINT_W"), "C"), "36-38");
+  assert.equal(checkCoaObservation(p("FLUTE_HT"), "Min 4.0 mm", "3.9"), "FAIL");
+  assert.equal(checkCoaObservation(p("JOINT_W"), "Min 35 mm (company option)", "36"), "PASS");
+  assert.equal(checkCoaObservation(p("FLAP_GAP"), "Maximum 3 mm (company option)", "4"), "FAIL");
+  assert.equal(checkCoaObservation(p("CENTER_PLATE"), "235", "239"), "FAIL");
+  // Company standard saved in the master wins over the template standard.
+  const merged = mergeCoaParameters([{ ...coaParameterToRecord({ ...p("MOISTURE"), companyStandards: { c1: "6-8%" } }), id: "MOISTURE" }]);
+  const moisture = merged.find((value) => value.code === "MOISTURE")!;
+  assert.deepEqual(coaStandardFor(moisture, "7-9%", "c1", ""), { text: "6-8%", from: "company" });
+  assert.deepEqual(coaStandardFor(moisture, "7-9%", "c2", ""), { text: "7-9%", from: "template" });
+  assert.equal(moisture.target, "7-9");
+});

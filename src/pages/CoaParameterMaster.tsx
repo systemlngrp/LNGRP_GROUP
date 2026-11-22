@@ -18,12 +18,17 @@ import { coaParameterRowParts } from "../lib/coa";
 const FIELD = "w-full rounded border-2 border-black bg-white px-2 py-1.5 text-sm";
 const LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
 
-type Draft = { code: string; name: string; standard: string; source: string; rule: string; ruleNumber: string; passRule: string; labels: string; isNew: boolean };
+type CompanyStd = { companyId: string; standard: string };
+type Draft = { code: string; name: string; standard: string; source: string; rule: string; ruleNumber: string; passRule: string; labels: string; target: string; companyStds: CompanyStd[]; isNew: boolean };
 
 const draftOf = (parameter: CoaParameter, isNew = false): Draft => {
   const rule = plainRuleToText(parameter.plain);
   const [kind, number] = rule.includes(":") ? rule.split(":") : [rule, ""];
-  return { code: parameter.code, name: parameter.name, standard: parameter.standard, source: observationSourceToText(parameter.observation), rule: kind, ruleNumber: number, passRule: parameter.passRule, labels: parameter.labels.join("\n"), isNew };
+  return {
+    code: parameter.code, name: parameter.name, standard: parameter.standard, source: observationSourceToText(parameter.observation), rule: kind, ruleNumber: number,
+    passRule: parameter.passRule, labels: parameter.labels.join("\n"), target: parameter.target || "",
+    companyStds: Object.entries(parameter.companyStandards || {}).map(([companyId, standard]) => ({ companyId, standard })), isNew,
+  };
 };
 
 export function CoaParameterMaster() {
@@ -31,6 +36,9 @@ export function CoaParameterMaster() {
   const canEdit = canManageMasterRecords(user?.role);
   const [records, , loading, api] = useData<CoaParameterRecord>("coa_parameters", [], { firmScope: "all" });
   const parameters = useMemo(() => mergeCoaParameters(records), [records]);
+  const [companies] = useData<{ id: string; name: string }>("companies", [], { firmScope: "all" });
+  const companyName = useMemo(() => new Map(companies.map((company) => [String(company.id), company.name])), [companies]);
+  const companyOptions = useMemo(() => [...companies].sort((a, b) => String(a.name).localeCompare(String(b.name))), [companies]);
   const savedCodes = useMemo(() => new Set(records.map((record) => String(record.code || record.id).toUpperCase())), [records]);
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -63,6 +71,8 @@ export function CoaParameterMaster() {
     ...COA_READING_OPTIONS.map((option) => ({ value: `readings:${option.value}`, label: `Reading – ${option.label}` })),
     ...COA_CHECK_OPTIONS.map((option) => ({ value: `check:${option.value}`, label: `Check – ${option.label}` })),
     { value: "standard", label: "Same as standard" },
+    { value: "text:NONE", label: "Text NONE (after PDI pass)" },
+    { value: "text:OK", label: "Text OK (after PDI pass)" },
     { value: "manual", label: "Typed by QC" },
   ];
 
@@ -77,6 +87,10 @@ export function CoaParameterMaster() {
     const parameter: CoaParameter = {
       code, name: draft.name.trim(), standard: draft.standard.trim(), observation, observationLabel: describeObservationSource(observation),
       plain: plainRuleFromText(ruleText, "none"), passRule: draft.passRule.trim(), labels: labels.length ? labels : [draft.name.trim()],
+      target: draft.target.trim() || undefined,
+      companyStandards: draft.companyStds.some((row) => row.companyId && row.standard.trim())
+        ? Object.fromEntries(draft.companyStds.filter((row) => row.companyId && row.standard.trim()).map((row) => [row.companyId, row.standard.trim()]))
+        : undefined,
     };
     const record = coaParameterToRecord(parameter, String(user?.name || user?.email || "System User"));
     setBusy(true);
@@ -104,13 +118,13 @@ export function CoaParameterMaster() {
     } finally { setBusy(false); }
   };
 
-  const sourceClass = (label: string) => /^Typed/.test(label) ? "bg-amber-50 text-amber-900" : /^Same as/.test(label) ? "bg-slate-50" : "bg-emerald-50 text-emerald-900";
+  const sourceClass = (label: string) => /^Typed/.test(label) ? "bg-amber-50 text-amber-900" : /^Same as|after PDI pass/.test(label) ? "bg-slate-50" : "bg-emerald-50 text-emerald-900";
 
   return <div className="space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black pb-3">
       <div>
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">COA Parameter Master</h2>
-        <p className="text-sm font-semibold text-slate-600">Observations come from real readings or are typed by QC, and are checked against the standard (PASS / FAIL) on the COA Form.</p>
+        <p className="text-sm font-semibold text-slate-600">Observations come from real readings or are typed by QC, and are checked against the standard (PASS / FAIL) on the COA Form. The QC target is only a hint in the empty box; it is never filled in as a reading.</p>
       </div>
       {canEdit ? <button type="button" onClick={() => { setMessage(""); setDraft(draftOf({ code: "", name: "", standard: "", observation: { manual: true }, observationLabel: "", plain: "none", passRule: "", labels: [] }, true)); }} className="inline-flex items-center gap-1.5 rounded border-2 border-indigo-700 bg-indigo-700 px-3 py-1.5 text-sm font-bold text-white"><Plus size={15} /> Add parameter</button> : null}
     </div>
@@ -133,6 +147,20 @@ export function CoaParameterMaster() {
           {["tol", "pct"].includes(draft.rule) ? <input className={`${FIELD} w-24`} type="number" min={0} step="any" value={draft.ruleNumber} onChange={(event) => setDraft({ ...draft, ruleNumber: event.target.value })} /> : null}
         </div><span className="text-[10px] text-slate-500">Standards written as a range ("7-9%"), "Min …", "Maximum …" or "x ± y" use their own rule.</span></label>
         <label><span className={LABEL}>PASS rule (shown on this page)</span><input className={FIELD} value={draft.passRule} onChange={(event) => setDraft({ ...draft, passRule: event.target.value })} /></label>
+        <label><span className={LABEL}>QC target (hint in the empty observation box)</span><input className={FIELD} value={draft.target} onChange={(event) => setDraft({ ...draft, target: event.target.value })} placeholder="e.g. 36-38" /></label>
+        <div className="md:col-span-2 xl:col-span-3"><span className={LABEL}>Company standards (used instead of the template standard for that company)</span>
+          <div className="space-y-1.5">
+            {draft.companyStds.map((row, index) => <div key={index} className="flex gap-2">
+              <select className={FIELD} value={row.companyId} onChange={(event) => setDraft({ ...draft, companyStds: draft.companyStds.map((value, i) => i === index ? { ...value, companyId: event.target.value } : value) })}>
+                <option value="">Select company</option>
+                {companyOptions.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+              </select>
+              <input className={FIELD} value={row.standard} placeholder="e.g. 6-8% or Min 32 mm" onChange={(event) => setDraft({ ...draft, companyStds: draft.companyStds.map((value, i) => i === index ? { ...value, standard: event.target.value } : value) })} />
+              <button type="button" onClick={() => setDraft({ ...draft, companyStds: draft.companyStds.filter((_, i) => i !== index) })} className="rounded border-2 border-black bg-white px-2 text-xs font-bold">Remove</button>
+            </div>)}
+            <button type="button" onClick={() => setDraft({ ...draft, companyStds: [...draft.companyStds, { companyId: "", standard: "" }] })} className="rounded border-2 border-indigo-700 bg-white px-2 py-1 text-xs font-bold text-indigo-700">+ Company standard</button>
+          </div>
+        </div>
         <label className="md:col-span-2 xl:col-span-3"><span className={LABEL}>Row names on COA templates (one per line)</span><textarea rows={3} className={FIELD} value={draft.labels} onChange={(event) => setDraft({ ...draft, labels: event.target.value })} /></label>
       </div>
       <div className="flex justify-end gap-2">
@@ -146,13 +174,14 @@ export function CoaParameterMaster() {
     <div className="max-h-[70vh] overflow-auto border border-slate-400 bg-white">
       <table className="w-full min-w-[1100px] border-collapse text-xs">
         <thead className="sticky top-0 z-10 bg-cyan-800 text-white"><tr>
-          {["Code", "Parameter", "Standard", "Observation comes from", "PASS rule", "Used by templates", ...(canEdit ? ["Actions"] : [])].map((label) =>
+          {["Code", "Parameter", "Standard", "QC target (hint)", "Observation comes from", "PASS rule", "Used by templates", ...(canEdit ? ["Actions"] : [])].map((label) =>
             <th key={label} className="whitespace-nowrap border border-slate-400 px-2 py-1.5 font-bold">{label}</th>)}
         </tr></thead>
         <tbody>{rows.map((parameter) => <tr key={parameter.code} className="align-top odd:bg-white even:bg-slate-50 hover:bg-cyan-50">
           <td className="whitespace-nowrap border border-slate-300 px-2 py-1 font-mono font-bold">{parameter.code}{savedCodes.has(parameter.code) ? <span className="ml-1 text-indigo-700" title="Changed here">✎</span> : null}</td>
           <td className="border border-slate-300 px-2 py-1 font-bold">{parameter.name}</td>
-          <td className="border border-slate-300 px-2 py-1">{parameter.standard}</td>
+          <td className="border border-slate-300 px-2 py-1">{parameter.standard}{parameter.companyStandards ? <div className="mt-0.5 text-[10px] font-bold text-indigo-800">{Object.entries(parameter.companyStandards).map(([id, std]) => `${companyName.get(id) || id}: ${std}`).join(" · ")}</div> : null}</td>
+          <td className="border border-slate-300 px-2 py-1 text-slate-600">{parameter.targetByFlute ? Object.entries(parameter.targetByFlute).map(([flute, value]) => `${flute} ${value}`).join(" · ") : parameter.target || "-"}</td>
           <td className={`border border-slate-300 px-2 py-1 font-semibold ${sourceClass(parameter.observationLabel)}`}>{parameter.observationLabel}</td>
           <td className="border border-slate-300 px-2 py-1">{parameter.passRule}</td>
           <td className="border border-slate-300 px-2 py-1">{[...(usedBy.get(parameter.code) || [])].join(", ") || "-"}</td>

@@ -10661,6 +10661,8 @@ await db.query(`
         { table: "coa_parameters", column: "passRule", type: "VARCHAR(255)" },
         { table: "coa_parameters", column: "labels", type: "TEXT" },
         { table: "coa_parameters", column: "active", type: "VARCHAR(10) NOT NULL DEFAULT 'Yes'" },
+        { table: "coa_parameters", column: "targetText", type: "VARCHAR(500)" },
+        { table: "coa_parameters", column: "companyStandards", type: "LONGTEXT" },
         { table: "php_job_master", column: "itemSource", type: "VARCHAR(20) NOT NULL DEFAULT 'FG'" },
         { table: "php_job_master", column: "masterErp", type: "VARCHAR(255)" },
         { table: "php_job_master", column: "shift", type: "VARCHAR(50)" },

@@ -1,5 +1,5 @@
 import type { BoardLineQcCheck, Company, CoaAutoRule, CoaCellValue, CoaTemplate, CoaTemplateLayout, CoaTemplateRow, Firm, Invoice, InvoiceLineItem, Order, OrderSchedule, PreDispatchInspection, PrintingQcCheck, Production } from "../types";
-import { checkCoaDimensions, checkCoaObservation, COA_PARAMETERS, coaParameterForLabel, type CoaParameter } from "./coaParameters";
+import { checkCoaDimensions, checkCoaObservation, COA_PARAMETERS, coaParameterForLabel, coaStandardFor, coaTargetFor, type CoaParameter } from "./coaParameters";
 import type { JobLoadingRecord } from "./jobLoadingRecords";
 
 type AnyRecord = Record<string, any>;
@@ -171,6 +171,7 @@ export function buildCoaSourceMap(context: CoaSourceContext, coaDate = new Date(
   return {
     coaDate,
     companyName: text(company?.name || (production as AnyRecord).companyName),
+    companyId: text(company?.id || (production as AnyRecord).companyId),
     firmName: text(firm?.firmName || production.firmName),
     firmAddress: text(firm?.address),
     firmLogo: "",
@@ -361,6 +362,15 @@ function fillObservationsFromMaster(layout: CoaTemplateLayout, values: Record<st
     const parameter = coaParameterForLabel(parts.label, parameters);
     if (!parameter) continue;
     const valueOf = (cell: CoaCell) => values[cell.id]?.value ?? (cell.binding ? sourceMap[cell.binding] || "" : cell.defaultValue || "");
+    // Standard: the company option (Parameter Master) wins; a blank template standard takes the flute standard.
+    const templateStd = parts.std.map(valueOf).filter(Boolean).join(" X ");
+    const resolved = coaStandardFor(parameter, templateStd, sourceMap.companyId || "", sourceMap["production.flute"] || "");
+    if (parts.std.length && resolved.from && resolved.from !== "template") {
+      parts.std.forEach((cell, index) => {
+        const value = index === 0 ? resolved.text : "";
+        values[cell.id] = { value, sourceValue: value, source: "auto" };
+      });
+    }
     const stdValues = parts.std.map(valueOf);
     const stdText = stdValues.filter(Boolean).join(" X ");
     const spec = parameter.observation;
@@ -378,6 +388,7 @@ function fillObservationsFromMaster(layout: CoaTemplateLayout, values: Record<st
       }
       if ("standard" in spec) return index === 0 ? stdText : "";
       if ("check" in spec) return index === 0 ? checkText(sourceMap[spec.check], spec.okText || stdText || "OK") : "";
+      if ("text" in spec) return index === 0 ? spec.text : "";
       return "";
     });
     parts.obs.forEach((cell, index) => {
@@ -389,6 +400,21 @@ function fillObservationsFromMaster(layout: CoaTemplateLayout, values: Record<st
       parts.remark.forEach((cell) => { values[cell.id] = { value, sourceValue: value, source: value ? "auto" : "default" }; });
     }
   }
+}
+
+/**
+ * QC target per empty observation cell (cell id -> hint), shown as grey placeholder text.
+ * A hint is never saved as an observation.
+ */
+export function coaObservationHints(layout: CoaTemplateLayout, sourceMap: Record<string, string>, parameters: CoaParameter[] = COA_PARAMETERS): Record<string, string> {
+  const hints: Record<string, string> = {};
+  for (const parts of coaParameterRowParts(layout)) {
+    const parameter = coaParameterForLabel(parts.label, parameters);
+    if (!parameter || !parts.obs.length) continue;
+    const target = coaTargetFor(parameter, sourceMap["production.flute"] || "");
+    if (target) parts.obs.forEach((cell) => { hints[cell.id] = `Target: ${target}`; });
+  }
+  return hints;
 }
 
 export function getCoaCellValue(templateCell: CoaTemplateLayout["parameterRows"][number]["cells"][number], values: Record<string, CoaCellValue>, sourceMap: Record<string, string>, headerData: Record<string, string>) {
