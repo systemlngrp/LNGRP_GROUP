@@ -10,7 +10,7 @@ const source: Record<string, string> = {
 
 test("every sheet tab has a template whose rows fit 9 columns", () => {
   const all = coaSheetTemplates();
-  assert.equal(Object.keys(all).length, 14);
+  assert.equal(Object.keys(all).length, 16);
   for (const [name, layout] of Object.entries(all)) {
     for (const row of [...layout.metadataRows, ...layout.parameterRows, ...layout.footerRows]) {
       const width = row.cells.reduce((sum, cell) => sum + (cell.colSpan || 1), 0);
@@ -54,4 +54,27 @@ test("rules: copy works; generated-number rules give nothing", () => {
   assert.equal(evaluateCoaAutoRule({ copy: "s" }, valueOf, "x"), "B+C");
   assert.equal(evaluateCoaAutoRule({ byValueOf: "s", decimals: 2, ranges: { "B+C": [7, 7.3] } }, valueOf, "x"), "");
   assert.equal(evaluateCoaAutoRule({ min: 1, max: 2 }, valueOf, "x"), "");
+});
+
+// Templates saved from the Template Master use plain ids (s-12, c-13): columns come from the header row.
+test("templates built in the Template Master: header columns, template bindings kept", () => {
+  const st = (id: string, label: string, colSpan = 1) => ({ id, label, kind: "static", inputType: "text", colSpan }) as any;
+  const inp = (id: string, extra: Record<string, unknown> = {}, colSpan = 3) => ({ id, label: "", kind: "input", inputType: "text", colSpan, ...extra }) as any;
+  const layout: any = {
+    title: "COA", columns: 9, metadataRows: [], footerRows: [],
+    parameterRows: [
+      { id: "h", cells: [st("s-1", "SL. NO."), st("s-2", "PARAMETERS", 2), st("s-3", "STANDARD", 3), st("s-4", "OBSERVATION", 3)] },
+      { id: "r1", cells: [st("s-5", "1"), st("s-6", "COLOUR OF THE CBB", 2), inp("c-7", { defaultValue: "AS PER STANDARD" }), inp("c-8")] },
+      { id: "r2", cells: [st("s-9", "2"), st("s-10", "INTERNAL BOX DIMENSION (LXBXH) (MM) (+-3 MM)", 2),
+        inp("c-11", { binding: "production.length" }, 1), inp("c-12", { binding: "production.breadth" }, 1), inp("c-13", { binding: "production.height" }, 1),
+        inp("c-14", { binding: "pdi.lengthId" }, 1), inp("c-15", { binding: "pdi.widthId" }, 1), inp("c-16", {}, 1)] },
+      { id: "r3", cells: [st("s-17", "3"), st("s-18", "FLUTE HEIGHT (MM)", 2), inp("c-19", { defaultValue: "4.6(+-0.1)" }), inp("c-20", { defaultValue: "4.7" })] },
+      { id: "r4", cells: [st("s-21", "4"), st("s-22", "PLY OF CFB", 2), inp("c-23", { binding: "production.ply" }), inp("c-24")] },
+    ],
+  };
+  const values = buildInitialCellValues(layout, { ...source, "pdi.lengthId": "548", "pdi.widthId": "396", "pdi.heightId": "479", "pdi.printingColorCheck": "OK" });
+  assert.equal(values["c-8"].value, "AS PER STANDARD");          // PDI colour check OK
+  assert.deepEqual(["c-14", "c-15", "c-16"].map((id) => values[id].value), ["548", "396", "479"]); // height filled from PDI
+  assert.equal(values["c-20"].value, "");                         // fixed "4.7" removed: typed by QC
+  assert.equal(values["c-24"].value, "3");                        // ply = job ply
 });

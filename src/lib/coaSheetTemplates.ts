@@ -119,7 +119,8 @@ const QUALITY_PRINTING: CbbParam = ["QUALITY OF PRINTING", "AS PER STANDARD", "c
 const DIMENSION: CbbParam = ["INTERNAL BOX DIMENSION (LXBXH) (MM) (+-3 MM)", DIMS, DIMS_OBS];
 const PLY: CbbParam = ["PLY OF CFB", { bind: "production.ply" }, "copy"];
 const GLUED: CbbParam = ["STAPLE/GLUED", "GLUED", "copy"];
-const FLUTE_A: CbbParam = ["TYPE OF FLUTE", "A", "copy"];
+// The sheet fixes "A" in several tabs; the standard is the job / item flute everywhere.
+const FLUTE_A: CbbParam = ["TYPE OF FLUTE", { bind: "production.flute" }, "copy"];
 const FLUTE_JOB: CbbParam = ["TYPE OF FLUTE", { bind: "production.flute" }, "copy"];
 const FLUTES_30CM: CbbParam = ["NUMBER OF FLUTES / 30CM (BROAD FLUTE/NARRO FLUTE)", "35 (+-3)", "37"];
 const FLUTE_HEIGHT: CbbParam = ["FLUTE HEIGHT (MM)", "4.6(+-0.1)", "4.7"];
@@ -239,6 +240,21 @@ export function coaSheetTemplates(): Record<string, CoaTemplateLayout> {
       COLOUR_CBB, QUALITY_PRINTING, DIMENSION, PLY, JOINT_28_32, FLAP_GAP, FLUTE_JOB,
       ["BOARD THICKNESS", { bind: "standard.boardThickness" }, { rule: THICKNESS_BY_FLUTE }],
       moisture("7-10%", 8, 9),
+    ]),
+    // Same rows as COMMON COA (sheet tab "Emergency COA").
+    "Emergency COA": cbb([
+      COLOUR_CBB, QUALITY_PRINTING, DIMENSION, PLY, JOINT_28_32, FLAP_GAP, FLUTE_JOB,
+      ["BOARD THICKNESS", { bind: "standard.boardThickness" }, { rule: THICKNESS_BY_FLUTE }],
+      moisture("7-10%", 8, 9),
+    ]),
+    // Sheet tab "New Sample COA": COMMON rows plus CS, BS and paper BF.
+    "New Sample COA": cbb([
+      COLOUR_CBB, QUALITY_PRINTING, DIMENSION, PLY, JOINT_28_32, FLAP_GAP, FLUTE_JOB,
+      ["BOARD THICKNESS", { bind: "standard.boardThickness" }, { rule: THICKNESS_BY_FLUTE }],
+      moisture("7-10%", 8, 9),
+      csRow(),
+      ["BS OF CFB (KG/CM2)", { bind: "item.bsStandard" }, "copy"],
+      ["BF OF PAPER", "AS REQUIRED", "copy"],
     ]),
     "Pragati Liquor": cbb([
       COLOUR_CBB, QUALITY_PRINTING, DIMENSION, PLY, JOINT_28_32, FLAP_GAP, FLUTE_JOB,

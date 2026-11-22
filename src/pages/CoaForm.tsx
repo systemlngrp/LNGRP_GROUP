@@ -6,8 +6,8 @@ import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
-import { activeTemplateForCompany, buildCoaSourceMap, buildInitialCellValues, coaRowLabel, getCoaCellValue, resolveCoaSourceContext, type CoaSourceContext, defaultCoaLayout } from "../lib/coa";
-import { checkCoaDimensions, checkCoaObservation, coaParameterForLabel } from "../lib/coaParameters";
+import { activeTemplateForCompany, buildCoaSourceMap, buildInitialCellValues, coaParameterRowParts, coaRowCheck, coaRowLabel, getCoaCellValue, resolveCoaSourceContext, type CoaSourceContext, defaultCoaLayout } from "../lib/coa";
+import { coaParameterForLabel } from "../lib/coaParameters";
 import { printCoaRecord } from "../lib/coaPrint";
 import { getOrganizationLogoUrl } from "../lib/pdfLogo";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
@@ -120,14 +120,14 @@ export function CoaForm() {
     const missing: string[] = [];
     if (!text(headerData.invoiceNo)) missing.push("Invoice No.");
     if (!text(headerData.invoiceQty)) missing.push("Invoice Qty.");
+    // First observation cell of every master parameter (typed by QC when no reading exists).
+    const firstObs = new Map<string, string>();
+    coaParameterRowParts(layout).forEach((parts) => { if (parts.obs[0] && coaParameterForLabel(parts.label)) firstObs.set(parts.obs[0].id, parts.label); });
     cellRows(layout).forEach((row) => {
       const name = coaRowLabel(row as any) || text(row.cells.find((cell: any) => cell.kind === "static" && text(cell.label))?.label);
-      const isParameter = Boolean(coaParameterForLabel(name));
       row.cells.forEach((cell: any) => {
-        // Bound fields, and the first observation cell of every master parameter (typed by QC when no reading exists).
-        const isFirstObs = isParameter && /-o1?$/.test(cell.id);
-        if (cell.kind !== "binding" && !isFirstObs) return;
-        if (!text(getCoaCellValue(cell, cellValues, sourceMap, headerData))) missing.push(name || text(cell.label) || text(cell.binding));
+        if (cell.kind !== "binding" && !firstObs.has(cell.id)) return;
+        if (!text(getCoaCellValue(cell, cellValues, sourceMap, headerData))) missing.push(firstObs.get(cell.id) || name || text(cell.label) || text(cell.binding));
       });
     });
     return [...new Set(missing)];
@@ -136,17 +136,13 @@ export function CoaForm() {
   const outOfStandard = useMemo(() => {
     if (!templateId || !production) return [] as string[];
     const out: string[] = [];
-    layout.parameterRows.forEach((row) => {
-      const name = coaRowLabel(row);
-      const parameter = coaParameterForLabel(name);
+    coaParameterRowParts(layout).forEach((parts) => {
+      const parameter = coaParameterForLabel(parts.label);
       if (!parameter) return;
       const valueOf = (cell: any) => text(getCoaCellValue(cell, cellValues, sourceMap, headerData));
-      const std = row.cells.filter((cell) => /-s\d?$/.test(cell.id)).map(valueOf);
-      const obs = row.cells.filter((cell) => /-o\d?$/.test(cell.id)).map(valueOf);
-      const result = parameter.code === "DIM_ID" || parameter.code === "DIM_OD"
-        ? checkCoaDimensions(std.join(" X ").split(/\s*[xX×]\s*/), obs.join(" X ").split(/\s*[xX×]\s*/), parameter.code === "DIM_OD" ? 2 : 3)
-        : checkCoaObservation(parameter, std.filter(Boolean).join(" "), obs.filter(Boolean).join(" "));
-      if (result === "FAIL") out.push(`${name} (${obs.filter(Boolean).join(", ")} vs ${std.filter(Boolean).join(" X ")})`);
+      const std = parts.std.map(valueOf);
+      const obs = parts.obs.map(valueOf);
+      if (coaRowCheck(parameter.code, parameter, std, obs) === "FAIL") out.push(`${parts.label} (${obs.filter(Boolean).join(", ")} vs ${std.filter(Boolean).join(" X ")})`);
     });
     return out;
   }, [cellValues, headerData, layout, production, sourceMap, templateId]);

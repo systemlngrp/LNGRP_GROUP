@@ -278,10 +278,64 @@ export function buildInitialCellValues(layout: CoaTemplateLayout, sourceMap: Rec
 export function coaRowLabel(row: CoaTemplateLayout["parameterRows"][number]) {
   const labelled = row.cells.find((cell) => cell.kind === "static" && /-label$/.test(cell.id));
   if (labelled) return text(labelled.label);
-  return text(row.cells.find((cell) => cell.kind === "static" && text(cell.label) && !/^\d+$/.test(text(cell.label)))?.label);
+  return text(row.cells.find((cell) => cell.kind === "static" && text(cell.label) && !/^[\d.-]+$/.test(text(cell.label)))?.label);
 }
-const isObsCell = (cellId: string) => /-o\d?$/.test(cellId);
-const isStdCell = (cellId: string) => /-s\d?$/.test(cellId);
+
+type CoaCell = CoaTemplateLayout["parameterRows"][number]["cells"][number];
+export interface CoaRowParts { row: CoaTemplateRow; label: string; std: CoaCell[]; obs: CoaCell[]; remark: CoaCell[] }
+
+/**
+ * Standard / Observation / Remark cells of each parameter row. Columns are taken from the
+ * header row ("STANDARD", "OBSERVATION" / "Test Result", "Remark"), so templates built in the
+ * Template Master (cell ids like c-174) work; templates without such a header fall back to
+ * the sheet ids (p1-s, p1-o1, p1-r).
+ */
+export function coaParameterRowParts(layout: CoaTemplateLayout): CoaRowParts[] {
+  const rows = layout.parameterRows || [];
+  const header = rows.find((row) => row.cells.some((cell) => cell.kind === "static" && /OBSERVATION|TEST RESULT/i.test(text(cell.label))));
+  const ranges: Array<[kind: "std" | "obs" | "remark" | "label" | "other", from: number, to: number]> = [];
+  if (header) {
+    let col = 0;
+    header.cells.forEach((cell) => {
+      const span = cell.colSpan || 1;
+      const label = text(cell.label).toUpperCase();
+      const kind = /OBSERVATION|TEST RESULT/.test(label) ? "obs" : /STANDARD|SPECIFICATION/.test(label) ? "std" : /REMARK/.test(label) ? "remark" : /PARAMETER/.test(label) ? "label" : "other";
+      ranges.push([kind, col, col + span]);
+      col += span;
+    });
+  }
+  return rows.filter((row) => row !== header).map((row) => {
+    const parts: CoaRowParts = { row, label: "", std: [], obs: [], remark: [] };
+    if (header) {
+      let col = 0;
+      const labelCells: CoaCell[] = [];
+      row.cells.forEach((cell) => {
+        const kind = ranges.find(([, from, to]) => col >= from && col < to)?.[0] || "other";
+        if (kind === "std") parts.std.push(cell);
+        else if (kind === "obs") parts.obs.push(cell);
+        else if (kind === "remark") parts.remark.push(cell);
+        else if (kind === "label") labelCells.push(cell);
+        col += cell.colSpan || 1;
+      });
+      parts.label = text(labelCells.find((cell) => cell.kind === "static" && text(cell.label))?.label) || coaRowLabel(row);
+    } else {
+      parts.label = coaRowLabel(row);
+      parts.std = row.cells.filter((cell) => /-s\d?$/.test(cell.id));
+      parts.obs = row.cells.filter((cell) => /-o\d?$/.test(cell.id));
+      parts.remark = row.cells.filter((cell) => /-r$/.test(cell.id));
+    }
+    return parts;
+  });
+}
+
+/** PASS / FAIL of a row from its standard and observation texts (dimensions: each value ± tolerance). */
+export function coaRowCheck(code: string, parameter: Parameters<typeof checkCoaObservation>[0], std: string[], obs: string[]) {
+  if (code === "DIM_ID" || code === "DIM_OD") {
+    const split = (values: string[]) => values.filter(Boolean).join(" X ").split(/\s*[xX×*]\s*/);
+    return checkCoaDimensions(split(std), split(obs), code === "DIM_OD" ? 2 : 3);
+  }
+  return checkCoaObservation(parameter, std.filter(Boolean).join(" "), obs.filter(Boolean).join(" "));
+}
 
 /**
  * Observation cells of rows that match the COA Parameter Master are filled from the
@@ -289,33 +343,31 @@ const isStdCell = (cellId: string) => /-s\d?$/.test(cellId);
  * from the PASS / FAIL check. Rows the master does not know keep their template values.
  */
 function fillObservationsFromMaster(layout: CoaTemplateLayout, values: Record<string, CoaCellValue>, sourceMap: Record<string, string>) {
-  for (const row of layout.parameterRows) {
-    const parameter = coaParameterForLabel(coaRowLabel(row));
+  for (const parts of coaParameterRowParts(layout)) {
+    const parameter = coaParameterForLabel(parts.label);
     if (!parameter) continue;
-    const obsCells = row.cells.filter((cell) => isObsCell(cell.id));
-    const stdCells = row.cells.filter((cell) => isStdCell(cell.id));
-    const stdValues = stdCells.map((cell) => values[cell.id]?.value ?? (cell.binding ? sourceMap[cell.binding] || "" : cell.defaultValue || ""));
+    const valueOf = (cell: CoaCell) => values[cell.id]?.value ?? (cell.binding ? sourceMap[cell.binding] || "" : cell.defaultValue || "");
+    const stdValues = parts.std.map(valueOf);
     const stdText = stdValues.filter(Boolean).join(" X ");
     const spec = parameter.observation;
-    const next: string[] = obsCells.map((_, index) => {
+    const next: string[] = parts.obs.map((cell, index) => {
+      // A source picked in the template wins (e.g. pdi.boxSize); otherwise the master's reading.
+      if (cell.binding) return sourceMap[cell.binding] || "";
       if ("readings" in spec) {
-        if (obsCells.length === 1) return spec.readings.map((key) => sourceMap[key] || "").find(Boolean) || "";
+        if (parts.obs.length === 1) return spec.readings.map((key) => sourceMap[key] || "").find(Boolean) || "";
         return sourceMap[spec.readings[index] || ""] || "";
       }
       if ("standard" in spec) return index === 0 ? stdText : "";
       if ("check" in spec) return index === 0 ? checkText(sourceMap[spec.check], spec.okText || stdText || "OK") : "";
       return "";
     });
-    obsCells.forEach((cell, index) => {
+    parts.obs.forEach((cell, index) => {
       values[cell.id] = { value: next[index], sourceValue: next[index], source: next[index] ? "auto" : "default" };
     });
-    const remark = row.cells.find((cell) => /-r$/.test(cell.id));
-    if (remark) {
-      const result = parameter.code === "DIM_ID" || parameter.code === "DIM_OD"
-        ? checkCoaDimensions(stdText.split(/\s*[xX×]\s*/), next.join(" X ").split(/\s*[xX×]\s*/), parameter.code === "DIM_OD" ? 2 : 3)
-        : checkCoaObservation(parameter, stdText, next.filter(Boolean).join(" "));
+    if (parts.remark.length) {
+      const result = coaRowCheck(parameter.code, parameter, stdValues, next);
       const value = result === "PASS" ? "OK" : result === "FAIL" ? "NOT OK" : "";
-      values[remark.id] = { value, sourceValue: value, source: value ? "auto" : "default" };
+      parts.remark.forEach((cell) => { values[cell.id] = { value, sourceValue: value, source: value ? "auto" : "default" }; });
     }
   }
 }
