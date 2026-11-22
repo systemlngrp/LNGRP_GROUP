@@ -27,3 +27,11 @@ test("item name comes from the NPD item, never its id", () => {
   const noItem = buildCoaSourceMap({ production: { id: "p", transactionNo: "J1", itemId: "fa76" } as any, order: { itemId: "fa76" } as any });
   assert.equal(noItem.itemName, "");
 });
+
+test("a zero reading in a template-bound observation cell is left blank (not FAIL)", async () => {
+  const { buildInitialCellValues, defaultCoaLayout } = await import("./coa");
+  const layout = defaultCoaLayout();
+  const values = buildInitialCellValues(layout, { "obs.moisture": "0.00", "obs.flapGap": "0" });
+  assert.equal(values["p9-observation"].value, "");
+  assert.equal(values["p6-observation"].value, "0");
+});
