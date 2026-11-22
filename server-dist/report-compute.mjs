@@ -1948,7 +1948,8 @@ function computeSummarySheetExtras(lists, npdItems) {
     if (meghaSlipIds.has(String(line.loadingSlipId || invoice.loadingSlipId || ""))) return;
     scrapSales.push([isoDateText(invoice.date), firmName.get(String(invoice.firmId)) || "", "", "", "", round(n(line.qty))]);
   });
-  return { version: 2, scrapSales, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
+  const netSales = invoiceRows.filter((invoice) => !isInterFirm(invoice) && !isMegha(invoice)).map((invoice) => [isoDateText(invoice.date), firmName.get(String(invoice.firmId || invoice.orderFirmId)) || "", s(invoice.companyName) || companyName.get(String(invoice.companyId)) || "", "", "", round(n(invoice.totalBeforeGst))]);
+  return { version: 2, netSales, scrapSales, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
 }
 
 // src/lib/reports/conversionCostDetails.ts
