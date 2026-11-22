@@ -11,6 +11,7 @@ window.__eng=(function(){// COA Parameter Master: every parameter used on the co
                                                                                                                    
                                                                                            
                                                                                                             
+                                                                                                       
                                            // typed by QC
 
 /** How a plain-number standard is judged when the standard text carries no rule of its own. */
@@ -26,45 +27,63 @@ window.__eng=(function(){// COA Parameter Master: every parameter used on the co
                                                    
                                                                          
                    
+                                                                                              
+                  
+                                                                                             
+                                   
+                                         
+                                         
+                                                                                                        
+                                            
  
+
+/** Flute code of a job: "A", "B", "C", "E", "B+C", "B+A" (accepts "BC", "C+B", "AB" …). */
+function normaliseFlute(value         )         {
+  const letters = String(value ?? "").toUpperCase().replace(/FLUTE/g, "").replace(/[^ABCEF]/g, "").split("").filter(Boolean);
+  const unique = Array.from(new Set(letters));
+  if (unique.length === 1) return unique[0];
+  if (unique.length === 2 && unique.includes("B") && unique.includes("C")) return "B+C";
+  if (unique.length === 2 && unique.includes("B") && unique.includes("A")) return "B+A";
+  return unique.join("+");
+}
 
 const COA_PARAMETERS                 = [
   { code: "COL_CBB", name: "Colour of the CBB", standard: "AS PER STANDARD", observation: { check: "pdi.printingColorCheck" }, observationLabel: "PDI: Printing Colour check", plain: "none", passRule: "PDI check OK", labels: ["COLOUR OF THE CBB"] },
-  { code: "COL_PRINT", name: "Colour of Printing", standard: "Item Printing Colour 1 (& 2)", observation: { check: "pdi.printingColorCheck" }, observationLabel: "PDI: Printing Colour check", plain: "none", passRule: "PDI check OK", labels: ["COLOUR OF PRINTING"] },
+  { code: "COL_PRINT", name: "Colour of Printing", standard: "Item Printing Colour 1 (& 2)", observation: { check: "pdi.printingColorCheck", okText: "AS PER STANDARD" }, observationLabel: "PDI: Printing Colour check", plain: "none", passRule: "PDI check OK", labels: ["COLOUR OF PRINTING"] },
   { code: "QUAL_PRINT", name: "Quality of Printing", standard: "AS PER STANDARD", observation: { check: "pdi.printingArtworkCheck" }, observationLabel: "PDI: Printing Artwork check", plain: "none", passRule: "PDI check OK", labels: ["QUALITY OF PRINTING"] },
   { code: "APPEARANCE", name: "Appearance", standard: "AS PER SAMPLE", observation: { check: "pdi.printingArtworkCheck" }, observationLabel: "PDI: Printing Artwork check", plain: "none", passRule: "PDI check OK", labels: ["APPEARANCE"] },
   { code: "STACK", name: "Stack Norms", standard: "Item Stack Norms", observation: { standard: true }, observationLabel: "Same as standard", plain: "none", passRule: "—", labels: ["STACK NORMS"] },
   { code: "WT_PACK", name: "Weight & Pack Details", standard: "Item Weight & Pack Details", observation: { standard: true }, observationLabel: "Same as standard", plain: "none", passRule: "—", labels: ["WEIGHT & PACK DETAILS"] },
   { code: "ADDRESS", name: "Address of Regd Office & Mfg Location", standard: "AS PER ARTWORK", observation: { check: "pdi.printingArtworkCheck" }, observationLabel: "PDI: Printing Artwork check", plain: "none", passRule: "PDI check OK", labels: ["ADDRESS OF REGD OFFICE & MFG LOCATION"] },
-  { code: "TAPPING", name: "Marked Tapping Area", standard: "AS PER STANDARD", observation: { manual: true }, observationLabel: "Typed by QC", plain: "none", passRule: "—", labels: ["MARKED TAPPING AREA"] },
+  { code: "TAPPING", name: "Marked Tapping Area", standard: "AS PER STANDARD", observation: { check: "pdi.printingArtworkCheck" }, observationLabel: "PDI: Printing Artwork check", plain: "none", passRule: "PDI check OK", labels: ["MARKED TAPPING AREA"] },
   { code: "DIM_ID", name: "Internal Box Dimension L×B×H (mm)", standard: "Job / Item Length × Breadth × Height", observation: { readings: ["pdi.lengthId", "pdi.widthId", "pdi.heightId"] }, observationLabel: "PDI: Achieved Length / Width / Height", plain: { tolerance: 3 }, passRule: "Each within standard ± 3 mm", labels: ["INTERNAL BOX DIMENSION (LXBXH) (MM) (+-3 MM)", "INTERNAL DIMENSION (L*W*H)"] },
   { code: "DIM_OD", name: "External Dimension L×W×H (mm)", standard: "Item Length × Breadth × Height (OD)", observation: { manual: true }, observationLabel: "Typed by QC (PDI records internal size)", plain: { tolerance: 2 }, passRule: "Each within standard ± 2 mm", labels: ["EXTERNAL DIMENSION (L*W*H)"] },
   { code: "PLY", name: "Ply of CFB", standard: "Job / Item Ply", observation: { standard: true }, observationLabel: "Same as standard (job ply)", plain: "equal", passRule: "Equal to standard", labels: ["PLY OF CFB"] },
   { code: "PHP", name: "PHP", standard: "PHP Item Master (ERP · size · ply)", observation: { standard: true }, observationLabel: "Same as standard", plain: "none", passRule: "—", labels: ["PHP"] },
-  { code: "BS_PHP", name: "BS of PHP", standard: "PHP Item Master BS (req)", observation: { manual: true }, observationLabel: "Typed by QC", plain: "min", passRule: "≥ standard", labels: ["BS OF PHP"] },
-  { code: "CS", name: "Compression Strength (kgf)", standard: "Item CS Std", observation: { readings: ["pdi.csAchieved", "printing.csAchieved"] }, observationLabel: "PDI: CS Achieved · Printing QC: CS Achieved", plain: "min", passRule: "≥ standard (or within ± range)", labels: ["COMPRESSION STRENGTH (KGF)", "COMPRESSION STRENGTH"] },
-  { code: "BS_CFB", name: "Bursting Strength of CFB (kg/cm²)", standard: "Item BS Std", observation: { readings: ["printing.bsAchieved"] }, observationLabel: "Printing QC: BS Achieved", plain: "min", passRule: "≥ standard (or within ± range)", labels: ["BS OF CFB (KG/CM2)", "BURSTING STRENGTH"] },
+  { code: "BS_PHP", name: "BS of PHP", standard: "PHP Item Master BS (req)", observation: { manual: true }, observationLabel: "Typed by QC", plain: "min", passRule: "≥ standard", labels: ["BS OF PHP"], target: "Req + 0.5 to 1.0" },
+  { code: "CS", name: "Compression Strength (kgf)", standard: "Item CS Std", observation: { readings: ["pdi.csAchieved", "printing.csAchieved"] }, observationLabel: "PDI: CS Achieved · Printing QC: CS Achieved", plain: "min", passRule: "≥ standard (or within ± range)", labels: ["COMPRESSION STRENGTH (KGF)", "COMPRESSION STRENGTH"], target: "Std + 30" },
+  { code: "BS_CFB", name: "Bursting Strength of CFB (kg/cm²)", standard: "Item BS Std", observation: { readings: ["printing.bsAchieved"] }, observationLabel: "Printing QC: BS Achieved", plain: "min", passRule: "≥ standard (or within ± range)", labels: ["BS OF CFB (KG/CM2)", "BURSTING STRENGTH"], target: "Std + 0.5" },
   { code: "GLUED", name: "Staple / Glued", standard: "GLUED", observation: { check: "pdi.jointCheck" }, observationLabel: "PDI: Joint Pasting check", plain: "none", passRule: "PDI check OK", labels: ["STAPLE/GLUED"] },
-  { code: "FLUTE", name: "Type of Flute", standard: "Job / Item Flute", observation: { readings: ["boardline.typeOfFlute"] }, observationLabel: "Boardline QC: Type of Flute", plain: "equal", passRule: "Equal to standard", labels: ["TYPE OF FLUTE", "FLUTE TYPE"] },
-  { code: "FLUTE_COUNT", name: "Number of Flutes / 30 cm (or / ft)", standard: "e.g. 35 (±3), 30-36", observation: { manual: true }, observationLabel: "Typed by QC", plain: "none", passRule: "Within range", labels: ["NUMBER OF FLUTES / 30CM (BROAD FLUTE/NARRO FLUTE)", "NUMBER OF FLUTES / FT"] },
-  { code: "FLUTE_HT", name: "Flute Height (mm)", standard: "e.g. 4.6 (±0.1)", observation: { manual: true }, observationLabel: "Typed by QC", plain: "none", passRule: "Within range", labels: ["FLUTE HEIGHT (MM)"] },
-  { code: "FLUTE_PCT", name: "Flute %", standard: "50", observation: { manual: true }, observationLabel: "Typed by QC", plain: "min", passRule: "≥ standard", labels: ["FLUTE %"] },
-  { code: "THICK", name: "Board Thickness (mm)", standard: "By flute: A / C Min 4.8 · B Min 2.8 · B+C Min 7 (E: no standard yet)", observation: { readings: ["boardline.boardThickness"] }, observationLabel: "Boardline QC: Board Thickness", plain: "min", passRule: "≥ minimum (or within ±)", labels: ["BOARD THICKNESS"] },
-  { code: "MOISTURE", name: "Moisture of Composite Board (%)", standard: "Range per company, e.g. 7-9%", observation: { readings: ["boardline.moisture"] }, observationLabel: "Boardline QC: Moisture", plain: "max", passRule: "Within range", labels: ["MOISTURE OF COMPOSITE BOARD (%)", "MOISTURE CONTENT"] },
-  { code: "COMP_GSM", name: "Composite / Board GSM", standard: "Item Composite GSM (±3%)", observation: { readings: ["pdi.gsmAchieved"] }, observationLabel: "PDI: GSM Achieved", plain: { percent: 3 }, passRule: "Within standard ± 3%", labels: ["COMPOSITE GSM (+- 3%) (G)", "BOARD GSM"] },
-  { code: "LAYER_GSM", name: "Individual Layer GSM", standard: "Item layer GSM (L1 / F1 / L2 …)", observation: { manual: true }, observationLabel: "Typed by QC", plain: "none", passRule: "Each within tolerance", labels: ["INDIVIDUAL LAYER GSM (GM)", "GSM", "PAPER GSM"] },
-  { code: "PAPER_BF", name: "Paper BF", standard: "Item BF", observation: { manual: true }, observationLabel: "Typed by QC", plain: "equal", passRule: "Equal to standard", labels: ["PAPER BF", "BF OF PAPER"] },
-  { code: "BOX_WT", name: "Box Weight (g)", standard: "Item Standard Weight", observation: { readings: ["pdi.boxWeightGrams"] }, observationLabel: "PDI: Box Weight (grams)", plain: { percent: 10 }, passRule: "Within standard ± 10%", labels: ["BOX WEIGHT (GRAMS)", "BOX WEIGHT", "WEIGHT OF CB", "WEIGHT OF CFB"] },
-  { code: "JOINT_W", name: "Manufacturing Joint Width (mm)", standard: "e.g. 28 - 32 mm, Min. 35 mm", observation: { readings: ["pdi.jointWidthMm"] }, observationLabel: "PDI: Joint Width (mm)", plain: "min", passRule: "Within range / ≥ minimum", labels: ["MANUFACTURING JOINT WIDTH", "JOINT FLAP WIDTH"] },
-  { code: "FLAP_GAP", name: "Gap between Closing Flap (mm)", standard: "Maximum 3 mm", observation: { readings: ["pdi.flapGapMm"] }, observationLabel: "PDI: Flap Gap (mm)", plain: "max", passRule: "≤ maximum", labels: ["GAP BETWEEN CLOSING FLAP", "FLAP GAP"] },
-  { code: "ECT", name: "ECT Value", standard: "-", observation: { manual: true }, observationLabel: "Typed by QC (lab)", plain: "none", passRule: "—", labels: ["ECT VALUE"] },
-  { code: "RCT", name: "RCT Value", standard: "-", observation: { manual: true }, observationLabel: "Typed by QC (lab)", plain: "none", passRule: "—", labels: ["RCT VALUE"] },
-  { code: "JOINT_ADH", name: "Joint Adhesion", standard: "Fibre tear", observation: { manual: true }, observationLabel: "Typed by QC", plain: "none", passRule: "—", labels: ["JOINT ADHESION"] },
-  { code: "PLY_BOND", name: "Bond between Paper Layers", standard: "Fibre tear", observation: { manual: true }, observationLabel: "Typed by QC", plain: "none", passRule: "—", labels: ["BOND BETWEEN PAPER LAYER"] },
-  { code: "ODOUR", name: "Odour", standard: "-", observation: { manual: true }, observationLabel: "Typed by QC", plain: "none", passRule: "—", labels: ["ODOUR"] },
-  { code: "CENTER_PLATE", name: "Center Plate (L × W)", standard: "e.g. 235 X 177 (±3 mm)", observation: { manual: true }, observationLabel: "Typed by QC", plain: "none", passRule: "Within ± 3 mm", labels: ["CENTER PLATE (L X W)"] },
-  { code: "QTY_CFB", name: "Qty / CFB", standard: "1", observation: { standard: true }, observationLabel: "Same as standard", plain: "equal", passRule: "Equal to standard", labels: ["QTY / CFB"] },
-  { code: "PROC_CHECKS", name: "Process checks (Corrugation, Pasting, Adhesive, Pre-folding / Creasing, Slotting)", standard: "OK / NOT OK", observation: { manual: true }, observationLabel: "Typed by QC", plain: "none", passRule: "OK", labels: ["CORRUGATION CHECK", "PASTING CHECK", "ADHESIVE CHECK", "PRE-FOLDING / CREASING CHECK", "SLOTTING CHECK"] },
+  { code: "FLUTE", name: "Type of Flute", standard: "Job / Item Flute (as per standard)", observation: { readings: ["boardline.typeOfFlute"] }, observationLabel: "Boardline QC: Type of Flute", plain: "equal", passRule: "Equal to standard", labels: ["TYPE OF FLUTE", "FLUTE TYPE"] },
+  { code: "FLUTE_COUNT", name: "Number of Flutes / 30 cm (or / ft)", standard: "By flute: A 30-36 · C 35-42", observation: { manual: true }, observationLabel: "Typed by QC", plain: "none", passRule: "Within range", labels: ["NUMBER OF FLUTES / 30CM (BROAD FLUTE/NARRO FLUTE)", "NUMBER OF FLUTES / FT", "NUMBER OF FLUTES"], byFlute: { A: "30-36", C: "35-42" }, targetByFlute: { A: "35", C: "40" } },
+  { code: "FLUTE_HT", name: "Flute Height (mm)", standard: "By flute: A Min 4.8 · C Min 4.0 · B Min 2.8 · E Min 1.8 · B+C Min 6.8 · B+A Min 7.6", observation: { manual: true }, observationLabel: "Typed by QC", plain: "min", passRule: "≥ minimum", labels: ["FLUTE HEIGHT (MM)", "FLUTE HEIGHT"], byFlute: { A: "Min 4.8 mm", C: "Min 4.0 mm", B: "Min 2.8 mm", E: "Min 1.8 mm", "B+C": "Min 6.8 mm", "B+A": "Min 7.6 mm" }, targetByFlute: { A: "5.1-5.3", C: "4.2-4.6", B: "2.9-3.1", E: "1.9-2.1", "B+C": "6.8-7.0", "B+A": "7.6-7.8" } },
+  { code: "FLUTE_PCT", name: "Flute %", standard: "By flute: A 50 · C 42 · B 35", observation: { manual: true }, observationLabel: "Typed by QC", plain: "min", passRule: "≥ standard", labels: ["FLUTE %"], byFlute: { A: "Min 50%", C: "Min 42%", B: "Min 35%" }, targetByFlute: { A: "52-55%", C: "43-45%", B: "36-38%" } },
+  { code: "THICK", name: "Board Thickness (mm)", standard: "As per flute height: A Min 4.8 · C Min 4.0 · B Min 2.8 · E Min 1.8 · B+C Min 6.8 · B+A Min 7.6", observation: { readings: ["boardline.boardThickness"] }, observationLabel: "Boardline QC: Board Thickness", plain: "min", passRule: "≥ minimum (or within ±)", labels: ["BOARD THICKNESS"], byFlute: { A: "Min 4.8 mm", C: "Min 4.0 mm", B: "Min 2.8 mm", E: "Min 1.8 mm", "B+C": "Min 6.8 mm", "B+A": "Min 7.6 mm" } },
+  { code: "MOISTURE", name: "Moisture of Composite Board (%)", standard: "7-9% (company option)", observation: { readings: ["boardline.moisture"] }, observationLabel: "Boardline QC: Moisture", plain: "max", passRule: "Within range", labels: ["MOISTURE OF COMPOSITE BOARD (%)", "MOISTURE CONTENT"], target: "7-9" },
+  { code: "COMP_GSM", name: "Composite / Board GSM", standard: "Item Composite GSM (±3%)", observation: { readings: ["pdi.gsmAchieved"] }, observationLabel: "PDI: GSM Achieved", plain: { percent: 3 }, passRule: "Within standard ± 3%", labels: ["COMPOSITE GSM (+- 3%) (G)", "BOARD GSM"], target: "Std to Std + 3" },
+  { code: "LAYER_GSM", name: "Individual Layer GSM", standard: "Item layer GSM (L1 / F1 / L2 …)", observation: { manual: true }, target: "As item", observationLabel: "Typed by QC", plain: "none", passRule: "Each within tolerance", labels: ["INDIVIDUAL LAYER GSM (GM)", "GSM", "PAPER GSM"] },
+  { code: "PAPER_BF", name: "Paper BF", standard: "Item BF", observation: { manual: true }, target: "As item", observationLabel: "Typed by QC", plain: "equal", passRule: "Equal to standard", labels: ["PAPER BF", "BF OF PAPER"] },
+  { code: "BOX_WT", name: "Box Weight (g)", standard: "Item Standard Weight", observation: { readings: ["pdi.boxWeightGrams"] }, observationLabel: "PDI: Box Weight (grams)", plain: { percent: 10 }, passRule: "Within standard ± 10%", labels: ["BOX WEIGHT (GRAMS)", "BOX WEIGHT", "WEIGHT OF CB", "WEIGHT OF CFB"], target: "Std to Std + 10%" },
+  { code: "JOINT_W", name: "Manufacturing Joint Width (mm)", standard: "Min 35 mm (company option)", observation: { readings: ["pdi.jointWidthMm"] }, observationLabel: "PDI: Joint Width (mm)", plain: "min", passRule: "Within range / ≥ minimum", labels: ["MANUFACTURING JOINT WIDTH", "JOINT FLAP WIDTH", "MANUFACTURING JOINT GLUE"], target: "36-38" },
+  { code: "FLAP_GAP", name: "Gap between Closing Flap (mm)", standard: "Maximum 3 mm (company option)", observation: { readings: ["pdi.flapGapMm"] }, observationLabel: "PDI: Flap Gap (mm)", plain: "max", passRule: "≤ maximum", labels: ["GAP BETWEEN CLOSING FLAP", "FLAP GAP"], target: "1-3" },
+  { code: "ECT", name: "ECT Value", standard: "Manual", observation: { manual: true }, observationLabel: "Typed by QC (lab)", plain: "none", passRule: "—", labels: ["ECT VALUE"] },
+  { code: "RCT", name: "RCT Value", standard: "Manual", observation: { manual: true }, observationLabel: "Typed by QC (lab)", plain: "none", passRule: "—", labels: ["RCT VALUE"] },
+  { code: "JOINT_ADH", name: "Joint Adhesion", standard: "Fibre tear test", observation: { check: "pdi.jointCheck", okText: "NO FIBRE TEAR OBSERVED" }, observationLabel: "PDI: Joint Pasting check", plain: "none", passRule: "PDI check OK", labels: ["JOINT ADHESION"] },
+  { code: "PLY_BOND", name: "Bond between Paper Layers", standard: "Fibre tear test", observation: { check: "pdi.jointCheck", okText: "NO FIBRE TEAR OBSERVED" }, observationLabel: "PDI: Joint Pasting check", plain: "none", passRule: "PDI check OK", labels: ["BOND BETWEEN PAPER LAYER"] },
+  { code: "ODOUR", name: "Odour", standard: "-", observation: { text: "NONE" }, observationLabel: "NONE (after PDI pass)", plain: "none", passRule: "—", labels: ["ODOUR"] },
+  { code: "CENTER_PLATE", name: "Center Plate (L × W)", standard: "L × W (±3 mm)", observation: { manual: true }, observationLabel: "Typed by QC", plain: { tolerance: 3 }, passRule: "Within ± 3 mm", labels: ["CENTER PLATE (L X W)"], target: "Within ± 1 mm" },
+  { code: "QTY_CFB", name: "Qty / CFB", standard: "As NPD", observation: { standard: true }, observationLabel: "Same as standard", plain: "equal", passRule: "Equal to standard", labels: ["QTY / CFB"] },
+  { code: "PROC_CHECKS", name: "Process checks (Corrugation, Pasting, Adhesive, Pre-folding / Creasing, Slotting)", standard: "OK / NOT OK", observation: { text: "OK" }, observationLabel: "OK (after PDI pass)", plain: "none", passRule: "OK", labels: ["CORRUGATION CHECK", "PASTING CHECK", "ADHESIVE CHECK", "PRE-FOLDING / CREASING CHECK", "SLOTTING CHECK"] },
 ];
 
 const normLabel = (value         ) => String(value ?? "").toUpperCase().replace(/\s+/g, " ").trim();
@@ -95,6 +114,8 @@ function coaParameterForLabel(label         , list                 = COA_PARAMET
                                                                                             
                            
                                                                              
+                                                      
+                                                                         
                          
                      
                            
@@ -103,7 +124,8 @@ function coaParameterForLabel(label         , list                 = COA_PARAMET
 function observationSourceToText(source                      )         {
   if ("readings" in source) return `readings:${source.readings.join(",")}`;
   if ("standard" in source) return "standard";
-  if ("check" in source) return `check:${source.check}`;
+  if ("check" in source) return `check:${source.check}${source.okText ? `|${source.okText}` : ""}`;
+  if ("text" in source) return `text:${source.text}`;
   return "manual";
 }
 function observationSourceFromText(value         , fallback                      )                       {
@@ -111,7 +133,11 @@ function observationSourceFromText(value         , fallback                     
   if (!textValue) return fallback;
   if (textValue === "standard") return { standard: true };
   if (textValue === "manual") return { manual: true };
-  if (textValue.startsWith("check:")) return { check: textValue.slice(6).trim() };
+  if (textValue.startsWith("check:")) {
+    const [check, okText] = textValue.slice(6).split("|").map((part) => part.trim());
+    return okText ? { check, okText } : { check };
+  }
+  if (textValue.startsWith("text:")) return { text: textValue.slice(5).trim() };
   if (textValue.startsWith("readings:")) {
     const readings = textValue.slice(9).split(",").map((key) => key.trim()).filter(Boolean);
     return readings.length ? { readings } : { manual: true };
@@ -157,6 +183,7 @@ const COA_CHECK_OPTIONS                                          = [
 function describeObservationSource(source                      )         {
   if ("standard" in source) return "Same as standard";
   if ("manual" in source) return "Typed by QC";
+  if ("text" in source) return `${source.text} (after PDI pass)`;
   if ("check" in source) return COA_CHECK_OPTIONS.find((option) => option.value === source.check)?.label || source.check;
   const key = source.readings.join(",");
   return COA_READING_OPTIONS.find((option) => option.value === key)?.label || source.readings.join(" · ");
@@ -181,6 +208,10 @@ function mergeCoaParameters(records                                  )          
       plain: plainRuleFromText(record.plainRule, base?.plain || "none"),
       passRule: String(record.passRule ?? base?.passRule ?? ""),
       labels: labels.length ? labels : base?.labels || [],
+      target: record.targetText != null && String(record.targetText).trim() !== "" ? String(record.targetText) : base?.target,
+      byFlute: base?.byFlute,
+      targetByFlute: base?.targetByFlute,
+      companyStandards: parseCompanyStandards(record.companyStandards) || base?.companyStandards,
     };
   };
   const merged = COA_PARAMETERS.flatMap((base) => {
@@ -197,12 +228,39 @@ function mergeCoaParameters(records                                  )          
   return merged;
 }
 
+function parseCompanyStandards(value         )                                     {
+  if (!value) return undefined;
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+    const entries = Object.entries(parsed                           ).map(([id, std]) => [String(id).trim(), String(std ?? "").trim()]         ).filter(([id, std]) => id && std);
+    return entries.length ? Object.fromEntries(entries) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Standard for a job: company option, else the template's own standard, else the flute standard. */
+function coaStandardFor(parameter              , templateStandard        , companyId        , flute        )                                                                {
+  const company = companyId ? parameter.companyStandards?.[companyId] : undefined;
+  if (company) return { text: company, from: "company" };
+  if (String(templateStandard ?? "").trim()) return { text: templateStandard, from: "template" };
+  const byFlute = parameter.byFlute?.[normaliseFlute(flute)];
+  return byFlute ? { text: byFlute, from: "flute" } : { text: "", from: "" };
+}
+
+/** QC target hint for a job (flute target, else the parameter target). */
+function coaTargetFor(parameter              , flute        )         {
+  return parameter.targetByFlute?.[normaliseFlute(flute)] || parameter.target || "";
+}
+
 /** Record to save for a parameter (id = code). */
 function coaParameterToRecord(parameter              , actor = "System User")                     {
   return {
     id: parameter.code, code: parameter.code, name: parameter.name, standardText: parameter.standard,
     observationSource: observationSourceToText(parameter.observation), plainRule: plainRuleToText(parameter.plain),
     passRule: parameter.passRule, labels: parameter.labels.join("|"), active: "Yes",
+    targetText: parameter.target || "", companyStandards: parameter.companyStandards ? JSON.stringify(parameter.companyStandards) : "",
     updatedBy: actor, updateTimestamp: new Date().toISOString(),
   };
 }
@@ -227,7 +285,7 @@ function checkCoaObservation(parameter                          , standard      
   if (!parameter) return "";
   const obsText = String(observed ?? "").trim();
   if (!obsText) return "";
-  if ("check" in parameter.observation) return /^NOT\s*OK$/i.test(obsText) ? "FAIL" : "";
+  if ("check" in parameter.observation || "text" in parameter.observation) return /^NOT\s*OK$/i.test(obsText) ? "FAIL" : "";
   // "6% +-2%" means 6 ± 2 points, not ± 2 % of 6.
   const std = String(standard ?? "").replace(/,/g, "").trim().replace(/(\d)\s*%(\s*(?:\+-|±|\+\/-)\s*\d+(?:\.\d+)?)\s*%/, "$1$2");
   const values = numbersIn(obsText);
@@ -440,6 +498,7 @@ function buildCoaSourceMap(context                  , coaDate = new Date().toISO
   return {
     coaDate,
     companyName: text(company?.name || (production             ).companyName),
+    companyId: text(company?.id || (production             ).companyId),
     firmName: text(firm?.firmName || production.firmName),
     firmAddress: text(firm?.address),
     firmLogo: "",
@@ -630,6 +689,15 @@ function fillObservationsFromMaster(layout                   , values           
     const parameter = coaParameterForLabel(parts.label, parameters);
     if (!parameter) continue;
     const valueOf = (cell         ) => values[cell.id]?.value ?? (cell.binding ? sourceMap[cell.binding] || "" : cell.defaultValue || "");
+    // Standard: the company option (Parameter Master) wins; a blank template standard takes the flute standard.
+    const templateStd = parts.std.map(valueOf).filter(Boolean).join(" X ");
+    const resolved = coaStandardFor(parameter, templateStd, sourceMap.companyId || "", sourceMap["production.flute"] || "");
+    if (parts.std.length && resolved.from && resolved.from !== "template") {
+      parts.std.forEach((cell, index) => {
+        const value = index === 0 ? resolved.text : "";
+        values[cell.id] = { value, sourceValue: value, source: "auto" };
+      });
+    }
     const stdValues = parts.std.map(valueOf);
     const stdText = stdValues.filter(Boolean).join(" X ");
     const spec = parameter.observation;
@@ -647,6 +715,7 @@ function fillObservationsFromMaster(layout                   , values           
       }
       if ("standard" in spec) return index === 0 ? stdText : "";
       if ("check" in spec) return index === 0 ? checkText(sourceMap[spec.check], spec.okText || stdText || "OK") : "";
+      if ("text" in spec) return index === 0 ? spec.text : "";
       return "";
     });
     parts.obs.forEach((cell, index) => {
@@ -658,6 +727,21 @@ function fillObservationsFromMaster(layout                   , values           
       parts.remark.forEach((cell) => { values[cell.id] = { value, sourceValue: value, source: value ? "auto" : "default" }; });
     }
   }
+}
+
+/**
+ * QC target per empty observation cell (cell id -> hint), shown as grey placeholder text.
+ * A hint is never saved as an observation.
+ */
+function coaObservationHints(layout                   , sourceMap                        , parameters                 = COA_PARAMETERS)                         {
+  const hints                         = {};
+  for (const parts of coaParameterRowParts(layout)) {
+    const parameter = coaParameterForLabel(parts.label, parameters);
+    if (!parameter || !parts.obs.length) continue;
+    const target = coaTargetFor(parameter, sourceMap["production.flute"] || "");
+    if (target) parts.obs.forEach((cell) => { hints[cell.id] = `Target: ${target}`; });
+  }
+  return hints;
 }
 
 function getCoaCellValue(templateCell                                                             , values                              , sourceMap                        , headerData                        ) {
@@ -683,4 +767,4 @@ function activeTemplateForCompany(templates               , companyId        ) {
     || active.find((template) => id(template.companyId) === COMMON_COA_KEY);
 }
 
-return { buildInitialCellValues, coaParameterRowParts, coaRowCheck, coaParameterForLabel, buildCoaSourceMap, resolveCoaSourceContext, activeTemplateForCompany, getCoaCellValue, mergeCoaParameters, COA_PARAMETERS, checkCoaObservation };})();"engine loaded"
+return { buildInitialCellValues, coaParameterRowParts, coaRowCheck, coaParameterForLabel, buildCoaSourceMap, resolveCoaSourceContext, activeTemplateForCompany, getCoaCellValue, mergeCoaParameters, COA_PARAMETERS, checkCoaObservation, coaObservationHints };})();"engine loaded"
