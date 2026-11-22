@@ -1120,6 +1120,14 @@ function positionFloatingHeader(state: FloatingHeader, viewTop: number) {
   box.style.width = `${Math.round(Math.min(frame.width, tableRect.width))}px`;
   clone.style.width = `${tableRect.width}px`;
   clone.style.transform = `translateX(${Math.round(tableRect.left - frame.left)}px)`;
+  // Frozen (sticky-left) header cells: keep them in place in the floating copy too.
+  const shift = Math.max(0, Math.round(frame.left - tableRect.left));
+  clone.querySelectorAll<HTMLElement>("[data-frozen]").forEach((cell) => {
+    cell.style.position = "relative";
+    cell.style.left = "0px";
+    cell.style.transform = `translateX(${shift}px)`;
+    cell.style.zIndex = "4";
+  });
   if (box.hidden) box.hidden = false;
 }
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { computeSummarySheetExtras, computeSummarySheetSections } from "./summarySheetTiles";
 
-test("Sales tiles: invoice value before GST by invoice date; inter-firm and Megha scrap left out", () => {
+test("Sales tiles: invoice value before GST by invoice date; Megha scrap included, inter-firm left out", () => {
   const lists = {
     companies: [{ id: "c", name: "Customer" }, { id: "m", name: "M/S MEGHA TRADING" }, { id: "own", name: "Unit-II" }],
     firms: [{ id: "f1", firmName: "Unit-I" }, { id: "f2", firmName: "Unit-II" }],
@@ -20,10 +20,9 @@ test("Sales tiles: invoice value before GST by invoice date; inter-firm and Megh
   const tiles = computeSummarySheetSections(rows as any, [], { from: "2026-11-01", to: "2026-11-22" }, extras, undefined, false, null, new Date(2026, 10, 22))
     .flatMap((section) => section.tiles);
   const value = (id: string) => tiles.find((t) => t.id === id)?.value;
-  assert.equal(value("todaySale"), 1000);
+  assert.equal(value("todaySale"), 41000);
   assert.equal(value("yesterdaySale"), 500);
-  assert.equal(value("rangeSale"), 1500);
-  assert.equal(value("spPerKg"), 15);
+  assert.equal(value("rangeSale"), 41500);
   for (const removed of ["rangeSale3", "achievedPerDay", "targetPerDay", "revisedTargetPerDay", "shortSales"]) assert.equal(tiles.some((t) => t.id === removed), false);
   // Before the server figures arrive the sales tiles stay blank (not a wrong number).
   const loading = computeSummarySheetSections(rows as any, [], { from: "2026-11-01", to: "2026-11-22" }, null).flatMap((section) => section.tiles);

@@ -167,6 +167,10 @@ REPORT_DEFINITIONS["summary-sheet-tiles"] = {
     { key: "issueLines", entity: "material_issue_lines", scope: "all" },
     { key: "phpJobs", entity: "php_job_master", scope: "all" },
     { key: "plateJobs", entity: "plate_job_master", scope: "all" },
+    { key: "reelIssues", entity: "material_issues", scope: "all" },
+    { key: "reelIssueLines", entity: "material_issue_reel_lines", scope: "all" },
+    { key: "reelReturns", entity: "material_returns", scope: "all" },
+    { key: "reelReturnLines", entity: "material_return_reel_lines", scope: "all" },
   ],
   compute: (lists, _params, helpers) => computeSummarySheetExtras(lists, (helpers.npdItems || []).map(normalizeNpdItem)),
 };

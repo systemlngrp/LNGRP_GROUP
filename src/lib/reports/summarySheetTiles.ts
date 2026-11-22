@@ -74,16 +74,17 @@ export function computeSummarySheetSections(
   const paperWastagePercent = paperRequired > 0 ? (sum(usedRows, (row) => n(row["Paper Wastage"])) / paperRequired) * 100 : 0;
   const boardlineWastage = sum(rangeRows, (row) => n(row.__boardlineWastageKg)); // kg (the column now shows boxes)
   const boardlineWastagePercent = paperUsed > 0 ? (boardlineWastage / paperUsed) * 100 : 0;
-  // Total production (kg) = paper used (reel issue − return) of jobs in From–To;
+  // Total production (kg) = reel issued − reel returned in From–To (issue / return dates, all jobs);
   // Total wastage % = corrugated scrap sold to Megha Trading in From–To ÷ production × 100.
   const scrapKg = extras?.version === 2 && extras.scrapSales ? filterExtraRecords(extras.scrapSales, filters, range).reduce((total, record) => total + record[5], 0) : null;
-  const totalWastagePercent = scrapKg !== null && paperUsed > 0 ? (scrapKg / paperUsed) * 100 : scrapKg !== null ? 0 : null;
+  const totalProductionKg = extras?.version === 2 && extras.reelUsage ? filterExtraRecords(extras.reelUsage, filters, range).reduce((total, record) => total + record[5], 0) : null;
+  const totalWastagePercent = scrapKg !== null && totalProductionKg !== null ? (totalProductionKg > 0 ? (scrapKg / totalProductionKg) * 100 : 0) : null;
   // Sales: taxable value (before GST) of customer invoices by invoice date; inter-firm
   // invoices and scrap sold to Megha Trading are left out.
   const netSales = extras?.version === 2 && extras.netSales ? filterExtraRecords(extras.netSales, filters) : null;
   const netSaleOn = (day: string) => (netSales ? netSales.filter((record) => record[0] === day).reduce((total, record) => total + record[5], 0) : null);
   const netRangeSale = netSales ? netSales.filter((record) => inRange(record[0])).reduce((total, record) => total + record[5], 0) : null;
-  const netSaleNote = "Invoice value before GST, by invoice date (inter-firm and Megha Trading scrap invoices left out)";
+  const netSaleNote = "Invoice value before GST, by invoice date (Megha Trading scrap included; inter-firm invoices left out)";
   const wastageTone = (value: number) => value <= 8 ? "bg-[#00ff00] text-slate-950" : value <= 10 ? "bg-[#ff9900] text-slate-950" : "bg-[#ff0000] text-white";
   const dueUntil = localDayKey(3, now);
   const ready = extras?.version === 2;
@@ -123,8 +124,8 @@ export function computeSummarySheetSections(
         { id: "todaySmallPrinter", label: "Today Small Printer", value: sum(todayRows, (row) => n(row.__printSmall)), format: "qty", tone: "bg-[#6fa8dc] text-slate-950", note: "Printing on Small Printer, jobs dated today" },
         { id: "wip", label: "Today WIP", value: sum(openRows, (row) => Math.max(0, n(row["Boardline Prod."]) - n(row["Printing prod."]))), format: "qty", tone: "bg-[#00ffff] text-slate-950", note: "Open jobs: total Boardline − total Printing" },
         { id: "todayReel", label: "Today Reel Consumption (Kg)", value: sum(todayRows, (row) => n(row["PPR Used"])), format: "qty", tone: "bg-[#00ffff] text-slate-950", note: "Reel issue − reel return of jobs dated today" },
-        { id: "totalProduction", label: "Total Production (Kg)", value: paperUsed, format: "qty", tone: "bg-[#274e13] text-white", note: `Paper used (reel issue − return) of jobs dated ${range.from} to ${range.to}` },
-        { id: "totalWastage", label: "Total Wastage %", value: totalWastagePercent, format: "percent", tone: totalWastagePercent === null ? "bg-white text-slate-950" : wastageTone(totalWastagePercent), note: scrapKg === null ? "Loading scrap sales…" : `Corrugated scrap sold to Megha Trading ${Math.round(scrapKg).toLocaleString("en-IN")} kg ÷ production ${Math.round(paperUsed).toLocaleString("en-IN")} kg × 100 (${range.from} to ${range.to})` },
+        { id: "totalProduction", label: "Total Production (Kg)", value: totalProductionKg, format: "qty", tone: "bg-[#274e13] text-white", note: `Reel issued − reel returned, ${range.from} to ${range.to} (by issue / return date)` },
+        { id: "totalWastage", label: "Total Wastage %", value: totalWastagePercent, format: "percent", tone: totalWastagePercent === null ? "bg-white text-slate-950" : wastageTone(totalWastagePercent), note: scrapKg === null ? "Loading scrap sales…" : `Corrugated scrap sold to Megha Trading ${Math.round(scrapKg).toLocaleString("en-IN")} kg ÷ production ${Math.round(totalProductionKg || 0).toLocaleString("en-IN")} kg × 100 (${range.from} to ${range.to})` },
       ],
     },
     {
@@ -307,7 +308,9 @@ export type SummarySheetExtras = {
   interFirmInvoices?: ExtraRecord[];
   /** FG stock (positive balance) × latest order rate, per item; no date. */
   fgStock: ExtraRecord[];
-  /** Customer invoices (not inter-firm, not Megha Trading scrap): value before GST; date = invoice date. */
+  /** Reel paper: + kg issued (issue date), − kg returned (return date). */
+  reelUsage?: ExtraRecord[];
+  /** Customer invoices incl. Megha Trading scrap (not inter-firm): value before GST; date = invoice date. */
   netSales?: ExtraRecord[];
   /** Corrugated wastage scrap sold to Megha Trading: kg per invoice line; date = invoice date. */
   scrapSales?: ExtraRecord[];
@@ -477,10 +480,23 @@ export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems
     if (meghaSlipIds.has(String(line.loadingSlipId || invoice.loadingSlipId || ""))) return; // counted from its slip
     scrapSales.push([isoDateText(invoice.date), firmName.get(String(invoice.firmId)) || "", "", "", "", round(n(line.qty))]);
   });
+  // Reel issue − reel return by date (kg), for Total Production.
+  const reelUsage: ExtraRecord[] = [];
+  const addUsage = (entries: any[] | undefined, lines: any[] | undefined, idKey: string, sign: 1 | -1) => {
+    const entryById = new Map((entries || []).filter((entry) => !isCancelled(entry)).map((entry) => [String(entry.id), entry]));
+    (lines || []).forEach((line) => {
+      const entry = entryById.get(String(line[idKey]));
+      if (!entry) return;
+      reelUsage.push([isoDateText(entry.date), firmName.get(String(entry.firmId)) || "", "", "", "", round(sign * n(line.weightKg))]);
+    });
+  };
+  addUsage(lists.reelIssues, lists.reelIssueLines, "materialIssueId", 1);
+  addUsage(lists.reelReturns, lists.reelReturnLines, "materialReturnId", -1);
+  // Sales include Megha Trading (scrap) invoices; inter-firm invoices are left out.
   const netSales: ExtraRecord[] = invoiceRows
-    .filter((invoice) => !isInterFirm(invoice) && !isMegha(invoice))
+    .filter((invoice) => !isInterFirm(invoice))
     .map((invoice) => [isoDateText(invoice.date), firmName.get(String(invoice.firmId || invoice.orderFirmId)) || "", s(invoice.companyName) || companyName.get(String(invoice.companyId)) || "", "", "", round(n(invoice.totalBeforeGst))] as ExtraRecord);
-  return { version: 2, netSales, scrapSales, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
+  return { version: 2, reelUsage, netSales, scrapSales, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
 }
 
 

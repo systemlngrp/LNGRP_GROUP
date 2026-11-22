@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { computeSummarySheetExtras, computeSummarySheetSections } from "./summarySheetTiles";
 
-test("Total Wastage % = corrugated scrap sold to Megha Trading ÷ paper used × 100", () => {
+test("Total Wastage % = corrugated scrap sold to Megha Trading ÷ (reel issued − returned) × 100", () => {
   const lists = {
     companies: [{ id: "m", name: "M/S MEGHA TRADING" }, { id: "c", name: "Other" }],
     firms: [{ id: "f1", firmName: "Unit-I" }],
@@ -12,6 +12,10 @@ test("Total Wastage % = corrugated scrap sold to Megha Trading ÷ paper used × 
       { id: "i3", companyId: "c", firmId: "f1", date: "2026-11-06" },
       { id: "i4", companyId: "m", firmId: "f1", date: "2026-11-07", status: "Cancelled" },
     ],
+    reelIssues: [{ id: "a", date: "2026-11-03", firmId: "f1" }, { id: "b", date: "2026-10-03", firmId: "f1" }, { id: "x", date: "2026-11-04", status: "Cancelled" }],
+    reelIssueLines: [{ materialIssueId: "a", weightKg: 40000 }, { materialIssueId: "b", weightKg: 99999 }, { materialIssueId: "x", weightKg: 5000 }],
+    reelReturns: [{ id: "r", date: "2026-11-09", firmId: "f1" }],
+    reelReturnLines: [{ materialReturnId: "r", weightKg: 10000 }],
     invoiceLines: [
       { invoiceId: "i1", itemName: "CORRUGATED WASTAGE SCRAP", qty: "3000" },
       { invoiceId: "i1", itemName: "WASTAGE SCRAP CORE PIPE", qty: "500" },

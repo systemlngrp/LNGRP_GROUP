@@ -51,7 +51,10 @@ const COLUMN_DISPLAY: Record<string, string> = {};
 const columnTitle = (column: string) => COLUMN_DISPLAY[column] || column;
 const SUMMARY_HIDDEN_COLUMNS_KEY = "summary-sheet-hidden-columns";
 const SUMMARY_FREEZE_KEY = "summary-sheet-freeze-column";
-const FREEZE_OPTIONS = ["Job No.", "Date", "Party Name", "Item Name"];
+const FREEZE_OPTIONS = ["Job No.", "Date", "Party Name", "Item Name", "ERP", "Planned Qty"];
+// Frozen name columns are kept narrow (text wraps) so the frozen part stays small.
+const FROZEN_NARROW = new Set(["Party Name", "Item Name"]);
+const FROZEN_NARROW_WIDTH = 170;
 
 const NUMERIC_COLUMNS = new Set([
   "Sl No", "Planned Qty", "Job Weight", "Meter", "UPS", "Sheets prdcd", "Plate per box", "Boardline Prod.", "Printing prod.",
@@ -625,6 +628,10 @@ export function SummarySheetReport() {
     const table = tableWrapRef.current?.querySelector("table");
     if (!table) return;
     const apply = () => {
+      table.querySelectorAll<HTMLTableColElement>("col[data-frozen-width]").forEach((col) => {
+        col.style.width = col.dataset.frozenWidth || "";
+        delete col.dataset.frozenWidth;
+      });
       table.querySelectorAll<HTMLTableCellElement>("[data-frozen]").forEach((cell) => {
         cell.style.position = ""; cell.style.left = ""; cell.style.zIndex = ""; cell.style.boxShadow = "";
         if (cell.dataset.frozen === "bg") cell.style.backgroundColor = "";
@@ -632,6 +639,14 @@ export function SummarySheetReport() {
       });
       const headRow = table.tHead?.rows[table.tHead.rows.length - 1];
       if (!frozenCount || !headRow) return;
+      // Narrow frozen Party / Item Name columns (names wrap) before measuring.
+      const cols = Array.from(table.querySelectorAll<HTMLTableColElement>(":scope > colgroup col"));
+      selectedColumns.slice(0, frozenCount).forEach((columnIndex, i) => {
+        const col = cols[i];
+        if (!col || !FROZEN_NARROW.has(COLUMNS[columnIndex]) || headRow.cells[i]?.getBoundingClientRect().width <= FROZEN_NARROW_WIDTH) return;
+        col.dataset.frozenWidth = col.style.width;
+        col.style.width = `${FROZEN_NARROW_WIDTH}px`;
+      });
       const lefts: number[] = [];
       let x = 0;
       for (let i = 0; i < frozenCount && headRow.cells[i]; i += 1) { lefts.push(x); x += headRow.cells[i].getBoundingClientRect().width; }
