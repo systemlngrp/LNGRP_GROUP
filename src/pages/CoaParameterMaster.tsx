@@ -142,21 +142,24 @@ export function CoaParameterMaster() {
     </div> : null}
     <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search parameter, source or company" aria-label="Search parameters" value={search} onChange={(event) => setSearch(event.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none" /></div>
     <div className="text-xs font-bold text-slate-600">{loading ? "Loading… " : ""}{rows.length} of {parameters.length} parameters · <span className="text-emerald-800">green = real reading</span> · <span className="text-amber-800">amber = typed by QC</span> · <span className="text-indigo-800">✎ = changed here</span></div>
-    <div className="overflow-x-auto rounded border border-black bg-white">
-      <table className="w-full min-w-[1200px] text-sm">
-        <thead className="bg-cyan-800 text-left text-white"><tr>
-          <th className="p-2">Code</th><th className="p-2">Parameter</th><th className="p-2">Standard</th><th className="p-2">Observation comes from</th><th className="p-2">PASS rule</th><th className="p-2">Used by templates</th>{canEdit ? <th className="p-2">Actions</th> : null}
+    {/* Spreadsheet-style grid: every cell bordered, compact, left aligned, header stays on top. */}
+    <div className="max-h-[70vh] overflow-auto border border-slate-400 bg-white">
+      <table className="w-full min-w-[1100px] border-collapse text-xs">
+        <thead className="sticky top-0 z-10 bg-cyan-800 text-white"><tr>
+          {["#", "Code", "Parameter", "Standard", "Observation comes from", "PASS rule", "Used by templates", ...(canEdit ? ["Actions"] : [])].map((label) =>
+            <th key={label} className="whitespace-nowrap border border-slate-400 px-2 py-1.5 font-bold">{label}</th>)}
         </tr></thead>
-        <tbody>{rows.map((parameter) => <tr key={parameter.code} className="border-t border-black align-top">
-          <td className="p-2 font-mono text-xs font-bold">{parameter.code}{savedCodes.has(parameter.code) ? <span className="ml-1 text-indigo-700" title="Changed here">✎</span> : null}</td>
-          <td className="p-2 font-bold">{parameter.name}</td>
-          <td className="p-2">{parameter.standard}</td>
-          <td className={`p-2 font-semibold ${sourceClass(parameter.observationLabel)}`}>{parameter.observationLabel}</td>
-          <td className="p-2">{parameter.passRule}</td>
-          <td className="p-2 text-xs">{[...(usedBy.get(parameter.code) || [])].join(", ") || "-"}</td>
-          {canEdit ? <td className="p-2"><div className="flex gap-2">
-            <button type="button" onClick={() => { setMessage(""); setDraft(draftOf(parameter)); }} className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 underline"><Pencil size={12} /> Edit</button>
-            {savedCodes.has(parameter.code) ? <button type="button" disabled={busy} onClick={() => void reset(parameter)} className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 underline"><RotateCcw size={12} /> {COA_PARAMETERS.some((value) => value.code === parameter.code) ? "Reset" : "Delete"}</button> : null}
+        <tbody>{rows.map((parameter, index) => <tr key={parameter.code} className="align-top odd:bg-white even:bg-slate-50 hover:bg-cyan-50">
+          <td className="w-8 border border-slate-300 px-2 py-1 text-right text-slate-500">{index + 1}</td>
+          <td className="whitespace-nowrap border border-slate-300 px-2 py-1 font-mono font-bold">{parameter.code}{savedCodes.has(parameter.code) ? <span className="ml-1 text-indigo-700" title="Changed here">✎</span> : null}</td>
+          <td className="border border-slate-300 px-2 py-1 font-bold">{parameter.name}</td>
+          <td className="border border-slate-300 px-2 py-1">{parameter.standard}</td>
+          <td className={`border border-slate-300 px-2 py-1 font-semibold ${sourceClass(parameter.observationLabel)}`}>{parameter.observationLabel}</td>
+          <td className="border border-slate-300 px-2 py-1">{parameter.passRule}</td>
+          <td className="border border-slate-300 px-2 py-1">{[...(usedBy.get(parameter.code) || [])].join(", ") || "-"}</td>
+          {canEdit ? <td className="whitespace-nowrap border border-slate-300 px-2 py-1"><div className="flex gap-2">
+            <button type="button" onClick={() => { setMessage(""); setDraft(draftOf(parameter)); }} className="inline-flex items-center gap-1 font-bold text-indigo-700 underline"><Pencil size={12} /> Edit</button>
+            {savedCodes.has(parameter.code) ? <button type="button" disabled={busy} onClick={() => void reset(parameter)} className="inline-flex items-center gap-1 font-bold text-slate-700 underline"><RotateCcw size={12} /> {COA_PARAMETERS.some((value) => value.code === parameter.code) ? "Reset" : "Delete"}</button> : null}
           </div></td> : null}
         </tr>)}</tbody>
       </table>
