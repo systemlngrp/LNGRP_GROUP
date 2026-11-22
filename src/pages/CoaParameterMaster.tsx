@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Pencil, Plus, RotateCcw, Search } from "lucide-react";
+import { Download, Pencil, Plus, RotateCcw, Search } from "lucide-react";
+import * as XLSX from "xlsx";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
@@ -118,6 +119,35 @@ export function CoaParameterMaster() {
     } finally { setBusy(false); }
   };
 
+  // Excel: the parameters shown (search applied) + a sheet of company standards.
+  const downloadExcel = () => {
+    const flat = (map?: Record<string, string>) => (map ? Object.entries(map).map(([key, value]) => `${key}: ${value}`).join(" · ") : "");
+    const main = rows.map((parameter) => ({
+      Code: parameter.code,
+      Parameter: parameter.name,
+      Standard: parameter.standard,
+      "Standard by flute": flat(parameter.byFlute),
+      "Company standards": parameter.companyStandards ? Object.entries(parameter.companyStandards).map(([id, std]) => `${companyName.get(id) || id}: ${std}`).join(" · ") : "",
+      "QC target (hint)": parameter.targetByFlute ? flat(parameter.targetByFlute) : parameter.target || "",
+      "Observation comes from": parameter.observationLabel,
+      "PASS rule": parameter.passRule,
+      "Row names on templates": parameter.labels.join(" | "),
+      "Used by templates": [...(usedBy.get(parameter.code) || [])].join(", "),
+      "Changed here": savedCodes.has(parameter.code) ? "Yes" : "",
+    }));
+    const companyRows = rows.flatMap((parameter) => Object.entries(parameter.companyStandards || {}).map(([id, std]) => ({
+      Code: parameter.code, Parameter: parameter.name, Company: companyName.get(id) || id, Standard: std,
+    })));
+    const book = XLSX.utils.book_new();
+    const sheet = XLSX.utils.json_to_sheet(main);
+    sheet["!cols"] = [10, 32, 40, 34, 40, 28, 32, 26, 50, 40, 12].map((wch) => ({ wch }));
+    XLSX.utils.book_append_sheet(book, sheet, "COA Parameters");
+    const companySheet = XLSX.utils.json_to_sheet(companyRows.length ? companyRows : [{ Code: "", Parameter: "", Company: "", Standard: "" }]);
+    companySheet["!cols"] = [12, 32, 40, 24].map((wch) => ({ wch }));
+    XLSX.utils.book_append_sheet(book, companySheet, "Company Standards");
+    XLSX.writeFile(book, `COA_Parameter_Master_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   const sourceClass = (label: string) => /^Typed/.test(label) ? "bg-amber-50 text-amber-900" : /^Same as|after PDI pass/.test(label) ? "bg-slate-50" : "bg-emerald-50 text-emerald-900";
 
   return <div className="space-y-4">
@@ -126,7 +156,10 @@ export function CoaParameterMaster() {
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">COA Parameter Master</h2>
         <p className="text-sm font-semibold text-slate-600">Observations come from real readings or are typed by QC, and are checked against the standard (PASS / FAIL) on the COA Form. The QC target is only a hint in the empty box; it is never filled in as a reading.</p>
       </div>
+      <div className="flex flex-wrap gap-2">
+      <button type="button" onClick={downloadExcel} className="inline-flex items-center gap-1.5 rounded border-2 border-emerald-700 bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-800 hover:bg-emerald-100"><Download size={15} /> Excel</button>
       {canEdit ? <button type="button" onClick={() => { setMessage(""); setDraft(draftOf({ code: "", name: "", standard: "", observation: { manual: true }, observationLabel: "", plain: "none", passRule: "", labels: [] }, true)); }} className="inline-flex items-center gap-1.5 rounded border-2 border-indigo-700 bg-indigo-700 px-3 py-1.5 text-sm font-bold text-white"><Plus size={15} /> Add parameter</button> : null}
+      </div>
     </div>
     {message ? <div className="rounded border border-black bg-amber-100 p-2 text-sm font-bold">{message}</div> : null}
     {draft ? <div className="space-y-3 rounded border-2 border-indigo-700 bg-indigo-50/40 p-3">
