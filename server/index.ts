@@ -158,6 +158,33 @@ function uploadedFileBuffer(value: unknown): Buffer | undefined {
   }
 }
 
+// Website favicon = the organization logo from Settings (no logo -> 204, the browser shows its default).
+app.get(["/favicon.ico", "/app-favicon"], async (_req, res) => {
+  try {
+    const db = await getPool();
+    if (!db) return res.status(204).end();
+    const [settingRows] = await db.query("SELECT organizationLogo FROM `settings` WHERE organizationLogo IS NOT NULL AND organizationLogo <> '' ORDER BY updateTimestamp DESC LIMIT 1");
+    const filename = String((settingRows as any[])?.[0]?.organizationLogo || "").trim();
+    if (!filename) return res.status(204).end();
+    // Short cache so a new logo shows within the hour.
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    const [rows] = await db.query("SELECT mimeType, data FROM `uploaded_files` WHERE filename = ? LIMIT 1", [filename]);
+    const row = (rows as any[])?.[0];
+    const data = row?.data ? uploadedFileBuffer(row.data) : undefined;
+    if (data) {
+      res.setHeader("Content-Type", String(row.mimeType || "image/png"));
+      return res.send(data);
+    }
+    const uploadsDir = path.join(process.cwd(), "uploads");
+    const filePath = path.resolve(uploadsDir, filename);
+    if (!filePath.startsWith(uploadsDir + path.sep) || !fs.existsSync(filePath)) return res.status(204).end();
+    return res.sendFile(filePath);
+  } catch (error) {
+    console.error("[favicon] Failed to serve organization logo:", error);
+    return res.status(204).end();
+  }
+});
+
 app.get("/uploads/:filename", async (req, res, next) => {
   const filename = String(req.params.filename || "").trim();
   if (!filename) return res.status(400).send("Missing filename");
