@@ -22,7 +22,7 @@ test("fills standards from the job and NPD item", () => {
   const production = { id: "p1", transactionNo: "JOB/1", itemId: "i1", flute: "B+C", ply: 5, height: 300, l1: 150, f1: 120, l2: 0, f2: 120, l3: 150 } as any;
   const items = [{ id: "i1", csKgStd: 240, bsKgCm2Std: 9, stackHeight: 8, printingColour1: "RED", printingColour2: "BLUE" }];
   const map = buildCoaSourceMap(resolveCoaSourceContext(production, [], [], [], [], [], [], [], [], [], items), "2026-11-17");
-  assert.equal(map["standard.boardThickness"], "Min 7 mm (B+C-Flute)");
+  assert.equal(map["standard.boardThickness"], "Min 6.8 mm");
   assert.equal(map["item.csStandard"], "240");
   assert.equal(map["item.colours"], "RED & BLUE");
   assert.equal(map["production.layerGsm"], "150 / 120 / 120 / 150");

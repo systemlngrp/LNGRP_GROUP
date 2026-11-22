@@ -1,5 +1,5 @@
 import type { BoardLineQcCheck, Company, CoaAutoRule, CoaCellValue, CoaTemplate, CoaTemplateLayout, CoaTemplateRow, Firm, Invoice, InvoiceLineItem, Order, OrderSchedule, PreDispatchInspection, PrintingQcCheck, Production } from "../types";
-import { checkCoaDimensions, checkCoaObservation, COA_PARAMETERS, coaParameterForLabel, coaStandardFor, coaTargetFor, type CoaParameter } from "./coaParameters";
+import { checkCoaDimensions, checkCoaObservation, COA_PARAMETERS, coaParameterForLabel, coaStandardFor, coaTargetFor, normaliseFlute, type CoaParameter } from "./coaParameters";
 import type { JobLoadingRecord } from "./jobLoadingRecords";
 
 type AnyRecord = Record<string, any>;
@@ -80,13 +80,10 @@ export type CoaSourceContext = {
 export const COMMON_COA_KEY = "COMMON";
 export const COMMON_COA_NAME = "COMMON (all other customers)";
 
+/** Board thickness standard by flute (same as the flute height minimum, from the Parameter Master). */
 function boardThicknessStandard(flute: string) {
-  const value = flute.toUpperCase().replace(/\s+/g, "");
-  if (value === "A") return "Min 4.8 mm (A-Flute)";
-  if (value === "B+C") return "Min 7 mm (B+C-Flute)";
-  if (value === "B") return "Min 2.8 mm";
-  if (value === "C") return "Min 4.8 mm";
-  return "";
+  const thick = COA_PARAMETERS.find((parameter) => parameter.code === "THICK");
+  return thick?.byFlute?.[normaliseFlute(flute)] || "";
 }
 
 /** Text for a PDI visual check: OK -> the standard wording, NOT OK -> "NOT OK", not checked -> "". */
