@@ -28,3 +28,17 @@ test("fills standards from the job and NPD item", () => {
   assert.equal(map["production.layerGsm"], "150 / 120 / 120 / 150");
   assert.equal(map["production.height"], "300");
 });
+
+test("fills PHP and BS of PHP from the PHP Item Master linked by box ERP", () => {
+  const production = { id: "p2", transactionNo: "JOB/2", itemId: "i2", erpCode: "99970015" } as any;
+  const items = [{ id: "i2", erp: "99970015" }];
+  const phpItems = [
+    { erpItemCode: "75010361", masterItemNameErpCode: "11111111", brustingStrengthReq: "5" },
+    { erpItemCode: "75010375", masterItemNameErpCode: "99970015", length: 460, breadth: 265, height: 167, noOfPly: 3, brustingStrengthReq: "6" },
+  ];
+  const map = buildCoaSourceMap(resolveCoaSourceContext(production, [], [], [], [], [], [], [], [], [], items, [], null, phpItems), "2026-11-22");
+  assert.equal(map["item.php"], "ERP 75010375 · 460 x 265 x 167 · 3 Ply");
+  assert.equal(map["item.bsPhp"], "6");
+  const none = buildCoaSourceMap(resolveCoaSourceContext({ ...production, erpCode: "1" }, [], [], [], [], [], [], [], [], [], [], [], null, phpItems));
+  assert.equal(none["item.php"], "");
+});

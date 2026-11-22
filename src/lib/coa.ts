@@ -72,6 +72,8 @@ export type CoaSourceContext = {
   boardline?: BoardLineQcCheck;
   printing?: PrintingQcCheck;
   item?: AnyRecord;
+  /** PHP (pad) linked to the box: PHP Item Master row whose Master Item Name ERP Code is the box ERP. */
+  phpItem?: AnyRecord;
 };
 
 // Template used for any customer without its own active template.
@@ -119,7 +121,7 @@ export function buildCoaObservations(readings: {
   };
 }
 
-export function resolveCoaSourceContext(production: Production, companies: Company[], firms: Firm[], orders: Order[], schedules: OrderSchedule[], invoices: Invoice[], invoiceLines: InvoiceLineItem[], pdis: PreDispatchInspection[], boardlineRows: BoardLineQcCheck[], printingRows: PrintingQcCheck[], items: AnyRecord[] = [], loadingRecords?: JobLoadingRecord[], latestPdi?: PreDispatchInspection | null): CoaSourceContext {
+export function resolveCoaSourceContext(production: Production, companies: Company[], firms: Firm[], orders: Order[], schedules: OrderSchedule[], invoices: Invoice[], invoiceLines: InvoiceLineItem[], pdis: PreDispatchInspection[], boardlineRows: BoardLineQcCheck[], printingRows: PrintingQcCheck[], items: AnyRecord[] = [], loadingRecords?: JobLoadingRecord[], latestPdi?: PreDispatchInspection | null, phpItems: AnyRecord[] = []): CoaSourceContext {
   const schedule = schedules.find((value) => id(value.id) === id(production.scheduleId));
   const order = orders.find((value) => id(value.id) === id(schedule?.orderId) || (id(value.companyId) === id((production as AnyRecord).companyId) && id(value.itemId) === id(production.itemId)));
   const companyId = id((production as AnyRecord).companyId || order?.companyId);
@@ -155,11 +157,13 @@ export function resolveCoaSourceContext(production: Production, companies: Compa
   const erp = text(production.erpCode || production.masterErp || order?.erpCode);
   const item = items.find((value) => itemKeys.includes(id(value.id)) || itemKeys.includes(id(value.npdId)))
     || (erp ? items.find((value) => text(value.erp) === erp) : undefined);
-  return { production, company, firm, order, invoice, invoiceLine, jobInvoices, jobInvoiceQty, pdi, boardline, printing, item };
+  const boxErp = (erp || text(item?.erp)).toLowerCase();
+  const phpItem = boxErp ? phpItems.find((value) => text(value.masterItemNameErpCode).toLowerCase() === boxErp) : undefined;
+  return { production, company, firm, order, invoice, invoiceLine, jobInvoices, jobInvoiceQty, pdi, boardline, printing, item, phpItem };
 }
 
 export function buildCoaSourceMap(context: CoaSourceContext, coaDate = new Date().toISOString().slice(0, 10)): Record<string, string> {
-  const { production, company, firm, order, invoice, jobInvoices, jobInvoiceQty, pdi, boardline, printing, item } = context;
+  const { production, company, firm, order, invoice, jobInvoices, jobInvoiceQty, pdi, boardline, printing, item, phpItem } = context;
   const job = production as AnyRecord;
   const flute = text(job.flute || item?.flute);
   const layerGsm = ["l1", "f1", "l2", "f2", "l3"].map((key) => text(job[key] ?? item?.[key])).filter((value) => value && Number(value) !== 0).join(" / ");
@@ -187,6 +191,13 @@ export function buildCoaSourceMap(context: CoaSourceContext, coaDate = new Date(
     "item.csStandard": sourceValue(item?.csKgStd),
     "item.bsStandard": sourceValue(item?.bsKgCm2Std),
     "item.stackNorms": sourceValue(item?.stackHeight),
+    // PHP spec from the PHP Item Master: ERP, size, ply. BS of PHP = its required bursting strength.
+    "item.php": phpItem ? [
+      text(phpItem.erpItemCode) && `ERP ${text(phpItem.erpItemCode)}`,
+      [phpItem.length, phpItem.breadth, phpItem.height].map(text).filter(Boolean).join(" x "),
+      text(phpItem.noOfPly) && `${text(phpItem.noOfPly)} Ply`,
+    ].filter(Boolean).join(" · ") : "",
+    "item.bsPhp": sourceValue(phpItem?.brustingStrengthReq),
     "item.weightPack": text(item?.weightPackDetails || item?.weightAndPackDetails || item?.materialWeightInsideInOneBox),
     "item.compositeGsm": sourceValue(item?.gsmLeastCost || job.gsm),
     "standard.boardThickness": boardThicknessStandard(flute),

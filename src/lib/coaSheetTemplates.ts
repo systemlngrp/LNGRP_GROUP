@@ -281,9 +281,9 @@ export function coaSheetTemplates(): Record<string, CoaTemplateLayout> {
       COLOUR_CBB, COLOUR_PRINTING, QUALITY_PRINTING,
       ["STACK NORMS", { bind: "item.stackNorms" }, "copy"],
       DIMENSION, PLY,
-      ["PHP", "", "copy"],
-      // BS of PHP: std+0.2 .. std+0.4.
-      ["BS OF PHP", "", { rule: { from: "", min: 0.2, max: 0.4, decimals: 2 } }],
+      ["PHP", { bind: "item.php" }, "copy"],
+      // BS of PHP: std+0.2 .. std+0.4 (std = PHP Item Master required BS).
+      ["BS OF PHP", { bind: "item.bsPhp" }, { rule: { from: "", min: 0.2, max: 0.4, decimals: 2 } }],
       csRow(), GLUED, FLUTE_A, FLUTES_30CM, FLUTE_HEIGHT,
       moisture("7-9%", 7, 8), BS_CFB,
     ]),

@@ -37,6 +37,7 @@ export function CoaForm() {
   const [invoiceLines] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all" });
   const [pdis] = useData<PreDispatchInspection>("pre_dispatch_inspections", [], { firmScope: "all" });
   // COA Parameter Master (built-in list + saved edits).
+  const [phpItems] = useData<any>("php_item_master", [], { firmScope: "all" });
   const [parameterRecords] = useData<CoaParameterRecord>("coa_parameters", [], { firmScope: "all" });
   const coaParameters = useMemo(() => mergeCoaParameters(parameterRecords), [parameterRecords]);
   // Loading slips and plans: which invoices belong to the job.
@@ -72,10 +73,10 @@ export function CoaForm() {
   }, [npdItems, pdis, productions]);
   const pdiPassed = (jobId: string) => pdiStatus.get(jobId) === "PASS";
   const jobLoading = useMemo(() => buildJobLoadingRecords(productions, loadingSlips, dispatchPlans), [productions, loadingSlips, dispatchPlans]);
-  const contextFor = (job: Production) => resolveCoaSourceContext(job, companies, firms, orders, schedules, invoices, invoiceLines, pdis, boardlineRows, printingRows, npdItems as any[], jobLoading.get(job.id) || [], latestPdi.get(job.id) || null);
+  const contextFor = (job: Production) => resolveCoaSourceContext(job, companies, firms, orders, schedules, invoices, invoiceLines, pdis, boardlineRows, printingRows, npdItems as any[], jobLoading.get(job.id) || [], latestPdi.get(job.id) || null, phpItems as any[]);
   const context = useMemo<CoaSourceContext | undefined>(() => production ? contextFor(production) : undefined,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [boardlineRows, companies, firms, invoiceLines, invoices, npdItems, orders, pdis, printingRows, production, schedules, jobLoading, latestPdi]);
+    [boardlineRows, companies, firms, invoiceLines, invoices, npdItems, orders, pdis, printingRows, production, schedules, jobLoading, latestPdi, phpItems]);
   const sourceMap = useMemo(() => context ? buildCoaSourceMap(context, headerData.coaDate || new Date().toISOString().slice(0, 10)) : {}, [context, headerData.coaDate]);
   const activeTemplate = context?.company ? activeTemplateForCompany(templates, context.company.id) : undefined;
   const pdiTag = (status?: JobPdiStatus) => status === "PASS" ? "✅ PDI PASS" : status === "FAIL" ? "❌ PDI FAIL" : status === "PENDING" ? "⚠️ PDI not PASS" : "⚠️ PDI not recorded";
