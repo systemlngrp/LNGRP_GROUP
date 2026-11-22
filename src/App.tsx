@@ -147,6 +147,7 @@ const OrdersMaster = lazy(() => import("./pages/OrdersMaster").then((module) => 
 const PendingScheduledOrders = lazy(() => import("./pages/ScheduledOrdersMaster").then((module) => ({ default: module.PendingScheduledOrders })));
 const NeverDispatchedScheduledOrders = lazy(() => import("./pages/ScheduledOrdersMaster").then((module) => ({ default: module.NeverDispatchedScheduledOrders })));
 const ScheduledCustomerSummary = lazy(() => import("./pages/ScheduledCustomerSummary").then((module) => ({ default: module.ScheduledCustomerSummary })));
+const SchedulesToClose = lazy(() => import("./pages/SchedulesToClose").then((module) => ({ default: module.SchedulesToClose })));
 const ScheduledOrdersMaster = lazy(() => import("./pages/ScheduledOrdersMaster").then((module) => ({ default: module.ScheduledOrdersMaster })));
 const UpcomingScheduledOrders = lazy(() => import("./pages/UpcomingScheduledOrders").then((module) => ({ default: module.UpcomingScheduledOrders })));
 const PendingDispatchPlanning = lazy(() => import("./pages/PendingDispatchPlanning").then((module) => ({ default: module.PendingDispatchPlanning })));
@@ -364,6 +365,7 @@ export default function App() {
           <Route path="orders/scheduled-pending" element={<PendingScheduledOrders />} />
           <Route path="orders/scheduled-never-dispatched" element={<NeverDispatchedScheduledOrders />} />
           <Route path="orders/scheduled-customer-summary" element={<ScheduledCustomerSummary />} />
+          <Route path="orders/schedules-to-close" element={<SchedulesToClose />} />
           <Route path="orders/canceled" element={<CanceledOrders />} />
           
           {/* Material In */}
