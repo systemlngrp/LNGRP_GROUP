@@ -29,7 +29,6 @@ type SupplierFormState = {
   address: string;
   tallyGroup: string;
   gstRegistrationType: string;
-  openingBalance: string;
   active: "Yes" | "No";
 };
 
@@ -46,7 +45,6 @@ const createInitialFormState = (): SupplierFormState => ({
   address: "",
   tallyGroup: "",
   gstRegistrationType: "",
-  openingBalance: "",
   active: "Yes",
 });
 
@@ -120,7 +118,6 @@ export function Suppliers() {
     "PIN Code": "pinCode",
     "Tally Group": "tallyGroup",
     "GST Registration Type": "gstRegistrationType",
-    "Opening Balance": "openingBalance",
     Active: "active",
   };
   const { sorted: sortedSuppliers, sort, toggle: toggleSort } = useTableSort(filteredSuppliers, (supplier, key) => {
@@ -128,7 +125,6 @@ export function Suppliers() {
       case "gstSupplyType": return supplier.gstSupplyType || "INTRA_STATE";
       case "state": return (supplier.stateId && stateNameById.get(supplier.stateId)) || "";
       case "active": return supplier.active || "Yes";
-      case "openingBalance": return Number(supplier.openingBalance || 0);
       default: return (supplier as any)[key];
     }
   }, [stateNameById]);
@@ -168,7 +164,6 @@ export function Suppliers() {
       address: supplier.address || "",
       tallyGroup: supplier.tallyGroup || "",
       gstRegistrationType: supplier.gstRegistrationType || "",
-      openingBalance: supplier.openingBalance === null || supplier.openingBalance === undefined || supplier.openingBalance === "" ? "" : String(supplier.openingBalance),
       active: supplier.active === "No" ? "No" : "Yes",
     });
     setIsFormOpen(true);
@@ -197,7 +192,6 @@ export function Suppliers() {
         "Address": "456 Industrial Area",
         "Tally Group": "SUNDRY CREDITORS - PAPER",
         "GST Registration Type": "Regular",
-        "Opening Balance": 0,
         "Active": "Yes"
       }
     ];
@@ -248,7 +242,6 @@ export function Suppliers() {
             address: String(row["Address"] || "").trim() || undefined,
             tallyGroup: String(row["Tally Group"] || "").trim() || undefined,
             gstRegistrationType: String(row["GST Registration Type"] || "").trim() || undefined,
-            openingBalance: String(row["Opening Balance"] ?? "").trim() === "" ? undefined : Number(row["Opening Balance"]),
             active: row["Active"] === "No" ? "No" : "Yes" as "Yes" | "No",
             ...audit,
           };
@@ -296,7 +289,6 @@ export function Suppliers() {
       "Address": s.address || "",
       "Tally Group": s.tallyGroup || "",
       "GST Registration Type": s.gstRegistrationType || "",
-      "Opening Balance": s.openingBalance === null || s.openingBalance === undefined || s.openingBalance === "" ? "" : Number(s.openingBalance),
       "Active": s.active || "Yes"
     }));
 
@@ -340,7 +332,6 @@ export function Suppliers() {
         address: formData.address.trim() || undefined,
         tallyGroup: formData.tallyGroup.trim() || undefined,
         gstRegistrationType: formData.gstRegistrationType.trim() || undefined,
-        openingBalance: formData.openingBalance.trim() === "" ? null : Number(formData.openingBalance),
         active: formData.active,
         updatedBy: "System User",
         updateTimestamp: timestamp,
@@ -493,15 +484,6 @@ export function Suppliers() {
                   {formData.gstRegistrationType && !["Regular", "Unregistered/Consumer", "Composition", "Unknown"].includes(formData.gstRegistrationType) ? <option value={formData.gstRegistrationType}>{formData.gstRegistrationType}</option> : null}
                 </select>
               </Field>
-              <Field label="Opening Balance">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.openingBalance}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, openingBalance: e.target.value }))}
-                  className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </Field>
               <Field label="Active">
                 <select
                   value={formData.active}
@@ -558,7 +540,7 @@ export function Suppliers() {
             <table className="min-w-max divide-y divide-black border-collapse border border-black">
               <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
                 <tr className="divide-x divide-black">
-                  {["SL No", "Supplier Name", "Contact Person", "Contact Number", "Email", "GST No.", "GST Supply Type", "State", "District", "PIN Code", "Tally Group", "GST Registration Type", "Opening Balance", "Active", "Actions"].map((heading) => (
+                  {["SL No", "Supplier Name", "Contact Person", "Contact Number", "Email", "GST No.", "GST Supply Type", "State", "District", "PIN Code", "Tally Group", "GST Registration Type", "Active", "Actions"].map((heading) => (
                     <th key={heading} className="px-4 py-3 text-left text-sm font-bold text-black uppercase border border-black whitespace-nowrap">
                       {SUPPLIER_SORT_KEYS[heading] ? (
                         <SortHeader label={heading} sortKey={SUPPLIER_SORT_KEYS[heading]} sort={sort} onToggle={toggleSort} align="left" />
@@ -572,7 +554,7 @@ export function Suppliers() {
               <tbody className="divide-y divide-black bg-white">
                 {filteredSuppliers.length === 0 ? (
                   <tr>
-                    <td colSpan={15} className="px-6 py-8 text-center text-black font-medium tracking-wide">
+                    <td colSpan={14} className="px-6 py-8 text-center text-black font-medium tracking-wide">
                       {suppliersLoading || isSubmitting ? "Loading…" : "No suppliers found."}
                     </td>
                   </tr>
@@ -591,7 +573,6 @@ export function Suppliers() {
                       <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{supplier.pinCode || ""}</td>
                       <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{supplier.tallyGroup || ""}</td>
                       <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{supplier.gstRegistrationType || ""}</td>
-                      <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap text-right">{supplier.openingBalance === null || supplier.openingBalance === undefined || supplier.openingBalance === "" ? "" : Number(supplier.openingBalance).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                       <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{supplier.active || "Yes"}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium border border-black">
                         {canManage ? <button onClick={() => openEdit(supplier)} className="text-indigo-600 hover:text-indigo-900 mr-4">
