@@ -45,8 +45,7 @@ export const DEFAULT_GATE_ENTRY_MESSAGE = `🚛 *GATE ENTRY*
 *Gate Pass No.:* {{sourceGatePassNo}}
 *Photos:* {{photoCount}}
 
-📷 Gate Entry photos attached.
-📄 Gate Entry PDF attached.`;
+📷 Gate Entry photos attached.`;
 export function resolveWhatsappGateEntryTemplate(template, values) {
     const map = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, text(value) || "-"]));
     return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => map[key] ?? "");

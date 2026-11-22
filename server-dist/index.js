@@ -18,8 +18,7 @@ import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processi
 import { registerSalesOrderSync } from "./salesOrderSync.js";
 import { ensurePerformanceIndexes } from "./performanceIndexes.js";
 import { getChangesSince, getTrackedChanges, instrumentPool, onSchemaChange, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
-import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappReportMessage, sendWhatsappTextMessage, sendWhatsappGateEntryMessage, WHATSAPP_GATE_ENTRY_MENU } from "./whatsappSender.js";
-import { writeGateEntryPdf } from "./gateEntryWhatsappPdf.js";
+import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappReportMessage, sendWhatsappTextMessage, sendWhatsappGateEntryMessage, resolveWhatsappGateEntryTemplate, DEFAULT_GATE_ENTRY_MESSAGE, WHATSAPP_GATE_ENTRY_MENU } from "./whatsappSender.js";
 import { DEFAULT_PRINTING_SHIFT_MESSAGE, PREVIOUS_PRINTING_SHIFT_MESSAGE, PREVIOUS_MACHINE_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, todaysDuePrintingShifts, latestFinishedPrintingShift, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
 import { writeLoadingSlipPdf } from "./loadingSlipPdf.js";
@@ -11468,23 +11467,15 @@ async function sendGateEntryWhatsapp(db, config, gateEntryId) {
         sourceGatePassNo: entry.sourceGatePassNo,
         photoCount: String(photoRows.length),
     };
-    // PDF name: GE-<last number of the Gate Entry No.>, e.g. GE/26-27/00012 -> GE-00012.pdf
-    const geNumberPart = String(entry.gateEntryNo || "").match(/(\d+)(?!.*\d)/)?.[1] || String(entry.gateEntryNo || gateEntryId).replace(/[^a-zA-Z0-9_-]/g, "_");
-    // Stored in its own folder (ge/<random>/GE-00012.pdf) so the same number in another firm or year never overwrites it.
-    const fileName = `ge/${crypto.randomUUID().slice(0, 8)}/GE-${geNumberPart}.pdf`;
-    fs.mkdirSync(path.dirname(path.join(uploadsDir, fileName)), { recursive: true });
-    await writeGateEntryPdf({ ...values, supplier: entry.supplierName, invoiceValue: entry.invoiceValue }, photos, path.join(uploadsDir, fileName));
-    // Keep the PDF in the database too, so its link still works after a redeploy.
-    try {
-        await storeUploadedFile(db, fileName, "application/pdf", fs.readFileSync(path.join(uploadsDir, fileName)));
-    }
-    catch (error) {
-        console.warn("[WHATSAPP] gate entry PDF not stored in database:", error.message);
-    }
     const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngrp.in").replace(/\/$/, "");
-    // Gate Entry sends only its PDF: no text, no separate photo files (the photos are inside the PDF).
-    const urls = [`${publicBase}/uploads/${fileName.split("/").map(encodeURIComponent).join("/")}`];
-    const message = "";
+    // Gate Entry sends its text message with each photo attached (no PDF).
+    const urls = photos.map((photo) => `${publicBase}/uploads/${photo.filename.split("/").map(encodeURIComponent).join("/")}`);
+    const fileName = "";
+    const message = resolveWhatsappGateEntryTemplate(String(config.message || DEFAULT_GATE_ENTRY_MESSAGE), values)
+        .split("\n")
+        .filter((line) => !/pdf attached/i.test(line))
+        .join("\n")
+        .trim();
     const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message };
     const result = await sendWhatsappGateEntryMessage(senderConfig, message, urls);
     return { result, fileName, notReady: false };

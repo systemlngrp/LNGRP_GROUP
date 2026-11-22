@@ -93,8 +93,7 @@ const DEFAULT_GATE_ENTRY_MESSAGE = `🚛 *GATE ENTRY*
 *Gate Pass No.:* {{sourceGatePassNo}}
 *Photos:* {{photoCount}}
 
-📷 Gate Entry photos attached.
-📄 Gate Entry PDF attached.`;
+📷 Gate Entry photos attached.`;
 const DEFAULT_PRINTING_SHIFT_MESSAGE = `*Printing Report – {{shift}} Shift {{sendDate}}*
 ({{shiftPeriod}})
 
