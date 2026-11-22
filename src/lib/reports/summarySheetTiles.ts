@@ -54,7 +54,8 @@ export function computeSummarySheetSections(
   wip: { qty: number; jobs: number } | null = null,
   now = new Date(),
   /** Sales Analysis figures; when present they fill Target / Revised / Achieved / Short. */
-  salesTargets: SalesTargetFigures | null = null,
+  /** No longer shown (target / short sales tiles removed); kept for callers. */
+  _salesTargets: SalesTargetFigures | null = null,
 ): SummaryTileSection[] {
   const today = localDayKey(0, now);
   const yesterday = localDayKey(-1, now);
@@ -64,7 +65,6 @@ export function computeSummarySheetSections(
   const onDay = (day: string) => rows.filter((row) => isoDateText(row.Date) === day);
   const todayRows = onDay(today);
   const tomorrowRows = onDay(tomorrow);
-  const saleOn = (day: string) => sum(rows.filter((row) => isoDateText(row["Dispatch Date"]) === day), (row) => n(row["Sale Value"]));
   const planValue = (list: SummaryRow[]) => sum(list, (row) => n(row["Planned Qty"]) * n(row.Rate));
   const openRows = rows.filter((row) => s(row["Job Closed"]) !== "Yes");
   const rangeRows = rows.filter((row) => inRange(isoDateText(row.Date)));
@@ -74,19 +74,16 @@ export function computeSummarySheetSections(
   const paperWastagePercent = paperRequired > 0 ? (sum(usedRows, (row) => n(row["Paper Wastage"])) / paperRequired) * 100 : 0;
   const boardlineWastage = sum(rangeRows, (row) => n(row.__boardlineWastageKg)); // kg (the column now shows boxes)
   const boardlineWastagePercent = paperUsed > 0 ? (boardlineWastage / paperUsed) * 100 : 0;
-  const rangeSale = sum(rows.filter((row) => inRange(isoDateText(row["Dispatch Date"]))), (row) => n(row["Sale Value"]));
-  // Delivery Book basis: first 3 loading slips per job (pre-app loadings included), month by first invoice date.
-  const rangeSale3 = sum(
-    rows.filter((row) => inRange(isoDateText(row["Invoice Date 1 incl. Pre-App"] ?? row["Dispatch Date"]))),
-    (row) => n(row["Sale Value incl. Pre-App (3 slips)"] ?? row["Sale Value (3 slips)"]),
-  );
-  // Days in the range up to today (sales per day so far).
-  const rangeEnd = range.to < today ? range.to : today;
-  const days = range.from && rangeEnd >= range.from ? Math.round((Date.parse(rangeEnd) - Date.parse(range.from)) / 86_400_000) + 1 : 0;
   // Total production (kg) = paper used (reel issue − return) of jobs in From–To;
   // Total wastage % = corrugated scrap sold to Megha Trading in From–To ÷ production × 100.
   const scrapKg = extras?.version === 2 && extras.scrapSales ? filterExtraRecords(extras.scrapSales, filters, range).reduce((total, record) => total + record[5], 0) : null;
   const totalWastagePercent = scrapKg !== null && paperUsed > 0 ? (scrapKg / paperUsed) * 100 : scrapKg !== null ? 0 : null;
+  // Sales: taxable value (before GST) of customer invoices by invoice date; inter-firm
+  // invoices and scrap sold to Megha Trading are left out.
+  const netSales = extras?.version === 2 && extras.netSales ? filterExtraRecords(extras.netSales, filters) : null;
+  const netSaleOn = (day: string) => (netSales ? netSales.filter((record) => record[0] === day).reduce((total, record) => total + record[5], 0) : null);
+  const netRangeSale = netSales ? netSales.filter((record) => inRange(record[0])).reduce((total, record) => total + record[5], 0) : null;
+  const netSaleNote = "Invoice value before GST, by invoice date (inter-firm and Megha Trading scrap invoices left out)";
   const wastageTone = (value: number) => value <= 8 ? "bg-[#00ff00] text-slate-950" : value <= 10 ? "bg-[#ff9900] text-slate-950" : "bg-[#ff0000] text-white";
   const dueUntil = localDayKey(3, now);
   const ready = extras?.version === 2;
@@ -96,9 +93,6 @@ export function computeSummarySheetSections(
   const invoiceRecords = ready ? filterExtraRecords(extras.invoices, filters, datesChosen ? range : undefined) : [];
   const interFirmInvoiceRecords = ready ? filterExtraRecords(extras.interFirmInvoices, filters, datesChosen ? range : undefined) : [];
   const extraValue = (value: number) => (ready ? value : null);
-  const salesNote = salesTargets
-    ? `From ${salesTargets.source || "Sales Analysis"}${salesTargets.reportDate ? `, report date ${salesTargets.reportDate}` : ""}${salesTargets.receivedAt ? `, updated ${new Date(salesTargets.receivedAt).toLocaleString("en-IN")}` : ""}`
-    : "";
 
   return [
     {
@@ -137,25 +131,10 @@ export function computeSummarySheetSections(
       id: "sales",
       title: "Sales",
       tiles: [
-        { id: "todaySale", label: "Today's Sale", value: saleOn(today), format: "money", tone: "bg-[#741b47] text-white" },
-        { id: "yesterdaySale", label: "Yesterday's Sale", value: saleOn(yesterday), format: "money", tone: "bg-[#7f6000] text-white" },
-        { id: "rangeSale", label: "Total Sale - Rs", value: rangeSale, format: "money", tone: "bg-[#00ff00] text-slate-950" },
-        { id: "rangeSale3", label: "Total Sale (3 slips) - Rs", value: rangeSale3, format: "money", tone: "bg-[#b6d7a8] text-slate-950" },
-        salesTargets
-          ? { id: "achievedPerDay", label: "Achieved Sales / Day", value: salesTargets.achievedPerDay, format: "money", tone: "bg-[#ff00ff] text-slate-950", note: salesNote }
-          : { id: "achievedPerDay", label: "Achieved Sales / Day", value: days > 0 ? rangeSale / days : 0, format: "money", tone: "bg-[#ff00ff] text-slate-950" },
-        salesTargets
-          ? { id: "targetPerDay", label: "Target Sales / Day", value: salesTargets.targetPerDay, format: "money", tone: "bg-[#ff00ff] text-slate-950", note: salesNote }
-          : blank("targetPerDay", "Target Sales / Day", "bg-[#ff00ff] text-slate-950", "money"),
-        salesTargets
-          ? { id: "revisedTargetPerDay", label: "Revised Target Sales / Day", value: salesTargets.revisedTargetPerDay, format: "money", tone: "bg-[#ff00ff] text-slate-950", note: salesNote }
-          : blank("revisedTargetPerDay", "Revised Target Sales / Day", "bg-[#ff00ff] text-slate-950", "money"),
-        salesTargets
-          ? { id: "shortSales", label: "Short Sales Till Date", value: salesTargets.shortSales, format: "money", tone: "bg-[#ff0000] text-white", note: salesNote }
-          : blank("shortSales", "Short Sales Till Date", "bg-[#ff0000] text-white", "money"),
-        // Sheet: (Total Sale + FG closing − FG opening − WIP opening − Rejection) ÷ paper issued.
-        // Openings and rejection are not recorded in the app, so: Total Sale ÷ paper used.
-        { id: "spPerKg", label: "SP / KG", value: paperUsed > 0 ? rangeSale / paperUsed : 0, format: "rate", tone: "bg-[#0c343d] text-white" },
+        { id: "todaySale", label: "Today's Sale (Excl. GST)", value: netSaleOn(today), format: "money", tone: "bg-[#741b47] text-white", note: netSaleNote },
+        { id: "yesterdaySale", label: "Yesterday's Sale (Excl. GST)", value: netSaleOn(yesterday), format: "money", tone: "bg-[#7f6000] text-white", note: netSaleNote },
+        { id: "rangeSale", label: "Total Sale (Excl. GST)", value: netRangeSale, format: "money", tone: "bg-[#00ff00] text-slate-950", note: `${netSaleNote} (${range.from} to ${range.to})` },
+        { id: "spPerKg", label: "SP / KG", value: netRangeSale === null ? null : paperUsed > 0 ? netRangeSale / paperUsed : 0, format: "rate", tone: "bg-[#0c343d] text-white", note: "Total Sale (Excl. GST) ÷ paper used (kg)" },
       ],
     },
     {
@@ -328,6 +307,8 @@ export type SummarySheetExtras = {
   interFirmInvoices?: ExtraRecord[];
   /** FG stock (positive balance) × latest order rate, per item; no date. */
   fgStock: ExtraRecord[];
+  /** Customer invoices (not inter-firm, not Megha Trading scrap): value before GST; date = invoice date. */
+  netSales?: ExtraRecord[];
   /** Corrugated wastage scrap sold to Megha Trading: kg per invoice line; date = invoice date. */
   scrapSales?: ExtraRecord[];
   /** FG stock quantity (positive balance) per item; no date. */
@@ -496,7 +477,10 @@ export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems
     if (meghaSlipIds.has(String(line.loadingSlipId || invoice.loadingSlipId || ""))) return; // counted from its slip
     scrapSales.push([isoDateText(invoice.date), firmName.get(String(invoice.firmId)) || "", "", "", "", round(n(line.qty))]);
   });
-  return { version: 2, scrapSales, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
+  const netSales: ExtraRecord[] = invoiceRows
+    .filter((invoice) => !isInterFirm(invoice) && !isMegha(invoice))
+    .map((invoice) => [isoDateText(invoice.date), firmName.get(String(invoice.firmId || invoice.orderFirmId)) || "", s(invoice.companyName) || companyName.get(String(invoice.companyId)) || "", "", "", round(n(invoice.totalBeforeGst))] as ExtraRecord);
+  return { version: 2, netSales, scrapSales, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
 }
 
 
