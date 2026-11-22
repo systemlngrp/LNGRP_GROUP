@@ -655,9 +655,20 @@ export function SummarySheetReport() {
         if (row.cells.length < lefts.length) return; // e.g. the "no records" row
         lefts.forEach((left, i) => {
           const cell = row.cells[i];
+          // A frozen cell needs a solid background, or the scrolled columns show through it.
+          // Header cells take the colour of their row (the row carries the header colour).
           const transparent = getComputedStyle(cell).backgroundColor === "rgba(0, 0, 0, 0)";
           cell.dataset.frozen = transparent ? "bg" : "1";
-          if (transparent) cell.style.backgroundColor = "#ffffff";
+          if (transparent) {
+            let parent: HTMLElement | null = cell.parentElement;
+            let fill = "";
+            while (parent && parent !== table.parentElement) {
+              const colour = getComputedStyle(parent).backgroundColor;
+              if (colour && colour !== "rgba(0, 0, 0, 0)" && colour !== "transparent") { fill = colour; break; }
+              parent = parent.parentElement;
+            }
+            cell.style.backgroundColor = fill || "#ffffff";
+          }
           cell.style.position = "sticky";
           cell.style.left = `${left}px`;
           cell.style.zIndex = row === headRow ? "4" : "2";
