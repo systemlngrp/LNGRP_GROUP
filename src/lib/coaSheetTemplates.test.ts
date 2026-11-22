@@ -92,3 +92,14 @@ test("joint width and flap gap come from the PDI (mm); a 0 mm flap gap is kept",
   assert.equal(obsOf("Manufacturing Joint Width"), "30");
   assert.equal(obsOf("Gap between closing Flap"), "0");
 });
+
+test("observation linked to a PDI check shows the standard wording, not the bare OK", () => {
+  const st = (id: string, label: string, colSpan = 1) => ({ id, label, kind: "static", inputType: "text", colSpan }) as any;
+  const inp = (id: string, extra: Record<string, unknown> = {}) => ({ id, label: "", kind: "input", inputType: "text", colSpan: 3, ...extra }) as any;
+  const layout: any = { title: "COA", columns: 9, metadataRows: [], footerRows: [], parameterRows: [
+    { id: "h", cells: [st("s-1", "SL. NO."), st("s-2", "PARAMETERS", 2), st("s-3", "STANDARD", 3), st("s-4", "OBSERVATION", 3)] },
+    { id: "r", cells: [st("s-5", "1"), st("s-6", "COLOUR OF PRINTING", 2), inp("c-7", { binding: "item.colours" }), inp("c-8", { binding: "pdi.printingColorCheck" })] },
+  ] };
+  assert.equal(buildInitialCellValues(layout, { "item.colours": "RED & BLUE", "pdi.printingColorCheck": "OK" })["c-8"].value, "RED & BLUE");
+  assert.equal(buildInitialCellValues(layout, { "item.colours": "RED & BLUE", "pdi.printingColorCheck": "NOT OK" })["c-8"].value, "NOT OK");
+});

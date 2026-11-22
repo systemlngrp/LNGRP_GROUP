@@ -1,13 +1,25 @@
 # Builds the site (dist/ and server-dist/) on GitHub and commits the result to main,
 # because Hostinger serves the committed build files.
-# Runs when this file changes, or by hand: GitHub -> Actions -> "Build dist" -> Run workflow.
+# Runs on every push to main that changes the app's source (src/, server/, public/, config),
+# or by hand: GitHub -> Actions -> "Build dist" -> Run workflow. Its own commit only changes
+# dist/ and server-dist/, so it does not trigger itself.
 name: Build dist
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [".github/workflows/build-dist.yml"]
+    paths:
+      - ".github/workflows/build-dist.yml"
+      - "src/**"
+      - "server/**"
+      - "public/**"
+      - "scripts/build.mjs"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.*"
+      - "tsconfig*.json"
 
 permissions:
   contents: write

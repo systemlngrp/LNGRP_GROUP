@@ -304,13 +304,14 @@ export function coaSheetTemplates(): Record<string, CoaTemplateLayout> {
       moisture("7-10%", 8, 9),
     ]),
     Hector: cbb([
-      COLOUR_CBB, COLOUR_PRINTING, QUALITY_PRINTING, DIMENSION, PLY, JOINT_28_32, FLAP_GAP,
+      COLOUR_CBB, COLOUR_PRINTING, QUALITY_PRINTING, DIMENSION, PLY,
+      ["Paper GSM", { bind: "production.gsm" }, "copy"], JOINT_28_32, FLAP_GAP,
       csRow(), GLUED, FLUTE_JOB,
       ["BOARD THICKNESS", { bind: "standard.boardThickness" }, { rule: THICKNESS_BY_FLUTE }],
       moisture("6-8%", 6, 8),
     ], [["ERP CODE", "erpCode"], ["ITEM NAME:", "itemName"], ["BATCH NO.", "batchNo"], ["DATE OF MANUFACTURING", "production.date"], ["COA DATE", "coaDate"], ["INVOICE NO.", "invoiceNo"], ["INVOICE QTY.", "invoiceQty"]]),
     NRL: cbb([
-      COLOUR_PRINTING, QUALITY_PRINTING, DIMENSION, PLY,
+      COLOUR_CBB, COLOUR_PRINTING, QUALITY_PRINTING, DIMENSION, PLY,
       ["BURSTING STRENGTH", { bind: "item.bsStandard" }, { rule: { min: 16, max: 19 } }],
       ["BOARD GSM", { bind: "item.compositeGsm" }, "150/150/150/150/150"],
       csRow(), GLUED,

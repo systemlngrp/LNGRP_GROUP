@@ -355,6 +355,8 @@ function fillObservationsFromMaster(layout: CoaTemplateLayout, values: Record<st
     const spec = parameter.observation;
     const next: string[] = parts.obs.map((cell, index) => {
       // A source picked in the template wins (e.g. pdi.boxSize); otherwise the master's reading.
+      // A PDI check picked as the source shows the standard wording when OK (not the bare "OK").
+      if (cell.binding && /^pdi\.[A-Za-z]+Check$/.test(cell.binding)) return index === 0 ? checkText(sourceMap[cell.binding], ("check" in spec && spec.okText) || stdText || "OK") : "";
       if (cell.binding) return sourceMap[cell.binding] || "";
       if ("readings" in spec) {
         // A reading saved as 0 (e.g. moisture "0.00", CS "00") was not measured: treat it as blank.
