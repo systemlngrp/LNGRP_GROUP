@@ -354,8 +354,10 @@ function fillObservationsFromMaster(layout: CoaTemplateLayout, values: Record<st
       // A source picked in the template wins (e.g. pdi.boxSize); otherwise the master's reading.
       if (cell.binding) return sourceMap[cell.binding] || "";
       if ("readings" in spec) {
-        if (parts.obs.length === 1) return spec.readings.map((key) => sourceMap[key] || "").find(Boolean) || "";
-        return sourceMap[spec.readings[index] || ""] || "";
+        // A reading saved as 0 (e.g. moisture "0.00", CS "00") was not measured: treat it as blank.
+        const reading = (key: string) => { const value = sourceMap[key] || ""; return /^\s*0*(?:\.0*)?\s*$/.test(value) ? "" : value; };
+        if (parts.obs.length === 1) return spec.readings.map(reading).find(Boolean) || "";
+        return reading(spec.readings[index] || "");
       }
       if ("standard" in spec) return index === 0 ? stdText : "";
       if ("check" in spec) return index === 0 ? checkText(sourceMap[spec.check], spec.okText || stdText || "OK") : "";

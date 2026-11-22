@@ -78,3 +78,9 @@ test("templates built in the Template Master: header columns, template bindings 
   assert.equal(values["c-20"].value, "");                         // fixed "4.7" removed: typed by QC
   assert.equal(values["c-24"].value, "3");                        // ply = job ply
 });
+
+test("a reading saved as 0 counts as not measured", () => {
+  const values = buildInitialCellValues(coaSheetTemplates()["Britannia / ITC"], { ...source, "boardline.moisture": "0.00", "pdi.csAchieved": "00", "printing.csAchieved": "231" });
+  assert.equal(values["p17-o1"].value, "");
+  assert.deepEqual(["p12-o1", "p12-o2"].map((id) => values[id].value), ["", "231"]);
+});
