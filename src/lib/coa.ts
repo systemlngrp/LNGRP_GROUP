@@ -1,4 +1,5 @@
 import type { BoardLineQcCheck, Company, CoaAutoRule, CoaCellValue, CoaTemplate, CoaTemplateLayout, CoaTemplateRow, Firm, Invoice, InvoiceLineItem, Order, OrderSchedule, PreDispatchInspection, PrintingQcCheck, Production } from "../types";
+import { checkCoaDimensions, checkCoaObservation, coaParameterForLabel } from "./coaParameters";
 import type { JobLoadingRecord } from "./jobLoadingRecords";
 
 type AnyRecord = Record<string, any>;
@@ -86,47 +87,35 @@ function boardThicknessStandard(flute: string) {
   return "";
 }
 
-// Same per job every time the form is opened: seeded from the job number.
-function seededRandom(seed: string) {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
-  return () => {
-    h = (h + 0x6d2b79f5) | 0;
-    let t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+/** Text for a PDI visual check: OK -> the standard wording, NOT OK -> "NOT OK", not checked -> "". */
+function checkText(value: unknown, okText: string) {
+  const v = text(value).toUpperCase();
+  return v === "OK" ? okText : v === "NOT OK" ? "NOT OK" : "";
 }
 
-const BOARD_THICKNESS_MIN: Record<string, number> = { A: 5.2, C: 4.8, B: 3.2, "B+C": 7, E: 1.8 };
-
 /**
- * Observation values following the COMMON COA sheet formulas:
- * colour / printing = standard; L, B, H = whole number within standard +/- 2;
- * ply and flute = standard; joint width 28-32; flap gap 1-3;
- * board thickness = flute minimum to minimum + 0.3 (2 decimals); moisture 8-9.
+ * Observation values from real readings only (never generated):
+ * colour / printing from the PDI checks; L, B, H from the PDI; ply = job ply;
+ * flute, board thickness and moisture from Boardline QC; joint width and flap gap
+ * are typed by QC (the PDI records them only as OK / NOT OK).
  */
-export function buildCoaObservations(seed: string, standards: { length?: unknown; breadth?: unknown; height?: unknown; ply?: unknown; flute?: unknown }) {
-  const random = seededRandom(seed || "coa");
-  const between = (min: number, max: number) => Math.floor(random() * (max - min + 1)) + min;
-  const dimension = (value: unknown) => {
-    const standard = Number(value);
-    return Number.isFinite(standard) && standard > 0 ? String(between(Math.round(standard) - 2, Math.round(standard) + 2)) : "";
-  };
-  const flute = text(standards.flute).toUpperCase().replace(/\s+/g, "");
-  const thicknessMin = BOARD_THICKNESS_MIN[flute];
+export function buildCoaObservations(readings: {
+  ply?: unknown; printingColorCheck?: unknown; printingArtworkCheck?: unknown;
+  lengthId?: unknown; widthId?: unknown; heightId?: unknown;
+  boardFlute?: unknown; boardThickness?: unknown; moisture?: unknown;
+}) {
   return {
-    "obs.colour": "AS PER STANDARD",
-    "obs.printing": "AS PER STANDARD",
-    "obs.length": dimension(standards.length),
-    "obs.breadth": dimension(standards.breadth),
-    "obs.height": dimension(standards.height),
-    "obs.ply": sourceValue(standards.ply),
-    "obs.jointWidth": String(between(28, 32)),
-    "obs.flapGap": String(between(1, 3)),
-    "obs.flute": text(standards.flute),
-    "obs.boardThickness": thicknessMin === undefined ? "" : (thicknessMin + random() * 0.3).toFixed(2),
-    "obs.moisture": String(between(8, 9)),
+    "obs.colour": checkText(readings.printingColorCheck, "AS PER STANDARD"),
+    "obs.printing": checkText(readings.printingArtworkCheck, "AS PER STANDARD"),
+    "obs.length": sourceValue(readings.lengthId),
+    "obs.breadth": sourceValue(readings.widthId),
+    "obs.height": sourceValue(readings.heightId),
+    "obs.ply": sourceValue(readings.ply),
+    "obs.jointWidth": "",
+    "obs.flapGap": "",
+    "obs.flute": text(readings.boardFlute),
+    "obs.boardThickness": sourceValue(readings.boardThickness),
+    "obs.moisture": sourceValue(readings.moisture),
   };
 }
 
@@ -242,49 +231,25 @@ export function buildCoaSourceMap(context: CoaSourceContext, coaDate = new Date(
     "printing.boxWeightGrams": sourceValue(printing?.boxWeightGrams),
     "printing.colour1Actual": sourceValue(printing?.colour1Actual),
     "printing.colour2Actual": sourceValue(printing?.colour2Actual),
-    ...buildCoaObservations(text(production.transactionNo || production.jobCardNo || production.id), {
-      length: job.length, breadth: job.breadth, height: job.height, ply: job.ply || item?.ply, flute,
+    "pdi.printingArtworkCheck": sourceValue((pdi as AnyRecord)?.printingArtworkCheck),
+    ...buildCoaObservations({
+      ply: job.ply || item?.ply,
+      printingColorCheck: (pdi as AnyRecord)?.printingColorCheck,
+      printingArtworkCheck: (pdi as AnyRecord)?.printingArtworkCheck,
+      lengthId: pdi?.lengthId, widthId: pdi?.widthId, heightId: pdi?.heightId,
+      boardFlute: boardline?.typeOfFlute, boardThickness: boardline?.boardThickness, moisture: boardline?.moisture,
     }),
   };
 }
 
-const leadingNumber = (value: unknown) => {
-  const match = String(value ?? "").replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
-  return match ? Number(match[0]) : NaN;
-};
-
-/** Value of one auto rule, given the values already filled. Same result every time for a job. */
-export function evaluateCoaAutoRule(rule: CoaAutoRule, valueOf: (cellId: string) => string, seed: string): string {
+/**
+ * Value of one auto rule. Only `copy` fills a value; rules that would make up a number
+ * (min / max / ranges, from the old sheet's RAND formulas) give "" so the observation
+ * comes from a real reading or is typed by QC.
+ */
+export function evaluateCoaAutoRule(rule: CoaAutoRule, valueOf: (cellId: string) => string, _seed?: string): string {
   if (rule.copy) return valueOf(rule.copy);
-  let min = rule.min;
-  let max = rule.max;
-  if (rule.byValueOf && rule.ranges) {
-    const key = text(valueOf(rule.byValueOf)).toUpperCase().replace(/\s+/g, "");
-    const range = rule.ranges[key] ?? rule.ranges["*"];
-    if (!range) return "";
-    [min, max] = range;
-  }
-  if (min === undefined || max === undefined) return "";
-  let low = min;
-  let high = max;
-  if (rule.from) {
-    const base = leadingNumber(valueOf(rule.from));
-    if (!Number.isFinite(base)) return "";
-    low = rule.percent ? base * (1 + min) : base + min;
-    high = rule.percent ? base * (1 + max) : base + max;
-  }
-  const random = seededRandom(seed);
-  const decimals = rule.decimals ?? 0;
-  let result: string;
-  if (decimals === 0) {
-    const from = Math.ceil(Math.min(low, high));
-    const to = Math.floor(Math.max(low, high));
-    if (to < from) return "";
-    result = String(Math.floor(random() * (to - from + 1)) + from);
-  } else {
-    result = (low + random() * (high - low)).toFixed(decimals);
-  }
-  return rule.suffix ? `${result}${rule.suffix}` : result;
+  return "";
 }
 
 export function buildInitialCellValues(layout: CoaTemplateLayout, sourceMap: Record<string, string>): Record<string, CoaCellValue> {
@@ -305,7 +270,54 @@ export function buildInitialCellValues(layout: CoaTemplateLayout, sourceMap: Rec
       values[cellValue.id] = { value, sourceValue: value, source: value ? "auto" : "default" };
     }
   }
+  fillObservationsFromMaster(layout, values, sourceMap);
   return values;
+}
+
+/** Row label of a parameter row (the static label cell, not the Sl. No.). */
+export function coaRowLabel(row: CoaTemplateLayout["parameterRows"][number]) {
+  const labelled = row.cells.find((cell) => cell.kind === "static" && /-label$/.test(cell.id));
+  if (labelled) return text(labelled.label);
+  return text(row.cells.find((cell) => cell.kind === "static" && text(cell.label) && !/^\d+$/.test(text(cell.label)))?.label);
+}
+const isObsCell = (cellId: string) => /-o\d?$/.test(cellId);
+const isStdCell = (cellId: string) => /-s\d?$/.test(cellId);
+
+/**
+ * Observation cells of rows that match the COA Parameter Master are filled from the
+ * parameter's real reading (or left blank for QC to type); a Remark cell gets OK / NOT OK
+ * from the PASS / FAIL check. Rows the master does not know keep their template values.
+ */
+function fillObservationsFromMaster(layout: CoaTemplateLayout, values: Record<string, CoaCellValue>, sourceMap: Record<string, string>) {
+  for (const row of layout.parameterRows) {
+    const parameter = coaParameterForLabel(coaRowLabel(row));
+    if (!parameter) continue;
+    const obsCells = row.cells.filter((cell) => isObsCell(cell.id));
+    const stdCells = row.cells.filter((cell) => isStdCell(cell.id));
+    const stdValues = stdCells.map((cell) => values[cell.id]?.value ?? (cell.binding ? sourceMap[cell.binding] || "" : cell.defaultValue || ""));
+    const stdText = stdValues.filter(Boolean).join(" X ");
+    const spec = parameter.observation;
+    const next: string[] = obsCells.map((_, index) => {
+      if ("readings" in spec) {
+        if (obsCells.length === 1) return spec.readings.map((key) => sourceMap[key] || "").find(Boolean) || "";
+        return sourceMap[spec.readings[index] || ""] || "";
+      }
+      if ("standard" in spec) return index === 0 ? stdText : "";
+      if ("check" in spec) return index === 0 ? checkText(sourceMap[spec.check], spec.okText || stdText || "OK") : "";
+      return "";
+    });
+    obsCells.forEach((cell, index) => {
+      values[cell.id] = { value: next[index], sourceValue: next[index], source: next[index] ? "auto" : "default" };
+    });
+    const remark = row.cells.find((cell) => /-r$/.test(cell.id));
+    if (remark) {
+      const result = parameter.code === "DIM_ID" || parameter.code === "DIM_OD"
+        ? checkCoaDimensions(stdText.split(/\s*[xX×]\s*/), next.join(" X ").split(/\s*[xX×]\s*/), parameter.code === "DIM_OD" ? 2 : 3)
+        : checkCoaObservation(parameter, stdText, next.filter(Boolean).join(" "));
+      const value = result === "PASS" ? "OK" : result === "FAIL" ? "NOT OK" : "";
+      values[remark.id] = { value, sourceValue: value, source: value ? "auto" : "default" };
+    }
+  }
 }
 
 export function getCoaCellValue(templateCell: CoaTemplateLayout["parameterRows"][number]["cells"][number], values: Record<string, CoaCellValue>, sourceMap: Record<string, string>, headerData: Record<string, string>) {

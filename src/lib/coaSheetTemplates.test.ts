@@ -21,25 +21,37 @@ test("every sheet tab has a template whose rows fit 9 columns", () => {
   }
 });
 
-test("observations follow the sheet ranges", () => {
-  for (let i = 0; i < 100; i++) {
-    const values = buildInitialCellValues(coaSheetTemplates()["Britannia / ITC"], { ...source, jobNo: `J/${i}` });
-    const dims = ["p8-o1", "p8-o2", "p8-o3"].map((id) => Number(values[id].value));
-    assert.ok(Math.abs(dims[0] - 547) <= 2 && Math.abs(dims[1] - 397) <= 2 && Math.abs(dims[2] - 477) <= 2);
-    const gsm = Number(values["p10-o"].value); assert.ok(gsm >= 509.25 && gsm <= 540.75);
-    const cs = ["p12-o1", "p12-o2", "p12-o3"].map((id) => Number(values[id].value));
-    assert.ok(cs[0] >= 220 && cs[0] <= 240 && cs[1] >= 222 && cs[1] <= 242 && cs[2] >= 220 && cs[2] <= 242);
-    const bs = Number(values["p18-o1"].value); assert.ok(bs >= 6.5 && bs <= 6.9);
-    assert.ok(["7", "8"].includes(values["p17-o1"].value));
-    assert.equal(values["p14-o"].value, "A");
-  }
+test("observations come from readings; nothing is generated", () => {
+  const readings = {
+    ...source, "pdi.lengthId": "548", "pdi.widthId": "396", "pdi.heightId": "479", "pdi.csAchieved": "236", "printing.csAchieved": "231",
+    "pdi.gsmAchieved": "530", "printing.bsAchieved": "6.7", "boardline.moisture": "8", "boardline.typeOfFlute": "A",
+    "pdi.printingColorCheck": "OK", "pdi.printingArtworkCheck": "OK",
+  };
+  const values = buildInitialCellValues(coaSheetTemplates()["Britannia / ITC"], readings);
+  assert.deepEqual(["p8-o1", "p8-o2", "p8-o3"].map((id) => values[id].value), ["548", "396", "479"]);
+  assert.equal(values["p10-o"].value, "530");
+  assert.deepEqual(["p12-o1", "p12-o2", "p12-o3"].map((id) => values[id].value), ["236", "231", ""]);
+  assert.equal(values["p17-o1"].value, "8");
+  assert.equal(values["p18-o1"].value, "6.7");
+  assert.equal(values["p14-o"].value, "A");
+  assert.equal(values["p1-o"].value, "AS PER STANDARD");
+  // Flutes / 30 cm and flute height have no reading: left for QC to type.
+  assert.equal(values["p15-o"].value, ""); assert.equal(values["p16-o"].value, "");
+  const empty = buildInitialCellValues(coaSheetTemplates()["Britannia / ITC"], source);
+  for (const id of ["p8-o1", "p10-o", "p12-o1", "p17-o1", "p18-o1"]) assert.equal(empty[id].value, "", id);
 });
 
-test("rules: copy, flute ranges, missing standard", () => {
+test("test-result layout: remark is OK / NOT OK from the check", () => {
+  const values = buildInitialCellValues(coaSheetTemplates()["Carlsberg"], { ...source, "pdi.csAchieved": "150", "boardline.moisture": "8" });
+  const rowOf = (label: string) => coaSheetTemplates()["Carlsberg"].parameterRows.find((row) => row.cells[0].label === label)!;
+  const cs = rowOf("Compression strength");
+  assert.equal(values[cs.cells.find((c) => c.id.endsWith("-o"))!.id].value, "150");
+  assert.equal(values[cs.cells.find((c) => c.id.endsWith("-r"))!.id].value, "NOT OK"); // 150 < 200
+});
+
+test("rules: copy works; generated-number rules give nothing", () => {
   const valueOf = (id: string) => ({ s: "B+C", n: "abc" } as Record<string, string>)[id] || "";
   assert.equal(evaluateCoaAutoRule({ copy: "s" }, valueOf, "x"), "B+C");
-  const t = Number(evaluateCoaAutoRule({ byValueOf: "s", decimals: 2, ranges: { "B+C": [7, 7.3] } }, valueOf, "x"));
-  assert.ok(t >= 7 && t <= 7.3);
-  assert.equal(evaluateCoaAutoRule({ from: "n", min: 1, max: 2 }, valueOf, "x"), "");
-  assert.equal(evaluateCoaAutoRule({ byValueOf: "s", ranges: { A: [1, 2] } }, valueOf, "x"), "");
+  assert.equal(evaluateCoaAutoRule({ byValueOf: "s", decimals: 2, ranges: { "B+C": [7, 7.3] } }, valueOf, "x"), "");
+  assert.equal(evaluateCoaAutoRule({ min: 1, max: 2 }, valueOf, "x"), "");
 });

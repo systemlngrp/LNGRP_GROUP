@@ -202,6 +202,7 @@ const qualityItems: NavEntry[] = [
       { name: "COA Form", href: "/quality/coa/form", icon: ClipboardList },
       { name: "COA Master", href: "/quality/coa/master", icon: Database },
       { name: "COA Template Master", href: "/quality/coa/templates", icon: Database },
+      { name: "COA Parameter Master", href: "/quality/coa/parameters", icon: Database },
     ],
   },
   {

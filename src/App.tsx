@@ -83,6 +83,7 @@ const QcPhpPlateInOutMaster = lazy(() => import("./pages/QcPhpPlateInOut").then(
 const CoaForm = lazy(() => import("./pages/CoaForm").then((module) => ({ default: module.CoaForm })));
 const CoaMaster = lazy(() => import("./pages/CoaMaster").then((module) => ({ default: module.CoaMaster })));
 const CoaTemplateMaster = lazy(() => import("./pages/CoaTemplateMaster").then((module) => ({ default: module.CoaTemplateMaster })));
+const CoaParameterMaster = lazy(() => import("./pages/CoaParameterMaster").then((module) => ({ default: module.CoaParameterMaster })));
 const MaterialInForm = lazy(() => import("./pages/MaterialInForm").then((module) => ({ default: module.MaterialInForm })));
 const MrrApprovals = lazy(() => import("./pages/MrrApprovals").then((module) => ({ default: module.MrrApprovals })));
 const MaterialInMaster = lazy(() => import("./pages/MaterialInMaster").then((module) => ({ default: module.MaterialInMaster })));
@@ -452,6 +453,7 @@ export default function App() {
           <Route path="quality/coa/form/:id" element={<CoaForm />} />
           <Route path="quality/coa/master" element={<CoaMaster />} />
           <Route path="quality/coa/templates" element={<CoaTemplateMaster />} />
+          <Route path="quality/coa/parameters" element={<CoaParameterMaster />} />
           <Route path="quality/sample-requirement" element={<QcSampleRequirement />} />
           <Route path="quality/sample-requirement/master" element={<QcSampleRequirementMaster />} />
           <Route path="quality/sample-requirement/master/form" element={<QcSampleRequirementForm />} />

@@ -1,6 +1,8 @@
 // COA templates as laid out in the "COA 17 NOV MIG" sheet, one per company tab.
-// Standards come from the job / NPD item; observations follow the sheet's
-// formulas through each cell's `auto` rule (see CoaAutoRule).
+// Standards come from the job / NPD item. OBSERVATIONS are not generated: when a COA is
+// filled, rows known to the COA Parameter Master (coaParameters.ts) take the real reading
+// (PDI / Boardline QC / Printing QC) or are left blank for QC to type. The sheet's
+// RAND ranges kept below in `auto` rules are ignored by evaluateCoaAutoRule.
 import type { CoaAutoRule, CoaTemplateCell, CoaTemplateLayout, CoaTemplateRow } from "../types";
 
 const PINK = "#f4d7e5";
