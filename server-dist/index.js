@@ -3616,6 +3616,10 @@ async function ensureInterFirmSchema(db, database) {
 }
 async function ensureInternalFirmSuppliers(db, database) {
     await ensureColumnExists(db, database, "suppliers", "firmId", "VARCHAR(36)");
+    // Tally ledger details (Under group, GST registration type, opening balance).
+    await ensureColumnExists(db, database, "suppliers", "tallyGroup", "VARCHAR(191)");
+    await ensureColumnExists(db, database, "suppliers", "gstRegistrationType", "VARCHAR(64)");
+    await ensureColumnExists(db, database, "suppliers", "openingBalance", "DECIMAL(15,2)");
     const [firmRows] = await db.query("SELECT id, firmName FROM `firms` WHERE LOWER(firmName) LIKE '%unit%' ORDER BY firmName");
     const firms = firmRows.filter((firm) => {
         const normalized = String(firm.firmName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -9690,6 +9694,9 @@ async function initDb(retries = 5) {
                 { table: "suppliers", column: "pinCode", type: "VARCHAR(20)" },
                 { table: "suppliers", column: "address", type: "TEXT" },
                 { table: "suppliers", column: "active", type: "VARCHAR(10) DEFAULT 'Yes'" },
+                { table: "suppliers", column: "tallyGroup", type: "VARCHAR(191)" },
+                { table: "suppliers", column: "gstRegistrationType", type: "VARCHAR(64)" },
+                { table: "suppliers", column: "openingBalance", type: "DECIMAL(15,2)" },
                 { table: "states", column: "name", type: "VARCHAR(255) NOT NULL" },
                 { table: "states", column: "active", type: "VARCHAR(10) DEFAULT 'Yes'" },
                 { table: "color_masters", column: "name", type: "VARCHAR(255) NOT NULL" },
@@ -19480,7 +19487,8 @@ app.post("/api/coa-records", async (req, res) => {
                 if (ids.length || erps.length) {
                     const where = [ids.length ? `id IN (${ids.map(() => "?").join(",")})` : "", erps.length ? `erp IN (${erps.map(() => "?").join(",")})` : ""].filter(Boolean).join(" OR ");
                     const [itemRows] = await db.query(`SELECT csKgStd FROM \`npd\` WHERE ${where}`, [...ids, ...erps]);
-                    if (itemRows.some((item) => positive(item.csKgStd))) noCsStd = false;
+                    if (itemRows.some((item) => positive(item.csKgStd)))
+                        noCsStd = false;
                 }
             }
             if (!noCsStd)

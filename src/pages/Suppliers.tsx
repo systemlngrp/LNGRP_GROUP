@@ -27,6 +27,9 @@ type SupplierFormState = {
   district: string;
   pinCode: string;
   address: string;
+  tallyGroup: string;
+  gstRegistrationType: string;
+  openingBalance: string;
   active: "Yes" | "No";
 };
 
@@ -41,6 +44,9 @@ const createInitialFormState = (): SupplierFormState => ({
   district: "",
   pinCode: "",
   address: "",
+  tallyGroup: "",
+  gstRegistrationType: "",
+  openingBalance: "",
   active: "Yes",
 });
 
@@ -55,6 +61,7 @@ export function Suppliers() {
   const [stateFilter, setStateFilter] = useState("");
   const [supplyFilter, setSupplyFilter] = useState("");
   const [activeFilter, setActiveFilter] = useState("");
+  const [tallyGroupFilter, setTallyGroupFilter] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -83,6 +90,8 @@ export function Suppliers() {
       (supplier.stateId && stateNameById.get(supplier.stateId)) || "",
       supplier.district,
       supplier.pinCode,
+      supplier.tallyGroup,
+      supplier.gstRegistrationType,
       supplier.active || "Yes",
     ],
     [stateNameById],
@@ -93,10 +102,11 @@ export function Suppliers() {
         .filter((supplier) =>
           (!stateFilter || supplier.stateId === stateFilter) &&
           (!supplyFilter || (supplier.gstSupplyType || "INTRA_STATE") === supplyFilter) &&
-          (!activeFilter || (supplier.active || "Yes") === activeFilter)
+          (!activeFilter || (supplier.active || "Yes") === activeFilter) &&
+          (!tallyGroupFilter || (supplier.tallyGroup || "") === tallyGroupFilter)
         )
         .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })),
-    [searchedSuppliers, stateFilter, supplyFilter, activeFilter]
+    [searchedSuppliers, stateFilter, supplyFilter, activeFilter, tallyGroupFilter]
   );
   const SUPPLIER_SORT_KEYS: Record<string, string> = {
     "Supplier Name": "name",
@@ -108,6 +118,9 @@ export function Suppliers() {
     State: "state",
     District: "district",
     "PIN Code": "pinCode",
+    "Tally Group": "tallyGroup",
+    "GST Registration Type": "gstRegistrationType",
+    "Opening Balance": "openingBalance",
     Active: "active",
   };
   const { sorted: sortedSuppliers, sort, toggle: toggleSort } = useTableSort(filteredSuppliers, (supplier, key) => {
@@ -115,6 +128,7 @@ export function Suppliers() {
       case "gstSupplyType": return supplier.gstSupplyType || "INTRA_STATE";
       case "state": return (supplier.stateId && stateNameById.get(supplier.stateId)) || "";
       case "active": return supplier.active || "Yes";
+      case "openingBalance": return Number(supplier.openingBalance || 0);
       default: return (supplier as any)[key];
     }
   }, [stateNameById]);
@@ -152,6 +166,9 @@ export function Suppliers() {
       district: supplier.district || "",
       pinCode: supplier.pinCode || "",
       address: supplier.address || "",
+      tallyGroup: supplier.tallyGroup || "",
+      gstRegistrationType: supplier.gstRegistrationType || "",
+      openingBalance: supplier.openingBalance === null || supplier.openingBalance === undefined || supplier.openingBalance === "" ? "" : String(supplier.openingBalance),
       active: supplier.active === "No" ? "No" : "Yes",
     });
     setIsFormOpen(true);
@@ -178,6 +195,9 @@ export function Suppliers() {
         "District": "Pune",
         "PIN Code": "411001",
         "Address": "456 Industrial Area",
+        "Tally Group": "SUNDRY CREDITORS - PAPER",
+        "GST Registration Type": "Regular",
+        "Opening Balance": 0,
         "Active": "Yes"
       }
     ];
@@ -226,6 +246,9 @@ export function Suppliers() {
             district: String(row["District"] || "").trim() || undefined,
             pinCode: String(row["PIN Code"] || "").trim() || undefined,
             address: String(row["Address"] || "").trim() || undefined,
+            tallyGroup: String(row["Tally Group"] || "").trim() || undefined,
+            gstRegistrationType: String(row["GST Registration Type"] || "").trim() || undefined,
+            openingBalance: String(row["Opening Balance"] ?? "").trim() === "" ? undefined : Number(row["Opening Balance"]),
             active: row["Active"] === "No" ? "No" : "Yes" as "Yes" | "No",
             ...audit,
           };
@@ -271,6 +294,9 @@ export function Suppliers() {
       "District": s.district || "",
       "PIN Code": s.pinCode || "",
       "Address": s.address || "",
+      "Tally Group": s.tallyGroup || "",
+      "GST Registration Type": s.gstRegistrationType || "",
+      "Opening Balance": s.openingBalance === null || s.openingBalance === undefined || s.openingBalance === "" ? "" : Number(s.openingBalance),
       "Active": s.active || "Yes"
     }));
 
@@ -312,6 +338,9 @@ export function Suppliers() {
         district: formData.district.trim() || undefined,
         pinCode: formData.pinCode.trim() || undefined,
         address: formData.address.trim() || undefined,
+        tallyGroup: formData.tallyGroup.trim() || undefined,
+        gstRegistrationType: formData.gstRegistrationType.trim() || undefined,
+        openingBalance: formData.openingBalance.trim() === "" ? null : Number(formData.openingBalance),
         active: formData.active,
         updatedBy: "System User",
         updateTimestamp: timestamp,
@@ -445,6 +474,34 @@ export function Suppliers() {
                   className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                 />
               </Field>
+              <Field label="Tally Group (Under)">
+                <input
+                  value={formData.tallyGroup}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, tallyGroup: e.target.value }))}
+                  placeholder="e.g. SUNDRY CREDITORS - PAPER"
+                  className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </Field>
+              <Field label="GST Registration Type">
+                <select
+                  value={formData.gstRegistrationType}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, gstRegistrationType: e.target.value }))}
+                  className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">Select</option>
+                  {["Regular", "Unregistered/Consumer", "Composition", "Unknown"].map((type) => <option key={type} value={type}>{type}</option>)}
+                  {formData.gstRegistrationType && !["Regular", "Unregistered/Consumer", "Composition", "Unknown"].includes(formData.gstRegistrationType) ? <option value={formData.gstRegistrationType}>{formData.gstRegistrationType}</option> : null}
+                </select>
+              </Field>
+              <Field label="Opening Balance">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.openingBalance}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, openingBalance: e.target.value }))}
+                  className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </Field>
               <Field label="Active">
                 <select
                   value={formData.active}
@@ -462,9 +519,10 @@ export function Suppliers() {
         <div className="space-y-5">
           <MasterHeader title="Suppliers Master" addLabel="Add Supplier" onAdd={openCreate} />
 
-          <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || stateFilter || supplyFilter || activeFilter)} onClear={() => { setSearchTerm(""); setStateFilter(""); setSupplyFilter(""); setActiveFilter(""); }}>
+          <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || stateFilter || supplyFilter || activeFilter || tallyGroupFilter)} onClear={() => { setSearchTerm(""); setStateFilter(""); setSupplyFilter(""); setActiveFilter(""); setTallyGroupFilter(""); }}>
             <SelectFilter label="State" value={stateFilter} onChange={setStateFilter} options={stateOptions} wide />
             <SelectFilter label="GST Supply Type" value={supplyFilter} onChange={setSupplyFilter} options={toFilterOptions(suppliers.map((supplier) => supplier.gstSupplyType || "INTRA_STATE"))} />
+            <SelectFilter label="Tally Group" value={tallyGroupFilter} onChange={setTallyGroupFilter} options={toFilterOptions(suppliers.map((supplier) => supplier.tallyGroup || ""))} wide />
             <SelectFilter label="Active" value={activeFilter} onChange={setActiveFilter} options={[{ value: "Yes", label: "Yes" }, { value: "No", label: "No" }]} />
           </ReportFilterBox>
 
@@ -484,6 +542,7 @@ export function Suppliers() {
                 {supplier.email ? <div className="break-all text-[11px] text-slate-700">{supplier.email}</div> : null}
                 <div className="mt-1 text-[11px] font-semibold text-slate-700">GST {supplier.gstNo || "-"} · {supplier.gstSupplyType || "INTRA_STATE"}</div>
                 <div className="text-[11px] text-slate-700">{[getStateName(supplier.stateId), supplier.district, supplier.pinCode].filter(Boolean).join(", ")}</div>
+                {supplier.tallyGroup || supplier.gstRegistrationType ? <div className="text-[11px] text-slate-700">{[supplier.tallyGroup, supplier.gstRegistrationType].filter(Boolean).join(" · ")}</div> : null}
                 {canManage ? (
                   <div className="mt-2 flex justify-end gap-2">
                     <button type="button" onClick={() => openEdit(supplier)} className="flex items-center gap-1 rounded border border-indigo-600 bg-indigo-50 px-2 py-1 text-[11px] font-bold uppercase text-indigo-700"><Edit size={14} /> Edit</button>
@@ -499,7 +558,7 @@ export function Suppliers() {
             <table className="min-w-max divide-y divide-black border-collapse border border-black">
               <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
                 <tr className="divide-x divide-black">
-                  {["SL No", "Supplier Name", "Contact Person", "Contact Number", "Email", "GST No.", "GST Supply Type", "State", "District", "PIN Code", "Active", "Actions"].map((heading) => (
+                  {["SL No", "Supplier Name", "Contact Person", "Contact Number", "Email", "GST No.", "GST Supply Type", "State", "District", "PIN Code", "Tally Group", "GST Registration Type", "Opening Balance", "Active", "Actions"].map((heading) => (
                     <th key={heading} className="px-4 py-3 text-left text-sm font-bold text-black uppercase border border-black whitespace-nowrap">
                       {SUPPLIER_SORT_KEYS[heading] ? (
                         <SortHeader label={heading} sortKey={SUPPLIER_SORT_KEYS[heading]} sort={sort} onToggle={toggleSort} align="left" />
@@ -513,7 +572,7 @@ export function Suppliers() {
               <tbody className="divide-y divide-black bg-white">
                 {filteredSuppliers.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-6 py-8 text-center text-black font-medium tracking-wide">
+                    <td colSpan={15} className="px-6 py-8 text-center text-black font-medium tracking-wide">
                       {suppliersLoading || isSubmitting ? "Loading…" : "No suppliers found."}
                     </td>
                   </tr>
@@ -530,6 +589,9 @@ export function Suppliers() {
                       <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{getStateName(supplier.stateId)}</td>
                       <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{supplier.district || ""}</td>
                       <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{supplier.pinCode || ""}</td>
+                      <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{supplier.tallyGroup || ""}</td>
+                      <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{supplier.gstRegistrationType || ""}</td>
+                      <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap text-right">{supplier.openingBalance === null || supplier.openingBalance === undefined || supplier.openingBalance === "" ? "" : Number(supplier.openingBalance).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                       <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{supplier.active || "Yes"}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium border border-black">
                         {canManage ? <button onClick={() => openEdit(supplier)} className="text-indigo-600 hover:text-indigo-900 mr-4">

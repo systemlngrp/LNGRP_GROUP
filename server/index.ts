@@ -3796,6 +3796,10 @@ async function ensureInterFirmSchema(db: mysql.Pool, database: string) {
 
 async function ensureInternalFirmSuppliers(db: mysql.Pool, database: string) {
   await ensureColumnExists(db, database, "suppliers", "firmId", "VARCHAR(36)");
+  // Tally ledger details (Under group, GST registration type, opening balance).
+  await ensureColumnExists(db, database, "suppliers", "tallyGroup", "VARCHAR(191)");
+  await ensureColumnExists(db, database, "suppliers", "gstRegistrationType", "VARCHAR(64)");
+  await ensureColumnExists(db, database, "suppliers", "openingBalance", "DECIMAL(15,2)");
   const [firmRows] = await db.query("SELECT id, firmName FROM `firms` WHERE LOWER(firmName) LIKE '%unit%' ORDER BY firmName");
   const firms = (firmRows as any[]).filter((firm) => {
     const normalized = String(firm.firmName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -10206,6 +10210,9 @@ await db.query(`
         { table: "suppliers", column: "pinCode", type: "VARCHAR(20)" },
         { table: "suppliers", column: "address", type: "TEXT" },
         { table: "suppliers", column: "active", type: "VARCHAR(10) DEFAULT 'Yes'" },
+        { table: "suppliers", column: "tallyGroup", type: "VARCHAR(191)" },
+        { table: "suppliers", column: "gstRegistrationType", type: "VARCHAR(64)" },
+        { table: "suppliers", column: "openingBalance", type: "DECIMAL(15,2)" },
         { table: "states", column: "name", type: "VARCHAR(255) NOT NULL" },
         { table: "states", column: "active", type: "VARCHAR(10) DEFAULT 'Yes'" },
         { table: "color_masters", column: "name", type: "VARCHAR(255) NOT NULL" },

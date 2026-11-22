@@ -559,6 +559,11 @@ export interface Supplier {
   district?: string;
   pinCode?: string;
   address?: string;
+  /** Tally "Under" group, e.g. SUNDRY CREDITORS - PAPER. */
+  tallyGroup?: string;
+  /** Tally GST Registration Type: Regular, Unregistered/Consumer, Composition... */
+  gstRegistrationType?: string;
+  openingBalance?: number | string | null;
   active?: "Yes" | "No";
   updatedBy?: string;
   updateTimestamp?: string;
