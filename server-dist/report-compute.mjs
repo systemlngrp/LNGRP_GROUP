@@ -1805,6 +1805,11 @@ function computeSummarySheetRows(lists, stockItems) {
   });
 }
 
+// src/lib/scrapSales.ts
+var text3 = (value) => String(value ?? "").trim();
+var isMeghaTrading = (name) => /megha\s*trading/i.test(text3(name));
+var isCorrugatedScrap = (itemName) => /scrap/i.test(text3(itemName)) && !/core\s*pipe/i.test(text3(itemName));
+
 // src/lib/reports/summarySheetTiles.ts
 function computePhpPlateCounts(lists) {
   const jobs = [...lists.phpJobs || [], ...lists.plateJobs || []].filter((job) => job.status !== "Cancelled");
@@ -1927,15 +1932,24 @@ function computeSummarySheetExtras(lists, npdItems) {
     round(Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0))
   ]).filter((record) => record[5] > 0);
   const fgStockQty = npdItems.filter((item) => n(item.balance) > 0).map((item) => ["", s(item.firmName), "", s(item.name || item.itemName), s(item.erp || item.erpCode), round(n(item.balance))]);
-  const meghaIds = new Set((lists.companies || []).filter((company) => /megha\s*trading/i.test(s(company.name || company.companyName))).map((company) => String(company.id)));
-  const scrapInvoices = new Map(invoiceRows.filter((invoice) => meghaIds.has(String(invoice.companyId)) || /megha\s*trading/i.test(s(invoice.companyName))).map((invoice) => [String(invoice.id), invoice]));
-  const scrapSales = (lists.invoiceLines || []).filter((line) => scrapInvoices.has(String(line.invoiceId)) && isCorrugatedScrap(line.itemName)).map((line) => {
+  const meghaIds = new Set((lists.companies || []).filter((company) => isMeghaTrading(company.name || company.companyName)).map((company) => String(company.id)));
+  const isMegha = (record) => meghaIds.has(String(record.companyId)) || isMeghaTrading(record.companyName);
+  const meghaSlips = slips.filter(isMegha);
+  const meghaSlipIds = new Set(meghaSlips.map((slip) => String(slip.id)));
+  const scrapSales = [];
+  meghaSlips.forEach((slip) => (slip.lines || []).forEach((line) => {
+    if (!isCorrugatedScrap(line?.itemName)) return;
+    scrapSales.push([isoDateText(slip.date), firmName.get(String(slip.firmId)) || "", "", "", "", round(n(line?.loadedQty))]);
+  }));
+  const scrapInvoices = new Map(invoiceRows.filter(isMegha).map((invoice) => [String(invoice.id), invoice]));
+  (lists.invoiceLines || []).forEach((line) => {
     const invoice = scrapInvoices.get(String(line.invoiceId));
-    return [isoDateText(invoice.date), firmName.get(String(invoice.firmId)) || "", "", "", "", round(n(line.qty))];
+    if (!invoice || !isCorrugatedScrap(line.itemName)) return;
+    if (meghaSlipIds.has(String(line.loadingSlipId || invoice.loadingSlipId || ""))) return;
+    scrapSales.push([isoDateText(invoice.date), firmName.get(String(invoice.firmId)) || "", "", "", "", round(n(line.qty))]);
   });
   return { version: 2, scrapSales, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
 }
-var isCorrugatedScrap = (itemName) => /scrap/i.test(s(itemName)) && !/core\s*pipe/i.test(s(itemName));
 
 // src/lib/reports/conversionCostDetails.ts
 var factoryBuckets = [
@@ -2009,8 +2023,8 @@ function normalizeText(value) {
 function normalizeLoose(value) {
   return normalizeText(value).replace(/[^a-z0-9]+/g, "");
 }
-function getBucketForText(text5, source) {
-  const normalized2 = normalizeText(text5);
+function getBucketForText(text6, source) {
+  const normalized2 = normalizeText(text6);
   return factoryBuckets.find((bucket) => {
     if (bucket.source !== "both" && bucket.source !== source) return false;
     return bucket.keywords.some((keyword) => normalized2.includes(keyword));
@@ -2490,24 +2504,24 @@ function computeQcViewRows(lists, items) {
 }
 
 // src/lib/traceabilityData.ts
-var text3 = (value) => String(value ?? "").trim();
-var key4 = (value) => text3(value).toLowerCase().replace(/\s+/g, " ");
+var text4 = (value) => String(value ?? "").trim();
+var key4 = (value) => text4(value).toLowerCase().replace(/\s+/g, " ");
 var rows = (value) => Array.isArray(value) ? value : [];
 var numberValue2 = (value) => {
   if (value === "" || value === null || value === void 0) return "";
   const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : text3(value);
+  return Number.isFinite(numeric) ? numeric : text4(value);
 };
-var firstText = (...values) => values.map(text3).find(Boolean) || "";
+var firstText = (...values) => values.map(text4).find(Boolean) || "";
 var firstValue = (...values) => {
   for (const value of values) {
-    if (value !== null && value !== void 0 && text3(value)) return numberValue2(value);
+    if (value !== null && value !== void 0 && text4(value)) return numberValue2(value);
   }
   return "";
 };
-var latest = (rows2, timestamp) => [...rows2].sort((left, right) => text3(timestamp(left)).localeCompare(text3(timestamp(right)))).at(-1);
-var dateText = (value) => text3(value).slice(0, 19);
-var formatDate3 = (value) => text3(value).slice(0, 10);
+var latest = (rows2, timestamp) => [...rows2].sort((left, right) => text4(timestamp(left)).localeCompare(text4(timestamp(right)))).at(-1);
+var dateText = (value) => text4(value).slice(0, 19);
+var formatDate3 = (value) => text4(value).slice(0, 10);
 var normalizedJob = (value) => key4(value).replace(/^0+(?=\d)/, "");
 var sameJob = (left, right) => normalizedJob(left) === normalizedJob(right);
 var reelIdentity = (line) => {
@@ -2516,10 +2530,10 @@ var reelIdentity = (line) => {
   return packingSlipId || reelNo ? `${packingSlipId}|${reelNo}` : key4(line.id);
 };
 var joinSize = (...values) => {
-  const parts = values.map(text3);
+  const parts = values.map(text4);
   return parts.some(Boolean) ? parts.join(" x ") : "";
 };
-var joinNonEmpty = (separator, ...values) => values.map(text3).filter(Boolean).join(separator);
+var joinNonEmpty = (separator, ...values) => values.map(text4).filter(Boolean).join(separator);
 function latestByJob(rows2, jobNo) {
   return latest(rows2.filter((row) => sameJob(row.jobNo, jobNo)), (row) => row.updateTimestamp || row.timestamp);
 }
@@ -2541,12 +2555,12 @@ function productionLoadingSlips(production, jobNo, plans, slips) {
   }));
 }
 function statusOf(production) {
-  if (production.status === "Cancelled" || text3(production.cancelTimestamp)) return "JOB CANCELLED";
-  if (production.status === "Completed" || text3(production.closeDate) || key4(production.closeBy) === "yes") return "JOB CLOSED";
+  if (production.status === "Cancelled" || text4(production.cancelTimestamp)) return "JOB CANCELLED";
+  if (production.status === "Completed" || text4(production.closeDate) || key4(production.closeBy) === "yes") return "JOB CLOSED";
   return "JOB OPEN";
 }
 function layerValue(value) {
-  const normalized2 = text3(value);
+  const normalized2 = text4(value);
   if (!normalized2) return "";
   const numeric = Number(normalized2);
   if (!Number.isFinite(numeric)) return normalized2;
@@ -2571,16 +2585,16 @@ function explicitLineIncharge(board) {
   if (!board) return "";
   const lineInchargeKeys = /* @__PURE__ */ new Set(["lineincharge", "lineinchargename", "lineinchargeperson"]);
   const rawBoard = board;
-  return Object.entries(rawBoard).filter(([field]) => lineInchargeKeys.has(field.toLowerCase().replace(/[^a-z0-9]/g, ""))).map(([, value]) => text3(value)).find(Boolean) || "";
+  return Object.entries(rawBoard).filter(([field]) => lineInchargeKeys.has(field.toLowerCase().replace(/[^a-z0-9]/g, ""))).map(([, value]) => text4(value)).find(Boolean) || "";
 }
 function processingLineIncharge(rows2) {
   return firstText(latest(
-    rows2.filter((row) => key4(row.machineName) === "corrugation liner" && text3(row.operatorName)),
+    rows2.filter((row) => key4(row.machineName) === "corrugation liner" && text4(row.operatorName)),
     (row) => row.updateTimestamp || row.date
   )?.operatorName);
 }
 function buildTraceabilityPaperIssueDetails(production, jobNo, materials = [], issueReelLines = [], returnReelLines = []) {
-  const belongsToProduction = (line) => text3(line.productionId) && key4(line.productionId) === key4(production.id) || text3(line.jobNo) && sameJob(line.jobNo, jobNo);
+  const belongsToProduction = (line) => text4(line.productionId) && key4(line.productionId) === key4(production.id) || text4(line.jobNo) && sameJob(line.jobNo, jobNo);
   const eligibleIssues = rows(issueReelLines).filter((line) => belongsToProduction(line) && Number(line.weightKg || 0) > 0);
   const returnedWeights = /* @__PURE__ */ new Map();
   rows(returnReelLines).filter((line) => belongsToProduction(line) && Number(line.weightKg || 0) > 0).forEach((line) => {
@@ -2599,12 +2613,12 @@ function buildTraceabilityPaperIssueDetails(production, jobNo, materials = [], i
     const material = materialById.get(key4(entry.line.materialId));
     const netIssue = Math.max(0, Number((entry.issuedWeight - (returnedWeights.get(identity) || 0)).toFixed(2)));
     return {
-      reelNo: text3(entry.line.ourReelNo),
+      reelNo: text4(entry.line.ourReelNo),
       reelSize: numberValue2(material?.size),
       gsm: numberValue2(material?.gsm),
       bf: numberValue2(material?.bf),
       netIssue: numberValue2(netIssue),
-      issueTimestamp: text3(entry.line.updateTimestamp)
+      issueTimestamp: text4(entry.line.updateTimestamp)
     };
   }).sort((left, right) => left.issueTimestamp.localeCompare(right.issueTimestamp) || left.reelNo.localeCompare(right.reelNo));
 }
@@ -2629,8 +2643,8 @@ function buildTraceabilityRecord(production, input) {
   const invoice = rows(input.invoices).find((candidate) => key4(candidate.id) === key4(latestSlip?.invoiceId));
   const invoiceLine = rows(input.invoiceLineItems).find((line) => key4(line.invoiceId) === key4(invoice?.id) && (key4(line.npdId) === key4(production.npdId) || key4(line.itemId) === key4(production.itemId)));
   const truck = rows(input.trucks).find((candidate) => key4(candidate.id) === key4(latestSlip?.truckId));
-  const complaintLots = rows(input.complaints).filter((complaint) => key4(complaint.erpCode) === key4(erpCode) && sameJob(complaint.lotNo, jobNo)).map((complaint) => text3(complaint.lotNo));
-  const lotNumbers = [...new Set([text3(inspection?.lotNo), text3(printing?.lotNoPrinted), ...complaintLots].filter(Boolean))];
+  const complaintLots = rows(input.complaints).filter((complaint) => key4(complaint.erpCode) === key4(erpCode) && sameJob(complaint.lotNo, jobNo)).map((complaint) => text4(complaint.lotNo));
+  const lotNumbers = [...new Set([text4(inspection?.lotNo), text4(printing?.lotNoPrinted), ...complaintLots].filter(Boolean))];
   const planQuantity = resolvePlanQuantity(production.plannedQty, production.qty, board?.planQty, printing?.planQty, inspection?.plannedQty, plans.reduce((sum, plan) => sum + Number(plan.plannedQty || 0), 0));
   const plannedPaperValue = plannedPaper(production);
   const lineIncharge = firstText(explicitLineIncharge(board), processingLineIncharge(productionProcessing));
@@ -2765,7 +2779,7 @@ function buildTraceabilityRecord(production, input) {
   };
 }
 function buildTraceabilitySearchIndex(input) {
-  const pdiNormalized = (value) => text3(value).toLowerCase();
+  const pdiNormalized = (value) => text4(value).toLowerCase();
   const groupBy = (list, keyOf) => {
     const map = /* @__PURE__ */ new Map();
     list.forEach((row) => {
@@ -2816,7 +2830,7 @@ function buildTraceabilitySearchIndex(input) {
   const orderById = firstByKey(rows(input.orders), (row) => key4(row.id));
   const companyById = firstByKey(rows(input.companies), (row) => key4(row.id));
   const complaintsByErp = groupBy(rows(input.complaints), (row) => key4(row.erpCode));
-  return rows(input.productions).filter((production) => Boolean(production && text3(production.id))).map((production) => {
+  return rows(input.productions).filter((production) => Boolean(production && text4(production.id))).map((production) => {
     const jobNo = firstText(production.transactionNo, production.jobCardNo);
     const board = latestOfJob(boardlineByJob, jobNo);
     const printing = latestOfJob(printingByJob, jobNo);
@@ -2828,8 +2842,8 @@ function buildTraceabilitySearchIndex(input) {
     const erpCode = firstText(production.erpCode, inspection?.erpCode, board?.erp, printing?.erp, item?.erp);
     const partyName = firstText(production.companyName, inspection?.partyName, board?.partyName, printing?.partyName, company?.name);
     const itemName = firstText(production.itemName, item?.name, inspection?.itemName, board?.itemName, printing?.itemName);
-    const complaintLots = (complaintsByErp.get(key4(erpCode)) || []).filter((complaint) => sameJob(complaint.lotNo, jobNo)).map((complaint) => text3(complaint.lotNo));
-    const lotNumbers = [...new Set([text3(inspection?.lotNo), text3(printing?.lotNoPrinted), ...complaintLots].filter(Boolean))];
+    const complaintLots = (complaintsByErp.get(key4(erpCode)) || []).filter((complaint) => sameJob(complaint.lotNo, jobNo)).map((complaint) => text4(complaint.lotNo));
+    const lotNumbers = [...new Set([text4(inspection?.lotNo), text4(printing?.lotNoPrinted), ...complaintLots].filter(Boolean))];
     return {
       id: production.id,
       productionId: production.id,
@@ -2846,7 +2860,7 @@ function buildTraceabilitySearchIndex(input) {
   });
 }
 function buildTraceabilityRecordById(input, productionId) {
-  const production = rows(input.productions).find((row) => Boolean(row && text3(row.id)) && row.id === productionId);
+  const production = rows(input.productions).find((row) => Boolean(row && text4(row.id)) && row.id === productionId);
   return production ? buildTraceabilityRecord(production, input) : null;
 }
 
@@ -2910,8 +2924,8 @@ function getReel(row) {
   return toNumber(row.reelActualWithTrimming);
 }
 function getJobNumber(row) {
-  const text5 = normalizeText2(row.transactionNo || row.jobCardNo);
-  const match = text5.match(/(\d+)\s*$/);
+  const text6 = normalizeText2(row.transactionNo || row.jobCardNo);
+  const match = text6.match(/(\d+)\s*$/);
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
 }
 function sortByCompanyThenReelDesc(a, b) {
@@ -3057,7 +3071,7 @@ function findRealizationTargetForDate(targets, value) {
 }
 
 // src/lib/productionPlanCompany.ts
-var text4 = (value) => String(value ?? "").trim();
+var text5 = (value) => String(value ?? "").trim();
 function resolveProductionPlanCompany(production, schedule, order, companies) {
   const company = order?.companyId ? companies.find((entry) => String(entry.id) === String(order.companyId)) : void 0;
   const sources = [
@@ -3066,8 +3080,8 @@ function resolveProductionPlanCompany(production, schedule, order, companies) {
     schedule || {},
     order || {}
   ];
-  const name = sources.map((source) => text4(source.companyName)).find(Boolean) || text4(production.firmName) || text4(schedule?.firmName) || text4(order?.firmName) || "-";
-  return { name, companyId: text4(order?.companyId) };
+  const name = sources.map((source) => text5(source.companyName)).find(Boolean) || text5(production.firmName) || text5(schedule?.firmName) || text5(order?.firmName) || "-";
+  return { name, companyId: text5(order?.companyId) };
 }
 
 // src/lib/productionPlanStatus.ts
@@ -3130,8 +3144,8 @@ function getFirmDisplayNameById(firmId, firms, _legacyTransactionName) {
 // src/lib/phpPlateErps.ts
 function firstText2(...values) {
   for (const value of values) {
-    const text5 = String(value ?? "").trim();
-    if (text5) return text5;
+    const text6 = String(value ?? "").trim();
+    if (text6) return text6;
   }
   return "";
 }
@@ -3325,8 +3339,8 @@ var DEFAULT_WHATSAPP_REPORT_MESSAGES = {
 };
 function renderWhatsappReportMessage(template, values) {
   const hidden = String(values.__hide || "").split(",").map((key5) => key5.trim()).filter(Boolean);
-  const text5 = hidden.length ? String(template || "").split("\n").filter((line) => !hidden.some((key5) => new RegExp(`\\{\\{\\s*${key5}\\s*\\}\\}`).test(line))).join("\n") : String(template || "");
-  return text5.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key5) => values[key5] ?? "");
+  const text6 = hidden.length ? String(template || "").split("\n").filter((line) => !hidden.some((key5) => new RegExp(`\\{\\{\\s*${key5}\\s*\\}\\}`).test(line))).join("\n") : String(template || "");
+  return text6.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key5) => values[key5] ?? "");
 }
 var qtyText = (value) => Number(value || 0).toLocaleString("en-IN");
 var money2 = (value) => value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3382,8 +3396,8 @@ function productionPlanPdfSpec(rows2, date, firmLabel = "") {
     return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
   };
   const jobNumber = (p) => {
-    const text5 = s4(p.transactionNo || p.jobCardNo);
-    return text5.match(/(\d+)\s*$/)?.[1] || text5 || "-";
+    const text6 = s4(p.transactionNo || p.jobCardNo);
+    return text6.match(/(\d+)\s*$/)?.[1] || text6 || "-";
   };
   let totalValue = 0;
   let totalPaperWeight = 0;
@@ -3757,8 +3771,8 @@ var normalizeKey = (value) => String(value ?? "").trim().toLowerCase();
 var normalizeText3 = (value) => String(value ?? "").trim();
 function firstText3(...values) {
   for (const value of values) {
-    const text5 = normalizeText3(value);
-    if (text5) return text5;
+    const text6 = normalizeText3(value);
+    if (text6) return text6;
   }
   return "";
 }
