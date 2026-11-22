@@ -1948,8 +1948,19 @@ function computeSummarySheetExtras(lists, npdItems) {
     if (meghaSlipIds.has(String(line.loadingSlipId || invoice.loadingSlipId || ""))) return;
     scrapSales.push([isoDateText(invoice.date), firmName.get(String(invoice.firmId)) || "", "", "", "", round(n(line.qty))]);
   });
-  const netSales = invoiceRows.filter((invoice) => !isInterFirm(invoice) && !isMegha(invoice)).map((invoice) => [isoDateText(invoice.date), firmName.get(String(invoice.firmId || invoice.orderFirmId)) || "", s(invoice.companyName) || companyName.get(String(invoice.companyId)) || "", "", "", round(n(invoice.totalBeforeGst))]);
-  return { version: 2, netSales, scrapSales, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
+  const reelUsage = [];
+  const addUsage = (entries, lines, idKey, sign) => {
+    const entryById = new Map((entries || []).filter((entry) => !isCancelled(entry)).map((entry) => [String(entry.id), entry]));
+    (lines || []).forEach((line) => {
+      const entry = entryById.get(String(line[idKey]));
+      if (!entry) return;
+      reelUsage.push([isoDateText(entry.date), firmName.get(String(entry.firmId)) || "", "", "", "", round(sign * n(line.weightKg))]);
+    });
+  };
+  addUsage(lists.reelIssues, lists.reelIssueLines, "materialIssueId", 1);
+  addUsage(lists.reelReturns, lists.reelReturnLines, "materialReturnId", -1);
+  const netSales = invoiceRows.filter((invoice) => !isInterFirm(invoice)).map((invoice) => [isoDateText(invoice.date), firmName.get(String(invoice.firmId || invoice.orderFirmId)) || "", s(invoice.companyName) || companyName.get(String(invoice.companyId)) || "", "", "", round(n(invoice.totalBeforeGst))]);
+  return { version: 2, reelUsage, netSales, scrapSales, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
 }
 
 // src/lib/reports/conversionCostDetails.ts
@@ -4157,7 +4168,11 @@ REPORT_DEFINITIONS["summary-sheet-tiles"] = {
     { key: "materialIn", entity: "material_in", scope: "all" },
     { key: "issueLines", entity: "material_issue_lines", scope: "all" },
     { key: "phpJobs", entity: "php_job_master", scope: "all" },
-    { key: "plateJobs", entity: "plate_job_master", scope: "all" }
+    { key: "plateJobs", entity: "plate_job_master", scope: "all" },
+    { key: "reelIssues", entity: "material_issues", scope: "all" },
+    { key: "reelIssueLines", entity: "material_issue_reel_lines", scope: "all" },
+    { key: "reelReturns", entity: "material_returns", scope: "all" },
+    { key: "reelReturnLines", entity: "material_return_reel_lines", scope: "all" }
   ],
   compute: (lists, _params, helpers) => computeSummarySheetExtras(lists, (helpers.npdItems || []).map(normalizeNpdItem))
 };
