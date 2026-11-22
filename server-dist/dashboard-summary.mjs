@@ -1,3 +1,10 @@
+// src/lib/jobNumber.ts
+function displayJobNo(value) {
+  const raw = String(value ?? "").trim();
+  const match = raw.match(/^(?:[A-Za-z0-9-]+\/)?JOB\/\d{2}-\d{2}\/0*(\d+)$/i);
+  return match ? match[1] : raw;
+}
+
 // src/lib/productionMaterialUsage.ts
 function hasWorkflowValue(value) {
   if (value === null || value === void 0) return false;
@@ -2628,7 +2635,7 @@ function computeOperationDashboard(lists, options) {
   const exportRows = options.includeExportRows ? (() => {
     return rows.map((r) => ({
       "Sr. No.": r.srNo,
-      "Job No.": r.production.transactionNo || "-",
+      "Job No.": displayJobNo(r.production.transactionNo) || "-",
       "Order No.": r.order?.orderNo || "-",
       "ERP Code": r.production.erpCode || "-",
       Company: r.company?.name || "-",
