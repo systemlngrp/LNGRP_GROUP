@@ -81,6 +81,10 @@ export function computeSummarySheetSections(
   // Days in the range up to today (sales per day so far).
   const rangeEnd = range.to < today ? range.to : today;
   const days = range.from && rangeEnd >= range.from ? Math.round((Date.parse(rangeEnd) - Date.parse(range.from)) / 86_400_000) + 1 : 0;
+  // Total production (kg) = paper used (reel issue − return) of jobs in From–To;
+  // Total wastage % = corrugated scrap sold to Megha Trading in From–To ÷ production × 100.
+  const scrapKg = extras?.version === 2 && extras.scrapSales ? filterExtraRecords(extras.scrapSales, filters, range).reduce((total, record) => total + record[5], 0) : null;
+  const totalWastagePercent = scrapKg !== null && paperUsed > 0 ? (scrapKg / paperUsed) * 100 : scrapKg !== null ? 0 : null;
   const wastageTone = (value: number) => value <= 8 ? "bg-[#00ff00] text-slate-950" : value <= 10 ? "bg-[#ff9900] text-slate-950" : "bg-[#ff0000] text-white";
   const dueUntil = localDayKey(3, now);
   const ready = extras?.version === 2;
@@ -115,7 +119,7 @@ export function computeSummarySheetSections(
       id: "production",
       title: "Production Summary",
       // Today only (jobs dated today); Today WIP is the live balance of open jobs.
-      columns: 6,
+      columns: 4,
       tiles: [
         { id: "todayBoardline", label: "Today BoardLine", value: sum(todayRows, (row) => n(row["Boardline Prod."])), format: "qty", tone: "bg-[#9900ff] text-white", note: "Boardline production of jobs dated today" },
         { id: "todayBobst", label: "Today Bobst Printer", value: sum(todayRows, (row) => n(row.__printBobst)), format: "qty", tone: "bg-[#0000ff] text-white", note: "Printing on Bobst Printer, jobs dated today (older reports with no printer count here)" },
@@ -123,6 +127,8 @@ export function computeSummarySheetSections(
         { id: "todaySmallPrinter", label: "Today Small Printer", value: sum(todayRows, (row) => n(row.__printSmall)), format: "qty", tone: "bg-[#6fa8dc] text-slate-950", note: "Printing on Small Printer, jobs dated today" },
         { id: "wip", label: "Today WIP", value: sum(openRows, (row) => Math.max(0, n(row["Boardline Prod."]) - n(row["Printing prod."]))), format: "qty", tone: "bg-[#00ffff] text-slate-950", note: "Open jobs: total Boardline − total Printing" },
         { id: "todayReel", label: "Today Reel Consumption (Kg)", value: sum(todayRows, (row) => n(row["PPR Used"])), format: "qty", tone: "bg-[#00ffff] text-slate-950", note: "Reel issue − reel return of jobs dated today" },
+        { id: "totalProduction", label: "Total Production (Kg)", value: paperUsed, format: "qty", tone: "bg-[#274e13] text-white", note: `Paper used (reel issue − return) of jobs dated ${range.from} to ${range.to}` },
+        { id: "totalWastage", label: "Total Wastage %", value: totalWastagePercent, format: "percent", tone: totalWastagePercent === null ? "bg-white text-slate-950" : wastageTone(totalWastagePercent), note: scrapKg === null ? "Loading scrap sales…" : `Corrugated scrap sold to Megha Trading ${Math.round(scrapKg).toLocaleString("en-IN")} kg ÷ production ${Math.round(paperUsed).toLocaleString("en-IN")} kg × 100 (${range.from} to ${range.to})` },
       ],
     },
     {
@@ -320,6 +326,8 @@ export type SummarySheetExtras = {
   interFirmInvoices?: ExtraRecord[];
   /** FG stock (positive balance) × latest order rate, per item; no date. */
   fgStock: ExtraRecord[];
+  /** Corrugated wastage scrap sold to Megha Trading: kg per invoice line; date = invoice date. */
+  scrapSales?: ExtraRecord[];
   /** FG stock quantity (positive balance) per item; no date. */
   fgStockQty?: ExtraRecord[];
   /** Store stock balance (opening + receipts − issues, as on the Materials page) by tile; null = no such material yet. */
@@ -467,8 +475,22 @@ export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems
   const fgStockQty: ExtraRecord[] = npdItems
     .filter((item) => n(item.balance) > 0)
     .map((item) => ["", s(item.firmName), "", s(item.name || item.itemName), s(item.erp || item.erpCode), round(n(item.balance))] as ExtraRecord);
-  return { version: 2, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
+  // Scrap sold to Megha Trading (corrugated wastage scrap only; core pipe scrap is left out).
+  const meghaIds = new Set((lists.companies || []).filter((company) => /megha\s*trading/i.test(s(company.name || company.companyName))).map((company) => String(company.id)));
+  const scrapInvoices = new Map(invoiceRows
+    .filter((invoice) => meghaIds.has(String(invoice.companyId)) || /megha\s*trading/i.test(s(invoice.companyName)))
+    .map((invoice) => [String(invoice.id), invoice]));
+  const scrapSales: ExtraRecord[] = (lists.invoiceLines || [])
+    .filter((line) => scrapInvoices.has(String(line.invoiceId)) && isCorrugatedScrap(line.itemName))
+    .map((line) => {
+      const invoice = scrapInvoices.get(String(line.invoiceId));
+      return [isoDateText(invoice.date), firmName.get(String(invoice.firmId)) || "", "", "", "", round(n(line.qty))] as ExtraRecord;
+    });
+  return { version: 2, scrapSales, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
 }
+
+/** Corrugated wastage scrap (not core pipe scrap). */
+export const isCorrugatedScrap = (itemName: unknown) => /scrap/i.test(s(itemName)) && !/core\s*pipe/i.test(s(itemName));
 
 /** Filters that apply to the extra records (party / item / ERP only where the record has them). */
 export type TileFilters = { firm: string; party: string; item: string; erp: string };
