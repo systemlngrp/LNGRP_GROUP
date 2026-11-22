@@ -1622,7 +1622,7 @@ function computeSummarySheetRows(lists, stockItems) {
     const dispatch = dispatchByProduction.get(production.id) || { qty: 0, date: "", slips: [], invoiceIds: /* @__PURE__ */ new Set() };
     const relatedInvoices = Array.from(dispatch.invoiceIds).map((id) => invoiceMap.get(id)).filter(Boolean);
     relatedInvoices.sort((a, b) => isoDateText(a.tallyInvDate || a.date).localeCompare(isoDateText(b.tallyInvDate || b.date)));
-    const invoiceValues = relatedInvoices.map((invoice) => money(n(invoice.totalAfterGst || invoice.totalBeforeGst)));
+    const invoiceValues = relatedInvoices.map((invoice) => money(n(invoice.totalBeforeGst)));
     const invoiceDates = relatedInvoices.map((invoice) => isoDateText(invoice.tallyInvDate || invoice.date));
     const loadingRecords = (loadingByJob.get(production.id) || []).map(({ slip, qty }) => ({
       slipNo: s(slip.slipNo),
