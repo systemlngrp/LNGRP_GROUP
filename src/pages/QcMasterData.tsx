@@ -10,7 +10,7 @@ import { rowSearchText, matchesTableSearch, searchWords } from "../lib/tableSear
 import { SortHeader, useTableSort } from "../lib/tableSort";
 import type { BoardLineQcCheck, Company, Order, PrintingQcCheck, QcUpdateRecord } from "../types";
 
-const COLUMNS = ["Sl No.", "ERP", "Party Name", "Item Name", "Artwork", "Spec", "Block No.", "Block Location", "File No.", "Index No", "ZONE NO.", "Sample No.", "Printing Colour 1", "Printing colour 2", "Composite GSM (+-3%) g", "Individual Layer GSM", "CS", "BS", "STACK NORMS", "WEIGHT & PACK DETAILS", "BOX WEIGHT", "BF", "PHP", "BS (PHP)", "ITEM STATUS", "Remarks", "sL.nO.", "COLOUR 1", "COLOUR 2", "TOTAL NO. OF COLOURS", "Ply", "Flute", "D1", "110"] as const;
+const COLUMNS = ["ERP", "Party Name", "Item Name", "Artwork", "Spec", "Block No.", "Block Location", "File No.", "Index No", "ZONE NO.", "Sample No.", "Printing Colour 1", "Printing colour 2", "Composite GSM (+-3%) g", "Individual Layer GSM", "CS", "BS", "STACK NORMS", "WEIGHT & PACK DETAILS", "BOX WEIGHT", "BF", "PHP", "BS (PHP)", "ITEM STATUS", "Remarks", "COLOUR 1", "COLOUR 2", "TOTAL NO. OF COLOURS", "Ply", "Flute", "D1", "110"] as const;
 const text = (value: unknown) => String(value ?? "").trim();
 const LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
 const optionList = (values: unknown[]) => [...new Set(values.map(text).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })).map((value) => ({ value, label: value }));

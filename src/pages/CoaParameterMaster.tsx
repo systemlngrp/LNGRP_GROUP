@@ -146,11 +146,10 @@ export function CoaParameterMaster() {
     <div className="max-h-[70vh] overflow-auto border border-slate-400 bg-white">
       <table className="w-full min-w-[1100px] border-collapse text-xs">
         <thead className="sticky top-0 z-10 bg-cyan-800 text-white"><tr>
-          {["#", "Code", "Parameter", "Standard", "Observation comes from", "PASS rule", "Used by templates", ...(canEdit ? ["Actions"] : [])].map((label) =>
+          {["Code", "Parameter", "Standard", "Observation comes from", "PASS rule", "Used by templates", ...(canEdit ? ["Actions"] : [])].map((label) =>
             <th key={label} className="whitespace-nowrap border border-slate-400 px-2 py-1.5 font-bold">{label}</th>)}
         </tr></thead>
-        <tbody>{rows.map((parameter, index) => <tr key={parameter.code} className="align-top odd:bg-white even:bg-slate-50 hover:bg-cyan-50">
-          <td className="w-8 border border-slate-300 px-2 py-1 text-right text-slate-500">{index + 1}</td>
+        <tbody>{rows.map((parameter) => <tr key={parameter.code} className="align-top odd:bg-white even:bg-slate-50 hover:bg-cyan-50">
           <td className="whitespace-nowrap border border-slate-300 px-2 py-1 font-mono font-bold">{parameter.code}{savedCodes.has(parameter.code) ? <span className="ml-1 text-indigo-700" title="Changed here">✎</span> : null}</td>
           <td className="border border-slate-300 px-2 py-1 font-bold">{parameter.name}</td>
           <td className="border border-slate-300 px-2 py-1">{parameter.standard}</td>

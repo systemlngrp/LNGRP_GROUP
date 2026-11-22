@@ -383,9 +383,10 @@ export function SummarySheetReport() {
   const selectedColumns = useMemo(() => {
     if (!isAdmin) {
       const allowed = new Set(userColumnNames || []);
-      return COLUMNS.map((_, index) => index).filter((index) => index === 0 || allowed.has(COLUMNS[index]));
+      return COLUMNS.map((_, index) => index).filter((index) => index > 0 && allowed.has(COLUMNS[index]));
     }
-    return visibleColumns.filter((index) => index >= 0 && index < COLUMNS.length);
+    // Sl No (index 0) is not shown. It stays in COLUMNS so saved column choices keep their positions.
+    return visibleColumns.filter((index) => index > 0 && index < COLUMNS.length);
   }, [isAdmin, userColumnNames, visibleColumns]);
   const [userColumnsOpen, setUserColumnsOpen] = useState(false);
   // Search matches the shown columns as the cells display them (Sl No skipped;
