@@ -1927,8 +1927,15 @@ function computeSummarySheetExtras(lists, npdItems) {
     round(Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0))
   ]).filter((record) => record[5] > 0);
   const fgStockQty = npdItems.filter((item) => n(item.balance) > 0).map((item) => ["", s(item.firmName), "", s(item.name || item.itemName), s(item.erp || item.erpCode), round(n(item.balance))]);
-  return { version: 2, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
+  const meghaIds = new Set((lists.companies || []).filter((company) => /megha\s*trading/i.test(s(company.name || company.companyName))).map((company) => String(company.id)));
+  const scrapInvoices = new Map(invoiceRows.filter((invoice) => meghaIds.has(String(invoice.companyId)) || /megha\s*trading/i.test(s(invoice.companyName))).map((invoice) => [String(invoice.id), invoice]));
+  const scrapSales = (lists.invoiceLines || []).filter((line) => scrapInvoices.has(String(line.invoiceId)) && isCorrugatedScrap(line.itemName)).map((line) => {
+    const invoice = scrapInvoices.get(String(line.invoiceId));
+    return [isoDateText(invoice.date), firmName.get(String(invoice.firmId)) || "", "", "", "", round(n(line.qty))];
+  });
+  return { version: 2, scrapSales, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
 }
+var isCorrugatedScrap = (itemName) => /scrap/i.test(s(itemName)) && !/core\s*pipe/i.test(s(itemName));
 
 // src/lib/reports/conversionCostDetails.ts
 var factoryBuckets = [
