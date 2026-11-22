@@ -671,7 +671,7 @@ export function SummarySheetReport() {
           }
           cell.style.position = "sticky";
           cell.style.left = `${left}px`;
-          cell.style.zIndex = row === headRow ? "4" : "2";
+          cell.style.zIndex = row === headRow ? "41" : "2"; // header cells sit at z-index 31 (index.css)
           if (i === lefts.length - 1) cell.style.boxShadow = "2px 0 0 #000";
         });
       });

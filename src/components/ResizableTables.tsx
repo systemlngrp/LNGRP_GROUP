@@ -1126,7 +1126,7 @@ function positionFloatingHeader(state: FloatingHeader, viewTop: number) {
     cell.style.position = "relative";
     cell.style.left = "0px";
     cell.style.transform = `translateX(${shift}px)`;
-    cell.style.zIndex = "4";
+    cell.style.zIndex = "41";
   });
   if (box.hidden) box.hidden = false;
 }
