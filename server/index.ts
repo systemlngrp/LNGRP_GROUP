@@ -10884,6 +10884,7 @@ await db.query(`
         { table: "settings", column: "productionMasterVisibleColumns", type: "LONGTEXT" },
         { table: "settings", column: "summarySheetDateRange", type: "LONGTEXT" },
         { table: "settings", column: "summarySheetUserColumns", type: "LONGTEXT" },
+        { table: "settings", column: "summarySheetUserViews", type: "LONGTEXT" },
         { table: "settings", column: "salesTargetSnapshot", type: "LONGTEXT" },
         { table: "settings", column: "realizationPerKgTargets", type: "LONGTEXT" },
         { table: "settings", column: "invoiceNumberSeries", type: "LONGTEXT" },
@@ -21307,6 +21308,48 @@ function limitSummarySheetRows(rows: any, columns: string[]) {
     return next;
   });
 }
+// Each person's own Summary Sheet view (hidden columns, frozen columns), the same on phone
+// and computer. Stored in settings.summarySheetUserViews as { userId: { hidden: [names], freeze: name } }.
+async function loadSummarySheetUserViews(db: mysql.Pool): Promise<Record<string, { hidden: string[]; freeze: string }>> {
+  try {
+    const [rows] = await db.query("SELECT `summarySheetUserViews` FROM `settings` LIMIT 1");
+    const raw = (rows as any[])[0]?.summarySheetUserViews;
+    const parsed = raw ? JSON.parse(String(raw)) : {};
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+app.get("/api/summary-sheet-view", async (req, res) => {
+  const user = await getRequestUser(req).catch(() => null);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const db = await getPool();
+  if (!db) return res.status(503).json({ error: "DB connection not available" });
+  res.setHeader("Cache-Control", "no-store");
+  const all = await loadSummarySheetUserViews(db);
+  return res.json({ view: all[String(user.id)] || null });
+});
+app.put("/api/summary-sheet-view", async (req, res) => {
+  const user = await getRequestUser(req).catch(() => null);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const hidden = Array.isArray(req.body?.hidden) ? Array.from(new Set(req.body.hidden.map((name: unknown) => String(name || "").trim()).filter(Boolean))).slice(0, 500) as string[] : [];
+  const freeze = String(req.body?.freeze || "").trim().slice(0, 100);
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "DB connection not available" });
+    const all = await loadSummarySheetUserViews(db);
+    all[String(user.id)] = { hidden, freeze };
+    const value = JSON.stringify(all);
+    const [rows] = await db.query("SELECT id FROM `settings` LIMIT 1");
+    const id = (rows as any[])[0]?.id;
+    if (id) await db.query("UPDATE `settings` SET `summarySheetUserViews` = ? WHERE id = ?", [value, id]);
+    else await db.query("INSERT INTO `settings` (`id`, `summarySheetUserViews`) VALUES (?, ?)", [crypto.randomUUID(), value]);
+    return res.json({ ok: true, view: all[String(user.id)] });
+  } catch (error) {
+    console.error("[summary-sheet-view] save failed", (error as Error).message);
+    return res.status(500).json({ error: "Unable to save the Summary Sheet view." });
+  }
+});
 app.get("/api/summary-sheet-user-columns", async (req, res) => {
   const user = await getRequestUser(req).catch(() => null);
   if (!user) return res.status(401).json({ error: "Unauthorized" });

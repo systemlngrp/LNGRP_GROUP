@@ -50,6 +50,8 @@ const SUMMARY_SHEET_TABLES = ["productions", "production_processing", "orders", 
 const COLUMN_DISPLAY: Record<string, string> = {};
 const columnTitle = (column: string) => COLUMN_DISPLAY[column] || column;
 const SUMMARY_HIDDEN_COLUMNS_KEY = "summary-sheet-hidden-columns";
+const SUMMARY_FREEZE_KEY = "summary-sheet-freeze-column";
+const FREEZE_OPTIONS = ["Job No.", "Date", "Party Name", "Item Name"];
 
 const NUMERIC_COLUMNS = new Set([
   "Sl No", "Planned Qty", "Job Weight", "Meter", "UPS", "Sheets prdcd", "Plate per box", "Boardline Prod.", "Printing prod.",
@@ -293,6 +295,50 @@ export function SummarySheetReport() {
       window.localStorage.setItem(SUMMARY_HIDDEN_COLUMNS_KEY, JSON.stringify(COLUMNS.filter((_, index) => !shown.has(index))));
     } catch { /* storage blocked */ }
   }, [visibleColumns]);
+  // Frozen columns: the table's first columns up to this one stay fixed while scrolling sideways.
+  const [freezeColumn, setFreezeColumn] = useState<string>(() => {
+    try { return window.localStorage.getItem(SUMMARY_FREEZE_KEY) || ""; } catch { return ""; }
+  });
+  useEffect(() => { try { window.localStorage.setItem(SUMMARY_FREEZE_KEY, freezeColumn); } catch { /* storage blocked */ } }, [freezeColumn]);
+  // Hidden columns and freeze are saved to the person's account, so phone and computer match.
+  // First visit after this change: this browser's choice is uploaded.
+  const viewSynced = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    const token = localStorage.getItem("authToken") || "";
+    fetch("/api/summary-sheet-view", { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+      .then((body) => {
+        if (!alive) return;
+        const view = body?.view;
+        if (view && Array.isArray(view.hidden)) {
+          const hidden = new Set<string>(view.hidden.map(String));
+          setVisibleColumns(COLUMNS.map((_, index) => index).filter((index) => !hidden.has(COLUMNS[index])));
+          setFreezeColumn(String(view.freeze || ""));
+        }
+        viewSynced.current = true;
+        if (!view) setViewVersion((value) => value + 1); // upload this browser's choice
+      })
+      .catch(() => { /* offline: keep this browser's choice; not uploaded */ });
+    return () => { alive = false; };
+  }, []);
+  const [viewVersion, setViewVersion] = useState(0);
+  const firstViewSave = useRef(true);
+  useEffect(() => {
+    if (!viewSynced.current) return;
+    if (firstViewSave.current && viewVersion === 0) { firstViewSave.current = false; return; }
+    firstViewSave.current = false;
+    const timer = window.setTimeout(() => {
+      const shown = new Set(visibleColumns);
+      const token = localStorage.getItem("authToken") || "";
+      void fetch("/api/summary-sheet-view", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ hidden: COLUMNS.filter((_, index) => index > 0 && !shown.has(index)), freeze: freezeColumn }),
+      }).catch(() => undefined);
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [visibleColumns, freezeColumn, viewVersion]);
   const [phoneTable, setPhoneTable] = useState(false); // phones: job cards by default, full table on request
   // Phone = narrow screen, or a touch phone opened as "Desktop site" (wide layout on a small screen).
   const detectPhone = () => {
@@ -385,11 +431,17 @@ export function SummarySheetReport() {
   const selectedColumns = useMemo(() => {
     if (!isAdmin) {
       const allowed = new Set(userColumnNames || []);
-      return COLUMNS.map((_, index) => index).filter((index) => index > 0 && allowed.has(COLUMNS[index]));
+      const shown = new Set(visibleColumns);
+      return COLUMNS.map((_, index) => index).filter((index) => index > 0 && allowed.has(COLUMNS[index]) && shown.has(index));
     }
     // Sl No (index 0) is not shown. It stays in COLUMNS so saved column choices keep their positions.
     return visibleColumns.filter((index) => index > 0 && index < COLUMNS.length);
   }, [isAdmin, userColumnNames, visibleColumns]);
+  // Columns this person can show / hide (Admin: all; others: the ones Admin gave them).
+  const pickableColumns = useMemo(() => {
+    const allowed = isAdmin ? null : new Set(userColumnNames || []);
+    return COLUMNS.map((_, index) => index).filter((index) => index > 0 && (!allowed || allowed.has(COLUMNS[index])));
+  }, [isAdmin, userColumnNames]);
   const [userColumnsOpen, setUserColumnsOpen] = useState(false);
   // Search matches the shown columns as the cells display them (Sl No skipped;
   // Job Closed only by its "Yes (date)" text, not the button).
@@ -563,6 +615,46 @@ export function SummarySheetReport() {
   };
   const clearFilters = () => { setSearch(""); setFrom(""); setTo(""); setFirmFilter(""); setStatusFilter(""); setClosedFilter(""); setPartyFilter(""); setItemFilter(""); setErpFilter(""); };
   const toggleColumn = (columnIndex: number) => setVisibleColumns((current) => current.includes(columnIndex) ? current.filter((index) => index !== columnIndex) : [...current, columnIndex].sort((a, b) => a - b));
+  // Freeze: sticky-left for the first shown columns up to the chosen one (header and rows).
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  const frozenCount = useMemo(() => {
+    const limit = freezeColumn ? COLUMNS.indexOf(freezeColumn as (typeof COLUMNS)[number]) : -1;
+    return limit > 0 ? selectedColumns.filter((index) => index <= limit).length : 0;
+  }, [freezeColumn, selectedColumns]);
+  useEffect(() => {
+    const table = tableWrapRef.current?.querySelector("table");
+    if (!table) return;
+    const apply = () => {
+      table.querySelectorAll<HTMLTableCellElement>("[data-frozen]").forEach((cell) => {
+        cell.style.position = ""; cell.style.left = ""; cell.style.zIndex = ""; cell.style.boxShadow = "";
+        if (cell.dataset.frozen === "bg") cell.style.backgroundColor = "";
+        delete cell.dataset.frozen;
+      });
+      const headRow = table.tHead?.rows[table.tHead.rows.length - 1];
+      if (!frozenCount || !headRow) return;
+      const lefts: number[] = [];
+      let x = 0;
+      for (let i = 0; i < frozenCount && headRow.cells[i]; i += 1) { lefts.push(x); x += headRow.cells[i].getBoundingClientRect().width; }
+      const rows = [headRow, ...Array.from(table.tBodies[0]?.rows || [])];
+      rows.forEach((row) => {
+        if (row.cells.length < lefts.length) return; // e.g. the "no records" row
+        lefts.forEach((left, i) => {
+          const cell = row.cells[i];
+          const transparent = getComputedStyle(cell).backgroundColor === "rgba(0, 0, 0, 0)";
+          cell.dataset.frozen = transparent ? "bg" : "1";
+          if (transparent) cell.style.backgroundColor = "#ffffff";
+          cell.style.position = "sticky";
+          cell.style.left = `${left}px`;
+          cell.style.zIndex = row === headRow ? "4" : "2";
+          if (i === lefts.length - 1) cell.style.boxShadow = "2px 0 0 #000";
+        });
+      });
+    };
+    apply();
+    const observer = new ResizeObserver(() => apply());
+    observer.observe(table);
+    return () => observer.disconnect();
+  });
   if (!isAdmin && (userSetup.loaded && !userColumnNames || serverReport.failed)) {
     return <div className="space-y-4 pb-8">
       <h2 className="border-b border-black pb-3 text-xl font-bold uppercase">{pageTitle}</h2>
@@ -595,7 +687,8 @@ export function SummarySheetReport() {
       headerSlot,
     ) : null}
     {isAdmin && showTiles && !isPhone ? <div className="grid grid-cols-1 items-start gap-2 lg:grid-cols-2">{tiles.map((section) => <SummaryTileGroup key={section.id} section={section} />)}</div> : null}
-    <div data-mf-panel="true" className="relative z-40 grid grid-cols-2 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative col-span-2 xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option><option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button>{isAdmin ? <button type="button" onClick={() => setUserColumnsOpen(true)} className="rounded border border-black bg-indigo-700 px-3 py-2 font-bold text-white hover:bg-indigo-800">User Columns</button> : null}{isAdmin ? <details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{COLUMNS.length})</summary><div className="absolute right-0 z-50 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg"><div className="sticky -top-3 z-10 -mx-3 -mt-3 mb-2 flex gap-2 border-b border-black bg-white px-3 py-2"><button type="button" onClick={() => setVisibleColumns(COLUMNS.map((_, index) => index))} className="flex-1 rounded border-2 border-black bg-indigo-700 px-2 py-1 text-xs font-bold text-white hover:bg-indigo-800">Reset Columns</button><button type="button" onClick={() => setVisibleColumns([0, 1])} className="flex-1 rounded border-2 border-black bg-white px-2 py-1 text-xs font-bold hover:bg-slate-100">Hide All</button></div>{COLUMNS.map((column, index) => <label key={`${column}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{columnTitle(column)}</span></label>)}</div></details> : null}</div>
+    <div data-mf-panel="true" className="relative z-40 grid grid-cols-2 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative col-span-2 xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option><option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button>{isAdmin ? <button type="button" onClick={() => setUserColumnsOpen(true)} className="rounded border border-black bg-indigo-700 px-3 py-2 font-bold text-white hover:bg-indigo-800">User Columns</button> : null}<details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{pickableColumns.length})</summary><div className="absolute right-0 z-50 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg"><div className="sticky -top-3 z-10 -mx-3 -mt-3 mb-2 flex gap-2 border-b border-black bg-white px-3 py-2"><button type="button" onClick={() => setVisibleColumns(COLUMNS.map((_, index) => index))} className="flex-1 rounded border-2 border-black bg-indigo-700 px-2 py-1 text-xs font-bold text-white hover:bg-indigo-800">Reset Columns</button><button type="button" onClick={() => setVisibleColumns([0, 1])} className="flex-1 rounded border-2 border-black bg-white px-2 py-1 text-xs font-bold hover:bg-slate-100">Hide All</button></div>{pickableColumns.map((index) => <label key={`${COLUMNS[index]}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{columnTitle(COLUMNS[index])}</span></label>)}</div></details>
+<label className="flex items-center gap-2 rounded border border-black bg-white px-2 py-1 text-xs font-bold" title="Keep the first columns fixed while scrolling sideways">Freeze<select value={freezeColumn} onChange={(event) => setFreezeColumn(event.target.value)} className="min-w-0 flex-1 bg-transparent py-1 text-xs font-bold outline-none"><option value="">None</option>{FREEZE_OPTIONS.map((column) => <option key={column} value={column}>Up to {columnTitle(column)}</option>)}</select></label></div>
     {isAdmin && userColumnsOpen ? <SummaryUserColumnsDialog onClose={() => setUserColumnsOpen(false)} /> : null}
 {isPhone && isAdmin ? <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-slate-700">{rows.length.toLocaleString("en-IN")} jobs</span><div className="flex items-center gap-2"><button type="button" onClick={() => setPhoneTiles((value) => !value)} title={phoneTiles ? "Hide tiles" : "Show tiles"} aria-label={phoneTiles ? "Hide tiles" : "Show tiles"} aria-pressed={phoneTiles} className={`inline-flex h-8 w-8 items-center justify-center rounded border-2 border-black ${phoneTiles ? "bg-indigo-700 text-white" : "bg-white text-black"}`}>{phoneTiles ? <Eye size={16} /> : <EyeOff size={16} />}</button><button type="button" onClick={() => setPhoneTable((value) => !value)} className="rounded border-2 border-black bg-white px-3 py-1.5 text-xs font-bold">{phoneTable ? "Short table" : "Show full table"}</button></div></div> : null}
 {isPhone && isAdmin && phoneTiles ? <div className="grid grid-cols-1 items-start gap-2">{tiles.map((section) => <SummaryTileGroup key={section.id} section={section} />)}</div> : null}
@@ -613,7 +706,7 @@ export function SummarySheetReport() {
   <div className="max-h-[66vh] overflow-y-auto"><table className="w-full border-collapse text-xs"><tbody>{selectedColumns.filter((columnIndex) => columnIndex > 0 && COLUMNS[columnIndex] !== "Job Closed").map((columnIndex) => { const column = COLUMNS[columnIndex]; const value = s(valueForColumn(detailRow, columnIndex, 0)); return <tr key={column}><th className="w-[45%] border border-slate-300 bg-slate-50 px-2 py-1 text-left text-[10px] font-black uppercase text-slate-600">{columnTitle(column)}</th><td className={`border border-slate-300 px-2 py-1 font-semibold ${summarySheetCellClass(column, detailRow)}`}>{DOCUMENT_COLUMNS.has(column) && s(detailRow.__productionId) ? documentLink(column, detailRow) : value || "—"}</td></tr>; })}</tbody></table></div>
   {production && isAdmin ? <div className="flex justify-end gap-2 border-t-2 border-black px-3 py-2">{closed ? <button type="button" onClick={() => { uncloseJob(production.id); setDetailRow(null); }} className="rounded bg-amber-600 px-3 py-1.5 text-xs font-bold text-white">Unclose Job</button> : <button type="button" onClick={() => { closeJob(production.id); setDetailRow(null); }} className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white">Close Job</button>}</div> : null}
 </div></div>; })() : null}
-{showCards ? null : <div className="overflow-auto rounded border-2 border-black bg-white" {...(showAllRows ? { "data-disable-table-pagination": "true" } : {})}><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr>{selectedSections.map((section) => <th key={section.label} colSpan={section.columns.length} className="whitespace-nowrap border border-black bg-[#24165f] px-2 py-2 text-center font-black text-white">{section.label}</th>)}</tr><tr className="bg-[#0b4773] text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 font-black ${columnAlignment(COLUMNS[columnIndex])}`}>{columnIndex === 0 ? COLUMNS[columnIndex] : <SortHeader label={columnTitle(COLUMNS[columnIndex])} sortKey={COLUMNS[columnIndex]} sort={sort} onToggle={toggleSort} align={NUMERIC_COLUMNS.has(COLUMNS[columnIndex]) ? "right" : CENTER_COLUMNS.has(COLUMNS[columnIndex]) ? "center" : "left"} />}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => { const target = findRealizationTargetForDate(realizationTargets, row.Date)?.value; return <tr key={s(row.__productionId) || `${row["Job No."]}-${index}`}>{selectedColumns.map((columnIndex) => { const column = COLUMNS[columnIndex]; const rowColorClass = column === "Realization / kg" ? realizationCellClass(row[column], target) : summarySheetCellClass(column, row); return <td key={`${column}-${columnIndex}`} className={`${column === "Remarks" ? "min-w-[180px] max-w-[280px] whitespace-normal break-words" : "whitespace-nowrap"} border border-black px-2 py-2 ${columnAlignment(column)} ${rowColorClass}`}>{column === "Remarks" && isAdmin && s(row.__productionId) ? <RemarksCell productionId={s(row.__productionId)} value={s(row.Remarks)} onSaved={(id, text) => setRemarksOverrides((current) => ({ ...current, [id]: text }))} /> : column === "Job Closed" && !isAdmin ? (s(row["Job Closed"]) === "Yes" ? `Yes${s(row["Close Date"]) ? ` (${displayDate(row["Close Date"])})` : ""}` : "") : column === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <div><button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) uncloseJob(production.id); }} className="rounded bg-amber-600 px-2 py-1 font-bold text-white">Unclose Job</button></div> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : DOCUMENT_COLUMNS.has(column) && s(row.__productionId) ? documentLink(column, row) : column === "Total Dispatch" && s(valueForColumn(row, columnIndex, rowOffset + index)) ? <a href={`#/quality/pdi-report?job=${encodeURIComponent(s(row["Job No."]))}`} target="_blank" rel="noopener noreferrer" title="Open PDI report for this job" className="font-bold underline decoration-dotted underline-offset-2">{valueForColumn(row, columnIndex, rowOffset + index)}</a> : valueForColumn(row, columnIndex, rowOffset + index)}</td>; })}</tr>; }) : <tr><td colSpan={selectedColumns.length || 1} className="bg-[#eaf2f8] p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div>}
+{showCards ? null : <div ref={tableWrapRef} className="overflow-auto rounded border-2 border-black bg-white" {...(showAllRows ? { "data-disable-table-pagination": "true" } : {})}><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr>{selectedSections.map((section) => <th key={section.label} colSpan={section.columns.length} className="whitespace-nowrap border border-black bg-[#24165f] px-2 py-2 text-center font-black text-white">{section.label}</th>)}</tr><tr className="bg-[#0b4773] text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 font-black ${columnAlignment(COLUMNS[columnIndex])}`}>{columnIndex === 0 ? COLUMNS[columnIndex] : <SortHeader label={columnTitle(COLUMNS[columnIndex])} sortKey={COLUMNS[columnIndex]} sort={sort} onToggle={toggleSort} align={NUMERIC_COLUMNS.has(COLUMNS[columnIndex]) ? "right" : CENTER_COLUMNS.has(COLUMNS[columnIndex]) ? "center" : "left"} />}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => { const target = findRealizationTargetForDate(realizationTargets, row.Date)?.value; return <tr key={s(row.__productionId) || `${row["Job No."]}-${index}`}>{selectedColumns.map((columnIndex) => { const column = COLUMNS[columnIndex]; const rowColorClass = column === "Realization / kg" ? realizationCellClass(row[column], target) : summarySheetCellClass(column, row); return <td key={`${column}-${columnIndex}`} className={`${column === "Remarks" ? "min-w-[180px] max-w-[280px] whitespace-normal break-words" : "whitespace-nowrap"} border border-black px-2 py-2 ${columnAlignment(column)} ${rowColorClass}`}>{column === "Remarks" && isAdmin && s(row.__productionId) ? <RemarksCell productionId={s(row.__productionId)} value={s(row.Remarks)} onSaved={(id, text) => setRemarksOverrides((current) => ({ ...current, [id]: text }))} /> : column === "Job Closed" && !isAdmin ? (s(row["Job Closed"]) === "Yes" ? `Yes${s(row["Close Date"]) ? ` (${displayDate(row["Close Date"])})` : ""}` : "") : column === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <div><button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) uncloseJob(production.id); }} className="rounded bg-amber-600 px-2 py-1 font-bold text-white">Unclose Job</button></div> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : DOCUMENT_COLUMNS.has(column) && s(row.__productionId) ? documentLink(column, row) : column === "Total Dispatch" && s(valueForColumn(row, columnIndex, rowOffset + index)) ? <a href={`#/quality/pdi-report?job=${encodeURIComponent(s(row["Job No."]))}`} target="_blank" rel="noopener noreferrer" title="Open PDI report for this job" className="font-bold underline decoration-dotted underline-offset-2">{valueForColumn(row, columnIndex, rowOffset + index)}</a> : valueForColumn(row, columnIndex, rowOffset + index)}</td>; })}</tr>; }) : <tr><td colSpan={selectedColumns.length || 1} className="bg-[#eaf2f8] p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div>}
 {showAllRows && sortedRows.length ? <div ref={moreSentinel} className="flex items-center justify-center gap-3 py-2 text-xs font-bold text-slate-600"><span>Showing {Math.min(visibleCount, sortedRows.length).toLocaleString("en-IN")} of {sortedRows.length.toLocaleString("en-IN")} jobs</span>{hasMoreRows ? <button type="button" onClick={() => setVisibleCount((count) => count + 500)} className="rounded border-2 border-black bg-white px-3 py-1 text-xs font-bold text-black hover:bg-slate-100">Show more</button> : null}</div> : null}{showAllRows ? null : <ClientPagination page={page} pageSize={pageSize} totalItems={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
   </div>;
 }
