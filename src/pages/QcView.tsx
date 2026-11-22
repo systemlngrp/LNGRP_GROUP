@@ -151,7 +151,7 @@ export function QcView() {
   const clear = () => { setSearch(""); setJobFilter(""); setErpFilter(""); setPartyFilter(""); setItemFilter(""); setStatusFilter(""); setResultFilter(""); setFromDate(""); setToDate(""); setColumnSearch(""); };
   const hasFilters = Boolean(search.trim() || jobFilter || erpFilter || partyFilter || itemFilter || statusFilter || resultFilter || fromDate || toDate);
   return <div className="space-y-4">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black pb-3"><h2 className="text-xl font-bold uppercase tracking-tight text-black">QC View</h2>{canManageColumns ? <button type="button" onClick={() => setShowColumnPanel((value) => !value)} className="inline-flex h-[34px] items-center justify-center rounded border-2 border-black bg-white px-3 text-sm font-bold hover:bg-slate-100">Hide Columns</button> : null}</div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black pb-3"><h2 className="text-xl font-bold uppercase tracking-tight text-black">QC View</h2></div>
     <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
       <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input id="qc-view-search" type="text" aria-label="Search job, ERP, party, item or QC values" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" /></div>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
@@ -165,6 +165,7 @@ export function QcView() {
           <label className="min-w-0"><span className={LABEL}>Job From Date</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} className={DATE_INPUT} /></label>
           <label className="min-w-0"><span className={LABEL}>Job To Date</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} className={DATE_INPUT} /></label>
         </div>
+        {canManageColumns ? <div className="flex min-w-0 items-end"><button type="button" onClick={() => setShowColumnPanel((value) => !value)} aria-expanded={showColumnPanel} className={`h-[34px] w-full rounded border-2 px-3 text-xs font-bold ${showColumnPanel ? "border-indigo-700 bg-indigo-700 text-white" : "border-black bg-white text-black hover:bg-slate-100"}`}>Columns ({visible.length}/{COLUMNS.length})</button></div> : null}
       </div>
       <div data-mf-actions="true" className="flex justify-end gap-2">
         {hasFilters ? <button type="button" onClick={clear} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button> : null}
