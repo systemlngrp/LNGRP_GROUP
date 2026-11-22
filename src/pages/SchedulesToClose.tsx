@@ -35,6 +35,8 @@ type ScheduleRow = {
   // Part of this schedule's pending already covered by extra invoicing on the group's other schedules.
   suggestedCancel: number;
   action: Action;
+  // Why this action: the item's totals, which schedules were over-invoiced, and how much of this one they cover.
+  reason: string;
 };
 
 const num = (value: unknown) => Number(value) || 0;
@@ -90,7 +92,7 @@ export function SchedulesToClose() {
       }
     }
 
-    type Base = Omit<ScheduleRow, "groupNetPending" | "suggestedCancel" | "action"> & { groupKey: string };
+    type Base = Omit<ScheduleRow, "groupNetPending" | "suggestedCancel" | "action" | "reason"> & { groupKey: string };
     const groups = new Map<string, Base[]>();
     for (const schedule of schedules) {
       const scheduledDate = String(schedule.scheduledDate || "").slice(0, 10);
@@ -132,14 +134,42 @@ export function SchedulesToClose() {
       const groupSchedulePending = list.reduce((sum, row) => sum + row.schedulePending, 0);
       if (groupSchedulePending <= 0) continue;
       // Covered quantity goes to the oldest pending schedules first.
-      let covered = Math.max(groupSchedulePending - Math.max(groupNetPending, 0), 0);
+      const totalCovered = Math.max(groupSchedulePending - Math.max(groupNetPending, 0), 0);
+      let covered = totalCovered;
+      const fmt = (value: number) => value.toLocaleString("en-IN");
+      const sumOf = (pick: (row: Base) => number) => list.reduce((sum, row) => sum + pick(row), 0);
+      const totalScheduled = sumOf((row) => row.scheduledQty);
+      const totalCancelled = sumOf((row) => row.canceledQty);
+      const totalInvoiced = sumOf((row) => row.invoicedQty);
+      const needed = totalScheduled - totalCancelled;
+      const overInvoiced = list
+        .map((row) => ({ row, extra: row.invoicedQty - (row.scheduledQty - row.canceledQty) }))
+        .filter(({ extra }) => extra > 0)
+        .sort((a, b) => a.row.scheduledDate.localeCompare(b.row.scheduledDate));
+      const overText = overInvoiced.length
+        ? overInvoiced.map(({ row, extra }) => `Order ${row.orderNo} (${formatDate(row.scheduledDate)}) +${fmt(extra)}`).join(", ")
+        : "";
+      const totalsText = `This item for this customer, all ${list.length} schedules before 17-11-2026: scheduled ${fmt(totalScheduled)} - cancelled ${fmt(totalCancelled)} = needed ${fmt(needed)}; invoiced ${fmt(totalInvoiced)}; net pending ${fmt(groupNetPending)}.`;
       const pending = list.filter((row) => row.schedulePending > 0).sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
       for (const row of pending) {
+        const coveredBefore = totalCovered - covered;
         const suggestedCancel = Math.min(row.schedulePending, covered);
         covered -= suggestedCancel;
         const action: Action = suggestedCancel >= row.schedulePending ? "Close" : suggestedCancel > 0 ? "Partly Close" : "Review";
+        const extraText = overText ? ` Extra invoiced on other schedules: ${overText} = ${fmt(totalCovered)} already supplied` : "";
+        const olderText = coveredBefore > 0 ? `; ${fmt(coveredBefore)} of it covers older pending schedules first` : "";
+        let reason: string;
+        if (action === "Close") {
+          reason = `${totalsText}${extraText}${olderText}. This schedule's pending ${fmt(row.schedulePending)} is fully covered by that extra quantity, so nothing is really owed on it: cancel ${fmt(suggestedCancel)}.`;
+        } else if (action === "Partly Close") {
+          reason = `${totalsText}${extraText}${olderText}. Only ${fmt(suggestedCancel)} of this schedule's pending ${fmt(row.schedulePending)} is covered: cancel ${fmt(suggestedCancel)}; ${fmt(row.schedulePending - suggestedCancel)} is really pending.`;
+        } else if (totalCovered > 0) {
+          reason = `${totalsText}${extraText}, all used on older pending schedules. This schedule's pending ${fmt(row.schedulePending)} is not covered: really pending, do not cancel without confirming with the customer.`;
+        } else {
+          reason = `${totalsText} No schedule of this item was over-invoiced, so nothing covers this schedule's pending ${fmt(row.schedulePending)}: really pending, do not cancel without confirming with the customer.`;
+        }
         const { groupKey: _groupKey, ...rest } = row;
-        result.push({ ...rest, groupNetPending, suggestedCancel, action });
+        result.push({ ...rest, groupNetPending, suggestedCancel, action, reason });
       }
     }
     return result.sort((a, b) =>
@@ -153,7 +183,7 @@ export function SchedulesToClose() {
     return rows.filter((row) => {
       if (actionFilter && row.action !== actionFilter) return false;
       if (words.length === 0) return true;
-      const text = rowSearchText([row.firmName, row.companyName, row.itemName, row.itemErp, row.orderNo, row.scheduleNo, formatDate(row.scheduledDate), row.action]);
+      const text = rowSearchText([row.firmName, row.companyName, row.itemName, row.itemErp, row.orderNo, row.scheduleNo, formatDate(row.scheduledDate), row.action, row.reason]);
       return words.every((word) => text.includes(word));
     });
   }, [rows, searchTerm, actionFilter]);
@@ -192,6 +222,7 @@ export function SchedulesToClose() {
       "Customer + Item Net Pending": row.groupNetPending,
       "Qty to Cancel": row.suggestedCancel,
       Action: row.action,
+      Reason: row.reason,
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -274,11 +305,12 @@ export function SchedulesToClose() {
               <th className="border border-black bg-slate-200 px-2 py-2 text-right"><SortHeader label="Cust + Item Net Pending" sortKey="groupNetPending" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="border border-black bg-emerald-50 px-2 py-2 text-right"><SortHeader label="Qty to Cancel" sortKey="suggestedCancel" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="border border-black px-2 py-2 text-left"><SortHeader label="Action" sortKey="action" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-2 py-2 text-left">Reason</th>
             </tr>
           </thead>
           <tbody>
             {paginatedItems.length === 0 ? (
-              <tr><td colSpan={14} className="border border-black px-3 py-6 text-center text-slate-500">No open schedules.</td></tr>
+              <tr><td colSpan={15} className="border border-black px-3 py-6 text-center text-slate-500">No open schedules.</td></tr>
             ) : (
               paginatedItems.map((row, index) => (
                 <tr key={row.id} className="hover:bg-slate-50">
@@ -296,6 +328,7 @@ export function SchedulesToClose() {
                   <td className={`border border-black px-3 py-2 text-right font-bold ${row.groupNetPending <= 0 ? "text-emerald-700" : "text-red-700"}`}>{row.groupNetPending.toLocaleString()}</td>
                   <td className="border border-black px-3 py-2 text-right font-bold text-emerald-800">{row.suggestedCancel.toLocaleString()}</td>
                   <td className="border border-black px-3 py-2"><span className={`rounded px-2 py-0.5 font-bold ${actionClass(row.action)}`}>{row.action}</span></td>
+                  <td className="min-w-[420px] border border-black px-3 py-2 text-[11px] leading-snug text-slate-700">{row.reason}</td>
                 </tr>
               ))
             )}
