@@ -7,6 +7,7 @@ import { upsertFgLinkedChildSlip } from "../lib/linkedLoadingSlipSync";
 import { buildPhpPlateStockAlertMessage, getPhpPlateStockShortages } from "../lib/phpPlateStockValidation";
 import { DirectLoadingSlipModal } from "../components/DirectLoadingSlipModal";
 import { usePhpPlateReceipts } from "../hooks/usePhpPlateReceipts";
+import { isMeghaTrading } from "../lib/scrapSales";
 
 // Direct Loading Slip as its own form page (moved out of Loading Master).
 // Saving works exactly as the Loading Master button did.
@@ -27,6 +28,18 @@ export function DirectLoadingSlip() {
   const [plateLoadingSlips, setPlateLoadingSlips] = useData<LoadingSlip>("plate_loading_slips", []);
   const { resolveOrderItem, itemsBySource, allItems } = useOrderItemCatalog();
   const [formKey, setFormKey] = useState(0);
+  // Last rate per item on Megha Trading (scrap) slips, newest slip first.
+  const lastScrapRates = React.useMemo(() => {
+    const rates: Record<string, number> = {};
+    [...loadingSlips]
+      .filter((slip) => slip.status !== "Cancelled" && isMeghaTrading(slip.companyName))
+      .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
+      .forEach((slip) => (slip.lines || []).forEach((line) => {
+        const rate = Number(line.rate || 0);
+        if (line.itemId && rate > 0 && rates[line.itemId] === undefined) rates[line.itemId] = rate;
+      }));
+    return rates;
+  }, [loadingSlips]);
 
   const saveDirectSlip = async ({ slip, phpDetails, plateDetails }: { slip: LoadingSlip; phpDetails: LoadingSlip["phpDetails"]; plateDetails: LoadingSlip["plateDetails"] }) => {
     try {
@@ -91,6 +104,7 @@ export function DirectLoadingSlip() {
         phpItems={itemsBySource.PHP || []}
         plateItems={itemsBySource.PLATE || []}
         resolveOrderItem={resolveOrderItem}
+        lastScrapRates={lastScrapRates}
         onClose={() => navigate("/loading/master")}
         onSave={saveDirectSlip}
       />

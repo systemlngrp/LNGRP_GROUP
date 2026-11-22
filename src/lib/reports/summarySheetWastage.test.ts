@@ -29,3 +29,22 @@ test("Total Wastage % = corrugated scrap sold to Megha Trading ÷ paper used × 
   const noExtras = computeSummarySheetSections(rows as any, [], { from: "2026-11-01", to: "2026-11-30" }, null).flatMap((section) => section.tiles);
   assert.equal(noExtras.find((t) => t.id === "totalWastage")?.value, null);
 });
+
+test("Megha Direct Loading Slips count on the slip date; their invoices are not counted again", () => {
+  const lists = {
+    companies: [{ id: "m", name: "M/S MEGHA TRADING" }],
+    firms: [{ id: "f1", firmName: "Unit-I" }],
+    slips: [
+      { id: "s1", companyId: "m", firmId: "f1", date: "2026-11-16", status: "Active", lines: [{ itemName: "CORRUGATED WASTAGE SCRAP", loadedQty: 3070 }] },
+      { id: "s2", companyId: "m", firmId: "f1", date: "2026-11-17", status: "Cancelled", lines: [{ itemName: "CORRUGATED WASTAGE SCRAP", loadedQty: 9999 }] },
+      { id: "s3", companyId: "m", firmId: "f1", date: "2026-11-18", status: "Active", lines: [{ itemName: "WASTAGE SCRAP CORE PIPE", loadedQty: 6000 }] },
+    ],
+    invoices: [{ id: "i1", companyId: "m", firmId: "f1", date: "2026-11-20" }, { id: "i0", companyId: "m", firmId: "f1", date: "2026-11-02" }],
+    invoiceLines: [
+      { invoiceId: "i1", loadingSlipId: "s1", itemName: "CORRUGATED WASTAGE SCRAP", qty: "3070" },
+      { invoiceId: "i0", itemName: "CORRUGATED WASTAGE SCRAP", qty: "3420" },
+    ],
+  };
+  const extras = computeSummarySheetExtras(lists, []);
+  assert.deepEqual(extras.scrapSales?.map((record) => [record[0], record[5]]), [["2026-11-16", 3070], ["2026-11-02", 3420]]);
+});

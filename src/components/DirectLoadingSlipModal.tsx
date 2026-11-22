@@ -4,6 +4,7 @@ import type { OrderCatalogItem } from "../lib/orderItems";
 import { buildLinkedLoadingDetailsFromSlip } from "../lib/linkedLoading";
 import { normalizeTruckStatus } from "../lib/truckStatus";
 import { Select } from "./Select";
+import { isFirmOne, isMeghaTrading, isScrapItem } from "../lib/scrapSales";
 import { X, Plus, Trash2 } from "lucide-react";
 
 type Props = {
@@ -17,6 +18,8 @@ type Props = {
   phpItems: OrderCatalogItem[];
   plateItems: OrderCatalogItem[];
   resolveOrderItem: (order?: Partial<Order> | null) => OrderCatalogItem | undefined;
+  /** Last rate per scrap item (item id) on Megha Trading slips, to prefill Rate. */
+  lastScrapRates?: Record<string, number>;
   onClose: () => void;
   /** "page": shown inline as a form page (no overlay, Clear instead of Cancel). */
   variant?: "modal" | "page";
@@ -65,6 +68,7 @@ export function DirectLoadingSlipModal({
   phpItems,
   plateItems,
   resolveOrderItem,
+  lastScrapRates = {},
   onClose,
   onSave,
   variant = "modal",
@@ -74,6 +78,17 @@ export function DirectLoadingSlipModal({
   const [isSaving, setIsSaving] = useState(false);
   const company = useMemo(() => companies.find((row) => row.id === draft.companyId), [companies, draft.companyId]);
   const firm = useMemo(() => firms.find((row) => row.id === draft.firmId), [firms, draft.firmId]);
+  // Scrap sale to Megha Trading: Firm 1 (Unit-I), scrap items only, no packing.
+  const scrapSale = isMeghaTrading(company?.name);
+  const firmOne = useMemo(() => firms.find((row) => isFirmOne(row)), [firms]);
+  const selectCompany = (value: string) => {
+    const next = companies.find((row) => row.id === value);
+    setDraft((prev) => {
+      if (!isMeghaTrading(next?.name)) return { ...prev, companyId: value };
+      const keepItem = allItems.find((row) => row.id === prev.itemId && isScrapItem(row));
+      return { ...prev, companyId: value, firmId: firmOne?.id || prev.firmId, itemId: keepItem ? prev.itemId : "", rate: keepItem ? prev.rate : "", packingDetails: [makePacking()] };
+    });
+  };
   const firmOptions = useMemo(
     () => [...firms].map((row) => ({ value: row.id, label: row.shortName || row.firmName || row.id }))
       .sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" })),
@@ -101,12 +116,12 @@ export function DirectLoadingSlipModal({
   );
   const itemOptions = useMemo(
     () =>
-      sortedItems.map((row) => ({
+      sortedItems.filter((row) => !scrapSale || isScrapItem(row)).map((row) => ({
         value: row.id,
         label: `[${row.source}] ${row.name}${row.erp ? ` | ERP ${row.erp}` : ""}`,
         searchText: `${row.name} ${row.erp} ${row.source} ${row.companyName}`,
       })),
-    [sortedItems]
+    [sortedItems, scrapSale]
   );
   const item = useMemo(() => allItems.find((row) => row.id === draft.itemId), [allItems, draft.itemId]);
   const availableTrucks = useMemo(
@@ -249,6 +264,7 @@ export function DirectLoadingSlipModal({
                         value={draft.firmId}
                         onChange={(value) => setDraft((prev) => ({ ...prev, firmId: value }))}
                         placeholder="Select Firm"
+                        disabled={scrapSale && Boolean(firmOne)}
                       />,
                       true
                     )}
@@ -272,7 +288,7 @@ export function DirectLoadingSlipModal({
                       <Select
                         options={companyOptions}
                         value={draft.companyId}
-                        onChange={(value) => setDraft((prev) => ({ ...prev, companyId: value }))}
+                        onChange={selectCompany}
                         placeholder="Select Company"
                       />,
                       true
@@ -291,7 +307,7 @@ export function DirectLoadingSlipModal({
                           setDraft((prev) => ({
                             ...prev,
                             itemId: value,
-                            rate: selectedItem?.rate ?? "",
+                            rate: (scrapSale && lastScrapRates[value]) || (selectedItem?.rate ?? ""),
                           }));
                         }}
                         placeholder="Select Item"
@@ -357,7 +373,8 @@ export function DirectLoadingSlipModal({
             </div>
           </div>
 
-          <div className="rounded border border-black p-4">
+          {scrapSale ? <div className="rounded border border-black bg-amber-50 p-3 text-xs font-bold">Scrap sale to Megha Trading: Firm 1 only, Loaded Qty in kg, no packing details.</div> : null}
+          <div className={scrapSale ? "hidden" : "rounded border border-black p-4"}>
             <div className="mb-3 flex items-center justify-between">
               <h4 className="text-sm font-black uppercase">Packing Details</h4>
               <button

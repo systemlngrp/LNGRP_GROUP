@@ -1,4 +1,6 @@
 import { n, s, isoDateText } from "./summarySheet";
+import { isCorrugatedScrap, isMeghaTrading } from "../scrapSales";
+export { isCorrugatedScrap } from "../scrapSales";
 import type { SummaryRow } from "./summarySheet";
 
 /** Local yyyy-mm-dd for a date shifted by `days`. */
@@ -476,21 +478,27 @@ export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems
     .filter((item) => n(item.balance) > 0)
     .map((item) => ["", s(item.firmName), "", s(item.name || item.itemName), s(item.erp || item.erpCode), round(n(item.balance))] as ExtraRecord);
   // Scrap sold to Megha Trading (corrugated wastage scrap only; core pipe scrap is left out).
-  const meghaIds = new Set((lists.companies || []).filter((company) => /megha\s*trading/i.test(s(company.name || company.companyName))).map((company) => String(company.id)));
-  const scrapInvoices = new Map(invoiceRows
-    .filter((invoice) => meghaIds.has(String(invoice.companyId)) || /megha\s*trading/i.test(s(invoice.companyName)))
-    .map((invoice) => [String(invoice.id), invoice]));
-  const scrapSales: ExtraRecord[] = (lists.invoiceLines || [])
-    .filter((line) => scrapInvoices.has(String(line.invoiceId)) && isCorrugatedScrap(line.itemName))
-    .map((line) => {
-      const invoice = scrapInvoices.get(String(line.invoiceId));
-      return [isoDateText(invoice.date), firmName.get(String(invoice.firmId)) || "", "", "", "", round(n(line.qty))] as ExtraRecord;
-    });
+  // Direct Loading Slips count on the slip date (the day the load leaves); invoice lines count
+  // on the invoice date only when they are not linked to a Megha slip (older loads), so no load counts twice.
+  const meghaIds = new Set((lists.companies || []).filter((company) => isMeghaTrading(company.name || company.companyName)).map((company) => String(company.id)));
+  const isMegha = (record: any) => meghaIds.has(String(record.companyId)) || isMeghaTrading(record.companyName);
+  const meghaSlips = slips.filter(isMegha);
+  const meghaSlipIds = new Set(meghaSlips.map((slip) => String(slip.id)));
+  const scrapSales: ExtraRecord[] = [];
+  meghaSlips.forEach((slip) => (slip.lines || []).forEach((line: any) => {
+    if (!isCorrugatedScrap(line?.itemName)) return;
+    scrapSales.push([isoDateText(slip.date), firmName.get(String(slip.firmId)) || "", "", "", "", round(n(line?.loadedQty))]);
+  }));
+  const scrapInvoices = new Map(invoiceRows.filter(isMegha).map((invoice) => [String(invoice.id), invoice]));
+  (lists.invoiceLines || []).forEach((line) => {
+    const invoice = scrapInvoices.get(String(line.invoiceId));
+    if (!invoice || !isCorrugatedScrap(line.itemName)) return;
+    if (meghaSlipIds.has(String(line.loadingSlipId || invoice.loadingSlipId || ""))) return; // counted from its slip
+    scrapSales.push([isoDateText(invoice.date), firmName.get(String(invoice.firmId)) || "", "", "", "", round(n(line.qty))]);
+  });
   return { version: 2, scrapSales, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
 }
 
-/** Corrugated wastage scrap (not core pipe scrap). */
-export const isCorrugatedScrap = (itemName: unknown) => /scrap/i.test(s(itemName)) && !/core\s*pipe/i.test(s(itemName));
 
 /** Filters that apply to the extra records (party / item / ERP only where the record has them). */
 export type TileFilters = { firm: string; party: string; item: string; erp: string };
