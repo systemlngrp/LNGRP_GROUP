@@ -4066,9 +4066,10 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             ? customerOrderRate
             : Number(sourceRecord.rate || production.rate || 0);
         const rate = Number((baseRate * interFirmRatePercent / 100).toFixed(2));
-        // Inter-firm transfers use the fixed internal GST rate, independent of
-        // the customer order/item GST configuration. Manual MRRs are unaffected.
-        const gstRate = 18;
+        // GST rate: the Unit-I -> Unit-II transfer takes it from Corrugated Boards
+        // in Material Master (owner, 23-Nov-2026: not hard coded). The Printing ->
+        // LNKI transfer keeps the internal 18% until its item master has GST rates.
+        let gstRate = 18;
         // Unit-I's output is corrugated board, not the customer's finished box.
         // The Unit-I -> Unit-II documents (issue, MRR, invoice) therefore carry
         // the Corrugated Boards material, while the job's own NPD stays on the
@@ -4079,11 +4080,16 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
         let docNpdId = jobNpdId;
         let docUom = String(sourceRecord.uom || production.uom || "");
         if (normalizedMachine === "Corrugation Liner") {
-            const [boardRows] = await conn.query("SELECT id, uom FROM `materials` WHERE TRIM(erpCode) = ? AND COALESCE(active, 'Yes') <> 'No' LIMIT 1", [CORRUGATED_BOARD_ERP]);
+            const [boardRows] = await conn.query("SELECT id, uom, gstRate FROM `materials` WHERE TRIM(erpCode) = ? AND COALESCE(active, 'Yes') <> 'No' LIMIT 1", [CORRUGATED_BOARD_ERP]);
             const board = boardRows[0];
             if (!board?.id) {
                 throw new Error(`Corrugated Boards material (ERP ${CORRUGATED_BOARD_ERP}) is missing in Material Master; inter-firm transfer cannot be created.`);
             }
+            const boardGstRate = Number(board.gstRate);
+            if (!Number.isFinite(boardGstRate) || boardGstRate <= 0 || boardGstRate > 100) {
+                throw new Error(`GST Rate of Corrugated Boards (ERP ${CORRUGATED_BOARD_ERP}) is not set in Material Master; set it there, then save this entry again.`);
+            }
+            gstRate = boardGstRate;
             docItemId = String(board.id);
             docItemSource = "MATERIAL";
             docNpdId = null;
