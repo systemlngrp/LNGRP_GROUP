@@ -6653,6 +6653,37 @@ async function correctLnkiInterFirmInvoicesGstTo5(db) {
         conn.release();
     }
 }
+async function fillPhpItemGstRateFivePercent(db) {
+    // One-time (23-Nov-2026, asked by the owner): PHP items go with the boxes
+    // and are billed at 5% GST, so every PHP item with no GST Rate gets 5%.
+    const migrationKey = "migration/fill-php-item-gst-rate-5-v1";
+    const conn = await db.getConnection();
+    try {
+        const [markerRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [migrationKey]);
+        if (markerRows.length)
+            return { changed: 0, alreadyApplied: true };
+        const where = "(gstRate IS NULL OR gstRate = 0)";
+        await conn.query("DROP TABLE IF EXISTS php_item_master_gst_backup_20261123");
+        await conn.query(`CREATE TABLE php_item_master_gst_backup_20261123 AS SELECT id, itemId, erpItemCode, gstRate FROM php_item_master WHERE ${where}`);
+        await conn.beginTransaction();
+        const [result] = await conn.query(`UPDATE php_item_master SET gstRate = 5 WHERE ${where}`);
+        const changed = Number(result?.affectedRows || 0);
+        await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)", [migrationKey, changed]);
+        await conn.commit();
+        console.log(`[DB] PHP Item Master GST Rate set to 5% on ${changed} items.`);
+        return { changed, alreadyApplied: false };
+    }
+    catch (error) {
+        try {
+            await conn.rollback();
+        }
+        catch { }
+        throw error;
+    }
+    finally {
+        conn.release();
+    }
+}
 async function fillNpdGstRateFivePercent(db) {
     // One-time (23-Nov-2026, asked by the owner): corrugated boxes and scrap are
     // billed at 5% GST, so every NPD item with no GST Rate gets 5%. Items can then
@@ -10971,6 +11002,12 @@ async function initDb(retries = 5) {
             }
             catch (err) {
                 console.warn("[DB] LNKI inter-firm GST correction failed:", err.message);
+            }
+            try {
+                await fillPhpItemGstRateFivePercent(db);
+            }
+            catch (err) {
+                console.warn("[DB] PHP Item Master GST Rate fill failed:", err.message);
             }
             try {
                 await realignJobCounterAfterRenumberedMigration(db);
