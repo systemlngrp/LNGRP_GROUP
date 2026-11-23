@@ -18,6 +18,7 @@ import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { rowSearchText, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
+import { useAuth } from "../auth/AuthContext";
 
 type SelectOption = {
   value: string;
@@ -73,6 +74,12 @@ export function ScheduledOrdersMaster({ pendingOnly: pendingOnlyProp = false, ne
   const [cancelInputs, setCancelInputs] = useState<Record<string, string>>({});
   const [cancelErrors, setCancelErrors] = useState<Record<string, string>>({});
   const [savingCancelId, setSavingCancelId] = useState<string | null>(null);
+  const { user } = useAuth();
+  // Update Schedule Date form (prepone / postpone). Opened by clicking a Sch. Date.
+  const [dateEdit, setDateEdit] = useState<null | { id: string; scheduleNo: string; orderNo: string; orderDate: string; companyName: string; itemName: string; current: string }>(null);
+  const [newScheduleDate, setNewScheduleDate] = useState("");
+  const [dateEditError, setDateEditError] = useState("");
+  const [savingScheduleDate, setSavingScheduleDate] = useState(false);
 
   const firmMap = useMemo(
     () => new Map(firms.map((firm) => [firm.id, getFirmDisplayName(firm)])), 
@@ -172,6 +179,7 @@ export function ScheduledOrdersMaster({ pendingOnly: pendingOnlyProp = false, ne
         ...s,
         scheduleNo: s.scheduleNo || "-",
         orderNo: order?.orderNo || "-",
+        orderDate: String(order?.orderDate || "").slice(0, 10),
         firmName: getFirmName(s, order),
         firmId: String(s.firmId || order?.firmId || ""),
         companyId: company?.id || "",
@@ -315,6 +323,41 @@ export function ScheduledOrdersMaster({ pendingOnly: pendingOnlyProp = false, ne
   const toggleSort = (key: string) => {
     toggle(key);
     setPage(1);
+  };
+
+  const openScheduleDateForm = (s: { id: string; scheduleNo: string; orderNo: string; orderDate?: string; companyName: string; itemName: string; scheduledDate: string }) => {
+    const current = String(s.scheduledDate || "").slice(0, 10);
+    setDateEdit({ id: s.id, scheduleNo: s.scheduleNo, orderNo: s.orderNo, orderDate: String(s.orderDate || ""), companyName: s.companyName, itemName: s.itemName, current });
+    setNewScheduleDate(current);
+    setDateEditError("");
+  };
+
+  const handleSaveScheduleDate = async () => {
+    if (!dateEdit) return;
+    const next = newScheduleDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) { setDateEditError("Select the new Scheduled Date."); return; }
+    if (next === dateEdit.current) { setDateEditError("The new date is the same as the current Scheduled Date."); return; }
+    if (dateEdit.orderDate && next < dateEdit.orderDate) { setDateEditError(`Scheduled Date cannot be before the Order Date ${formatDate(dateEdit.orderDate)}.`); return; }
+    setSavingScheduleDate(true);
+    setDateEditError("");
+    try {
+      const timestamp = new Date().toISOString();
+      // The server checks the date rule (Order Date <= Scheduled Date, and the
+      // schedule's existing jobs may be at most 2 days before it) and rejects otherwise.
+      await setSchedules((prev) =>
+        prev.map((schedule) =>
+          schedule.id === dateEdit.id
+            ? { ...schedule, scheduledDate: next, updatedBy: user?.name || user?.email || "System User", updateTimestamp: timestamp }
+            : schedule,
+        ),
+      );
+      setDateEdit(null);
+    } catch (error) {
+      console.error("Failed to update Scheduled Date:", error);
+      setDateEditError((error as Error)?.message || "Failed to update Scheduled Date.");
+    } finally {
+      setSavingScheduleDate(false);
+    }
   };
 
   const handleCancelInputChange = (scheduleId: string, value: string) => {
@@ -524,7 +567,16 @@ export function ScheduledOrdersMaster({ pendingOnly: pendingOnlyProp = false, ne
               {paginatedSchedules.map((s, idx) => (
                 <tr key={s.id} className="hover:bg-slate-50 divide-x divide-black transition-colors">
                   <td className="px-3 py-2 border border-black text-slate-500">{(page - 1) * pageSize + idx + 1}</td>
-                  <td className="px-3 py-2 border border-black whitespace-nowrap font-medium">{formatDate(s.scheduledDate)}</td>
+                  <td className="px-3 py-2 border border-black whitespace-nowrap font-medium">
+                    <button
+                      type="button"
+                      onClick={() => openScheduleDateForm(s)}
+                      className="font-medium text-indigo-700 underline decoration-dotted underline-offset-2 hover:text-indigo-900"
+                      title="Click to update the Scheduled Date (prepone / postpone)"
+                    >
+                      {formatDate(s.scheduledDate)}
+                    </button>
+                  </td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap font-bold text-indigo-700">{s.scheduleNo}</td>
                   <td className="px-3 py-2 border border-black font-bold text-black">{s.orderNo}</td>
                   <td className="px-3 py-2 border border-black min-w-[130px] max-w-[200px] whitespace-normal break-words leading-snug font-semibold" title={s.firmName}>{s.firmName}</td>
@@ -620,6 +672,52 @@ export function ScheduledOrdersMaster({ pendingOnly: pendingOnlyProp = false, ne
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+      {dateEdit ? (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Update Schedule Date">
+          <div className="w-full max-w-md rounded border-2 border-black bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-black px-4 py-3">
+              <h3 className="text-sm font-black uppercase tracking-wide text-black">Update Schedule Date</h3>
+              <button type="button" onClick={() => setDateEdit(null)} className="text-lg font-bold leading-none text-slate-500 hover:text-black" aria-label="Close">×</button>
+            </div>
+            <div className="space-y-3 px-4 py-4 text-sm">
+              {[
+                ["Schedule No", dateEdit.scheduleNo],
+                ["Order No", dateEdit.orderNo],
+                ["Order Date", dateEdit.orderDate ? formatDate(dateEdit.orderDate) : "-"],
+                ["Customer", dateEdit.companyName],
+                ["Item", dateEdit.itemName],
+                ["Current Scheduled Date", dateEdit.current ? formatDate(dateEdit.current) : "-"],
+              ].map(([label, value]) => (
+                <label key={label} className="block">
+                  <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">{label}</span>
+                  <input type="text" value={value} readOnly className="w-full rounded border border-black bg-slate-100 px-2 py-1.5 text-sm text-slate-700" />
+                </label>
+              ))}
+              <label className="block">
+                <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">New Scheduled Date</span>
+                <input
+                  type="date"
+                  value={newScheduleDate}
+                  min={dateEdit.orderDate || undefined}
+                  onChange={(event) => { setNewScheduleDate(event.target.value); setDateEditError(""); }}
+                  className="w-full rounded border-2 border-black bg-yellow-50 px-2 py-1.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-600"
+                />
+              </label>
+              {newScheduleDate && dateEdit.current && newScheduleDate !== dateEdit.current ? (
+                <p className="text-xs font-bold text-indigo-700">
+                  {newScheduleDate < dateEdit.current ? "Preponed" : "Postponed"} from {formatDate(dateEdit.current)} to {formatDate(newScheduleDate)}.
+                </p>
+              ) : null}
+              <p className="text-[11px] text-slate-500">The new date cannot be before the Order Date, and the schedule's existing jobs can be at most 2 days before it.</p>
+              {dateEditError ? <p className="rounded border border-red-600 bg-red-50 px-2 py-1.5 text-xs font-bold text-red-700">{dateEditError}</p> : null}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-black px-4 py-3">
+              <button type="button" onClick={() => setDateEdit(null)} disabled={savingScheduleDate} className="rounded border border-black bg-white px-3 py-1.5 text-xs font-bold text-black hover:bg-slate-100 disabled:opacity-50">Cancel</button>
+              <button type="button" onClick={() => void handleSaveScheduleDate()} disabled={savingScheduleDate} className="rounded bg-indigo-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-800 disabled:opacity-50">{savingScheduleDate ? "Saving..." : "Update"}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
