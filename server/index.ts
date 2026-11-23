@@ -7074,23 +7074,29 @@ async function correctLnkiInterFirmInvoicesGstTo5(db: mysql.Pool) {
   }
 }
 
-async function fillPhpItemGstRateFivePercent(db: mysql.Pool) {
-  // One-time (23-Nov-2026, asked by the owner): PHP items go with the boxes
-  // and are billed at 5% GST, so every PHP item with no GST Rate gets 5%.
-  const migrationKey = "migration/fill-php-item-gst-rate-5-v1";
+async function setPhpItemGstRateEighteenPercent(db: mysql.Pool) {
+  // One-time (23-Nov-2026, owner's decision): PHP Item Master GST Rate is 18%.
+  // Sets 18% on every PHP item with no rate, and on the items an earlier
+  // same-day 5% fill changed (listed in php_item_master_gst_backup_20261123,
+  // if that ran). Rates typed in by users are left alone.
+  const migrationKey = "migration/set-php-item-gst-rate-18-v1";
   const conn = await db.getConnection();
   try {
     const [markerRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [migrationKey]);
     if ((markerRows as any[]).length) return { changed: 0, alreadyApplied: true };
-    const where = "(gstRate IS NULL OR gstRate = 0)";
-    await conn.query("DROP TABLE IF EXISTS php_item_master_gst_backup_20261123");
-    await conn.query(`CREATE TABLE php_item_master_gst_backup_20261123 AS SELECT id, itemId, erpItemCode, gstRate FROM php_item_master WHERE ${where}`);
+    const [backupRows] = await conn.query("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'php_item_master_gst_backup_20261123'");
+    const hasFiveBackup = Number((backupRows as any[])[0]?.n || 0) > 0;
+    const where = hasFiveBackup
+      ? "(gstRate IS NULL OR gstRate = 0 OR (gstRate = 5 AND id IN (SELECT id FROM php_item_master_gst_backup_20261123)))"
+      : "(gstRate IS NULL OR gstRate = 0)";
+    await conn.query("DROP TABLE IF EXISTS php_item_master_gst18_backup_20261123");
+    await conn.query(`CREATE TABLE php_item_master_gst18_backup_20261123 AS SELECT id, itemId, erpItemCode, gstRate FROM php_item_master WHERE ${where}`);
     await conn.beginTransaction();
-    const [result] = await conn.query(`UPDATE php_item_master SET gstRate = 5 WHERE ${where}`);
+    const [result] = await conn.query("UPDATE php_item_master p JOIN php_item_master_gst18_backup_20261123 b ON b.id = p.id SET p.gstRate = 18");
     const changed = Number((result as any)?.affectedRows || 0);
     await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)", [migrationKey, changed]);
     await conn.commit();
-    console.log(`[DB] PHP Item Master GST Rate set to 5% on ${changed} items.`);
+    console.log(`[DB] PHP Item Master GST Rate set to 18% on ${changed} items.`);
     return { changed, alreadyApplied: false };
   } catch (error) {
     try { await conn.rollback(); } catch {}
@@ -11518,9 +11524,9 @@ await db.query(`
       }
 
       try {
-        await fillPhpItemGstRateFivePercent(db);
+        await setPhpItemGstRateEighteenPercent(db);
       } catch (err) {
-        console.warn("[DB] PHP Item Master GST Rate fill failed:", (err as Error).message);
+        console.warn("[DB] PHP Item Master GST Rate 18% fill failed:", (err as Error).message);
       }
 
       try {
