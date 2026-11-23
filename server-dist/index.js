@@ -6535,6 +6535,102 @@ async function bulkClosePhpPlateJobsBefore17Nov(db) {
         conn.release();
     }
 }
+async function correctLnkiInterFirmInvoicesGstTo5(db) {
+    // One-time (23-Nov-2026, asked by the owner after correcting Tally): the 9
+    // Unit-II -> LNKI inter-firm invoices of 17-21 Nov were made at 18% GST;
+    // they are 5%. Invoice, its lines, the linked LNKI MRR and the pending record
+    // are recalculated at 5% (CGST/SGST split). Tally posting status is kept.
+    // Rows are copied to *_gst_backup_20261123 tables first.
+    const migrationKey = "migration/lnki-interfirm-invoices-gst-5-v1";
+    const invoiceNos = ["LNCB-2/26-27/02672", "LNCB-2/26-27/02678", "LNCB-2/26-27/02679", "LNCB-2/26-27/02702", "LNCB-2/26-27/02705", "LNCB-2/26-27/02706", "LNCB-2/26-27/02708", "LNCB-2/26-27/02709", "LNCB-2/26-27/02710"];
+    const conn = await db.getConnection();
+    try {
+        const [markerRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [migrationKey]);
+        if (markerRows.length)
+            return { changed: 0, alreadyApplied: true };
+        const marks = invoiceNos.map(() => "?").join(", ");
+        const [invoiceRows] = await conn.query(`SELECT * FROM invoices WHERE invoiceNo IN (${marks}) AND interFirmFlow = 'Yes' AND CAST(gstRate AS DECIMAL(6,2)) = 18`, invoiceNos);
+        const invoices = invoiceRows;
+        const ids = invoices.map((row) => String(row.id));
+        const mrrIds = invoices.map((row) => String(row.linkedMrrId || "")).filter(Boolean);
+        const pendingIds = invoices.map((row) => String(row.sourceTransactionId || "")).filter(Boolean);
+        const inList = (list) => (list.length ? list.map(() => "?").join(", ") : "NULL");
+        await conn.query("DROP TABLE IF EXISTS invoices_gst_backup_20261123");
+        await conn.query(`CREATE TABLE invoices_gst_backup_20261123 AS SELECT * FROM invoices WHERE id IN (${inList(ids)})`, ids);
+        await conn.query("DROP TABLE IF EXISTS invoice_line_items_gst_backup_20261123");
+        await conn.query(`CREATE TABLE invoice_line_items_gst_backup_20261123 AS SELECT * FROM invoice_line_items WHERE invoiceId IN (${inList(ids)})`, ids);
+        await conn.query("DROP TABLE IF EXISTS material_in_gst_backup_20261123");
+        await conn.query(`CREATE TABLE material_in_gst_backup_20261123 AS SELECT * FROM material_in WHERE id IN (${inList(mrrIds)})`, mrrIds);
+        await conn.query("DROP TABLE IF EXISTS inter_firm_pending_gst_backup_20261123");
+        await conn.query(`CREATE TABLE inter_firm_pending_gst_backup_20261123 AS SELECT * FROM inter_firm_pending_invoices WHERE id IN (${inList(pendingIds)})`, pendingIds);
+        await conn.beginTransaction();
+        const now = new Date().toISOString();
+        const rate = 5;
+        for (const invoice of invoices) {
+            const [lineRows] = await conn.query("SELECT id, amount FROM invoice_line_items WHERE invoiceId = ?", [invoice.id]);
+            let tax = 0;
+            for (const line of lineRows) {
+                const lineTax = Number((Number(line.amount || 0) * rate / 100).toFixed(2));
+                tax += lineTax;
+                const [cgst, sgst] = splitIntraStateGst(lineTax);
+                await conn.query("UPDATE invoice_line_items SET gstRate = ?, cgst = ?, sgst = ?, igst = 0, updateTimestamp = ? WHERE id = ?", [rate, cgst, sgst, now, line.id]);
+            }
+            const taxable = Number(invoice.totalBeforeGst || 0);
+            tax = Number((taxable * rate / 100).toFixed(2));
+            const [cgst, sgst] = splitIntraStateGst(tax);
+            await conn.query("UPDATE invoices SET gstRate = ?, cgst = ?, sgst = ?, igst = 0, totalAfterGst = ?, updatedBy = 'GST correction (18% to 5%)', updateTimestamp = ? WHERE id = ?", [rate, cgst, sgst, Number((taxable + tax).toFixed(2)), now, invoice.id]);
+            if (invoice.linkedMrrId) {
+                const [mrrRows] = await conn.query("SELECT id, totalInvoiceValue, `lines` FROM material_in WHERE id = ? LIMIT 1", [invoice.linkedMrrId]);
+                const mrr = mrrRows[0];
+                if (mrr) {
+                    const value = Number(mrr.totalInvoiceValue || taxable);
+                    const mrrTax = Number((value * rate / 100).toFixed(2));
+                    const [mrrCgst, mrrSgst] = splitIntraStateGst(mrrTax);
+                    let lines = [];
+                    try {
+                        lines = typeof mrr.lines === "string" ? JSON.parse(mrr.lines) : (mrr.lines || []);
+                    }
+                    catch {
+                        lines = [];
+                    }
+                    if (Array.isArray(lines))
+                        lines = lines.map((line) => ({ ...line, gstRate: rate }));
+                    await conn.query("UPDATE material_in SET totalInvoiceValueAfterGst = ?, totalAmount = ?, totalCgst = ?, totalSgst = ?, totalIgst = 0, `lines` = ?, updatedBy = 'GST correction (18% to 5%)', updateTimestamp = ? WHERE id = ?", [Number((value + mrrTax).toFixed(2)), Number((value + mrrTax).toFixed(2)), mrrCgst, mrrSgst, JSON.stringify(lines), now, mrr.id]);
+                }
+            }
+            if (invoice.sourceTransactionId) {
+                const [pendingRows] = await conn.query("SELECT id, `lines` FROM inter_firm_pending_invoices WHERE id = ? LIMIT 1", [invoice.sourceTransactionId]);
+                const pending = pendingRows[0];
+                if (pending) {
+                    let lines = [];
+                    try {
+                        lines = typeof pending.lines === "string" ? JSON.parse(pending.lines) : (pending.lines || []);
+                    }
+                    catch {
+                        lines = [];
+                    }
+                    if (Array.isArray(lines))
+                        lines = lines.map((line) => ({ ...line, gstRate: rate }));
+                    await conn.query("UPDATE inter_firm_pending_invoices SET gstRate = ?, `lines` = ?, updateTimestamp = ? WHERE id = ?", [rate, JSON.stringify(lines), now, pending.id]);
+                }
+            }
+        }
+        await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)", [migrationKey, invoices.length]);
+        await conn.commit();
+        console.log(`[DB] GST correction: ${invoices.length} Unit-II -> LNKI invoices set to 5%.`);
+        return { changed: invoices.length, alreadyApplied: false };
+    }
+    catch (error) {
+        try {
+            await conn.rollback();
+        }
+        catch { }
+        throw error;
+    }
+    finally {
+        conn.release();
+    }
+}
 async function fillNpdGstRateFivePercent(db) {
     // One-time (23-Nov-2026, asked by the owner): corrugated boxes and scrap are
     // billed at 5% GST, so every NPD item with no GST Rate gets 5%. Items can then
@@ -10847,6 +10943,12 @@ async function initDb(retries = 5) {
             }
             catch (err) {
                 console.warn("[DB] NPD GST Rate fill failed:", err.message);
+            }
+            try {
+                await correctLnkiInterFirmInvoicesGstTo5(db);
+            }
+            catch (err) {
+                console.warn("[DB] LNKI inter-firm GST correction failed:", err.message);
             }
             try {
                 await realignJobCounterAfterRenumberedMigration(db);
