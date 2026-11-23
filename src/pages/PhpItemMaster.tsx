@@ -23,7 +23,7 @@ export function PhpItemMaster() {
       title="PHP Item Master"
       entity="php_item_master"
       columns={[...PHP_ITEM_MASTER_COLUMNS.filter((column) => !HIDDEN_PHP_ITEM_MASTER_COLUMNS.has(column.key)), ...firmColumns]}
-      editableColumns={["openingQty"]}
+      editableColumns={["openingQty", "gstRate"]}
       rowsOverride={firmRows as any}
       filters={[
         { key: "company", label: "Company", searchable: true },

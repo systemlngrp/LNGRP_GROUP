@@ -23,7 +23,7 @@ export function PlateItemMaster() {
       title="Plate Item Master"
       entity="plate_item_master"
       columns={[...PLATE_ITEM_MASTER_COLUMNS.filter((column) => !HIDDEN_PLATE_ITEM_MASTER_COLUMNS.has(column.key)), ...firmColumns]}
-      editableColumns={["openingQty"]}
+      editableColumns={["openingQty", "gstRate"]}
       rowsOverride={firmRows as any}
       filters={[
         { key: "company", label: "Company", searchable: true },

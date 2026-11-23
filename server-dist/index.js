@@ -815,6 +815,8 @@ const PHP_ITEM_MASTER_SCHEMA_COLUMNS = [
     { column: "syncStatus", type: "VARCHAR(20) DEFAULT 'active'" },
     { column: "openingQty", type: "DECIMAL(15,2) DEFAULT 0" },
     { column: "productionOutputQty", type: "DECIMAL(15,2) DEFAULT 0" },
+    // Entered in the app (the sheets have no GST column); used by inter-firm billing.
+    { column: "gstRate", type: "DECIMAL(5,2) NULL" },
 ];
 const PLATE_ITEM_MASTER_SCHEMA_COLUMNS = [
     ...[...new Set(Object.values(PLATE_ITEM_MASTER_HEADER_MAP))].map((column) => ({
@@ -825,6 +827,8 @@ const PLATE_ITEM_MASTER_SCHEMA_COLUMNS = [
     { column: "syncStatus", type: "VARCHAR(20) DEFAULT 'active'" },
     { column: "openingQty", type: "DECIMAL(15,2) DEFAULT 0" },
     { column: "productionOutputQty", type: "DECIMAL(15,2) DEFAULT 0" },
+    // Entered in the app (the sheets have no GST column); used by inter-firm billing.
+    { column: "gstRate", type: "DECIMAL(5,2) NULL" },
 ];
 const COMPANY_SCHEMA_COLUMNS = [
     { column: "pin", type: "VARCHAR(50)" },
@@ -4071,14 +4075,32 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
         // the Printing -> LNKI transfer takes it from the job's item in NPD Master.
         let gstRate = NaN;
         if (normalizedMachine !== "Corrugation Liner") {
-            const npdKey = String(sourceRecord.npdId || production.npdId || itemId);
-            const [npdGstRows] = await conn.query("SELECT itemName, erp, gstRate FROM `npd` WHERE id = ? OR npdId = ? LIMIT 1", [npdKey, npdKey]);
-            const npdItem = npdGstRows[0];
-            const npdGstRate = Number(npdItem?.gstRate);
-            if (!npdItem || !Number.isFinite(npdGstRate) || npdGstRate <= 0 || npdGstRate > 100) {
-                throw new Error(`GST Rate of ${npdItem ? `${npdItem.itemName || "this item"} (ERP ${npdItem.erp || "-"})` : "this job's item"} is not set in NPD Master; set it there, then save this entry again.`);
+            // The job's item is an NPD item, or a PHP / Plate item for a job made
+            // from the PHP / Plate masters: take the GST Rate from whichever holds it.
+            const lookupKeys = [...new Set([itemId, String(sourceRecord.npdId || production.npdId || "")].filter(Boolean))];
+            let gstItem = null;
+            for (const source of [
+                { master: "NPD Master", sql: "SELECT itemName AS name, erp, gstRate FROM `npd` WHERE id = ? OR npdId = ? LIMIT 1" },
+                { master: "PHP Item Master", sql: "SELECT itemName AS name, erpItemCode AS erp, gstRate FROM `php_item_master` WHERE id = ? OR itemId = ? LIMIT 1" },
+                { master: "Plate Item Master", sql: "SELECT itemName AS name, erpItemCode AS erp, gstRate FROM `plate_item_master` WHERE id = ? OR itemId = ? LIMIT 1" },
+            ]) {
+                for (const key of lookupKeys) {
+                    const [gstRows] = await conn.query(source.sql, [key, key]);
+                    const found = gstRows[0];
+                    if (found) {
+                        gstItem = { master: source.master, name: String(found.name || ""), erp: String(found.erp || ""), rate: Number(found.gstRate) };
+                        break;
+                    }
+                }
+                if (gstItem)
+                    break;
             }
-            gstRate = npdGstRate;
+            if (!gstItem || !Number.isFinite(gstItem.rate) || gstItem.rate <= 0 || gstItem.rate > 100) {
+                throw new Error(gstItem
+                    ? `GST Rate of ${gstItem.name || "this item"} (ERP ${gstItem.erp || "-"}) is not set in ${gstItem.master}; set it there, then save this entry again.`
+                    : "This job's item was not found in NPD, PHP or Plate Item Master, so its GST Rate is unknown; inter-firm invoice not created.");
+            }
+            gstRate = gstItem.rate;
         }
         // Unit-I's output is corrugated board, not the customer's finished box.
         // The Unit-I -> Unit-II documents (issue, MRR, invoice) therefore carry
