@@ -10,6 +10,7 @@ import { getProductionMatchingFields } from "../lib/productionMatching";
 import { Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import { Select } from "../components/Select";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
+import { LINKED_PLANNING_FIRST_DATE } from "../lib/pendingLinkedPlanning";
 import { compareJobDateDesc, resolvePhpPlateFirmId, workflowDate } from "../lib/phpPlateFirm";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
@@ -135,6 +136,8 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
     const words = searchWords(searchTerm);
     return jobs
       .filter((job) => job.status !== "Cancelled")
+      // Owner's rule (23-Nov-2026): only jobs dated 17-Nov-2026 or later, same cut-off as PHP / Plate planning.
+      .filter((job) => String(job.date || job.scheduledDate || "").slice(0, 10) >= LINKED_PLANNING_FIRST_DATE)
       .filter((job) => activeSourceFilter === "ALL" || job.jobSource === activeSourceFilter)
       .filter((job) => !firmFilter || resolvePhpPlateFirmId(job, schedules, orders) === firmFilter)
       .filter((job) => !itemFilter || getJobItemName(job) === itemFilter)
