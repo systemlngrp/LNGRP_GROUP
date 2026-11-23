@@ -86,7 +86,7 @@ export function BillingPendingTally() {
   const [manualError, setManualError] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
   const [postedIds, setPostedIds] = useState<Set<string>>(new Set());
-  const tableColumnCount = canPostTally ? 8 : 7;
+  const tableColumnCount = canPostTally ? 9 : 8;
   const toggleRow = (id: string) => {
     const next = new Set(expandedRows);
     if (next.has(id)) next.delete(id);
@@ -222,6 +222,12 @@ export function BillingPendingTally() {
           companyName: company?.name || "Unknown",
           poNumbers,
           grandTotal: getInvoiceGrandTotal(inv),
+          gstRateText: (() => {
+            const rates = Array.from(new Set((details as any[]).map((line) => Number(line.gstRate)).filter((rate) => Number.isFinite(rate) && rate > 0)));
+            if (!rates.length && Number(inv.gstRate) > 0) rates.push(Number(inv.gstRate));
+            return rates.length ? rates.sort((a, b) => a - b).map((rate) => `${rate}%`).join(", ") : "-";
+          })(),
+          gstAmount: (Number(inv.cgst) || 0) + (Number(inv.sgst) || 0) + (Number(inv.igst) || 0),
           details,
           slipCount: invoiceSlips.length
         };
@@ -235,6 +241,8 @@ export function BillingPendingTally() {
           inv.poNumbers.length > 0 ? inv.poNumbers : "-",
           inv.grandTotal,
           formatInr.format(inv.grandTotal),
+          inv.gstRateText,
+          formatInr.format(inv.gstAmount),
           inv.tallySyncRemark || "-",
         ]),
       }));
@@ -352,13 +360,18 @@ export function BillingPendingTally() {
             <th className="px-3 py-2 text-left">Slip No</th>
             <th className="px-3 py-2 text-right">Qty</th>
             <th className="px-3 py-2 text-right">Rate</th>
+            <th className="px-3 py-2 text-right">Taxable</th>
+            <th className="px-3 py-2 text-right">GST %</th>
+            <th className="px-3 py-2 text-right">CGST</th>
+            <th className="px-3 py-2 text-right">SGST</th>
+            <th className="px-3 py-2 text-right">IGST</th>
             <th className="px-3 py-2 text-right">Total</th>
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-black">
           {inv.details.length === 0 ? (
             <tr className="divide-x divide-black text-[11px]">
-              <td colSpan={7} className="px-3 py-4 text-center text-slate-500 italic">
+              <td colSpan={12} className="px-3 py-4 text-center text-slate-500 italic">
                 No item breakup found for this invoice.
               </td>
             </tr>
@@ -373,6 +386,11 @@ export function BillingPendingTally() {
                   <td className="px-3 py-2">{line.slipNo}</td>
                   <td className="px-3 py-2 text-right">{Number(line.qty || 0).toLocaleString()}</td>
                   <td className="px-3 py-2 text-right">{Number(line.rate || 0).toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right">{formatInr.format(Number(line.amount || 0))}</td>
+                  <td className="px-3 py-2 text-right">{Number(line.gstRate) > 0 ? `${Number(line.gstRate)}%` : "-"}</td>
+                  <td className="px-3 py-2 text-right">{formatInr.format(Number(line.cgst || 0))}</td>
+                  <td className="px-3 py-2 text-right">{formatInr.format(Number(line.sgst || 0))}</td>
+                  <td className="px-3 py-2 text-right">{formatInr.format(Number(line.igst || 0))}</td>
                   <td className="px-3 py-2 text-right font-bold">{formatInr.format(Number(line.amount || 0) + tax)}</td>
                 </tr>
               );
@@ -380,6 +398,17 @@ export function BillingPendingTally() {
           )}
         </tbody>
       </table>
+    </div>
+    <div className="mt-2 flex flex-wrap justify-end gap-x-5 gap-y-1 rounded border border-black bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-800">
+      <span>Taxable: <b>{formatInr.format(Number(inv.totalBeforeGst || 0))}</b></span>
+      <span>GST: <b>{inv.gstRateText}</b></span>
+      <span>CGST: <b>{formatInr.format(Number(inv.cgst || 0))}</b></span>
+      <span>SGST: <b>{formatInr.format(Number(inv.sgst || 0))}</b></span>
+      <span>IGST: <b>{formatInr.format(Number(inv.igst || 0))}</b></span>
+      {Number(inv.otherCharges || 0) !== 0 ? <span>Other Charges: <b>{formatInr.format(Number(inv.otherCharges || 0))}</b>{Number(inv.otherChargesGstRate || 0) > 0 ? ` (GST ${Number(inv.otherChargesGstRate)}%: ${formatInr.format((Number(inv.otherChargesCgst) || 0) + (Number(inv.otherChargesSgst) || 0) + (Number(inv.otherChargesIgst) || 0))})` : ""}</span> : null}
+      {Number(inv.tcsAmount || 0) !== 0 ? <span>TCS{Number(inv.tcsRate || 0) > 0 ? ` ${Number(inv.tcsRate)}%` : ""}: <b>{formatInr.format(Number(inv.tcsAmount || 0))}</b></span> : null}
+      {Number(inv.roundOff || 0) !== 0 ? <span>Round Off: <b>{formatInr.format(Number(inv.roundOff || 0))}</b></span> : null}
+      <span className="text-indigo-700">Invoice Total: <b>{formatInr.format(inv.grandTotal)}</b></span>
     </div>
     </div>
   );
@@ -442,6 +471,7 @@ export function BillingPendingTally() {
                 <span className="text-sm font-black text-indigo-700">{formatInr.format(inv.grandTotal)}</span>
               </div>
               <div className="mt-0.5 text-[11px] font-semibold text-slate-700">{formatDate(inv.date)}{inv.poNumbers.length ? ` · PO ${inv.poNumbers.join(", ")}` : ""}</div>
+              <div className="mt-0.5 text-[11px] font-semibold text-slate-700">GST {inv.gstRateText} · {formatInr.format(inv.gstAmount)}</div>
               <div className="mt-1 break-words text-xs font-bold">{inv.companyName}</div>
               {inv.tallySyncRemark ? <div className="mt-1 break-words text-[11px] font-semibold text-amber-800">{inv.tallySyncRemark}</div> : null}
               <div className="mt-2 flex items-center justify-between gap-2">
@@ -465,6 +495,7 @@ export function BillingPendingTally() {
               <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label={"Date"} sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label={"Company"} sortKey="companyName" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label={"PO Numbers"} sortKey="poNumbers" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase"><SortHeader label={"GST"} sortKey="gstAmount" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase"><SortHeader label={"Total Amount"} sortKey="grandTotal" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label={"Tally Sync Remark"} sortKey="tallySyncRemark" sort={sort} onToggle={toggleSort} align="left" /></th>
               {canPostTally ? (
@@ -511,6 +542,10 @@ export function BillingPendingTally() {
                       ) : (
                         <span className="text-slate-400 text-xs">-</span>
                       )}
+                    </td>
+                    <td className="px-4 py-4 text-right text-xs">
+                      <div className="font-bold text-slate-800">{formatInr.format(inv.gstAmount)}</div>
+                      <div className="text-[10px] font-semibold text-slate-500">{inv.gstRateText}{Number(inv.igst || 0) > 0 ? " IGST" : Number(inv.cgst || 0) + Number(inv.sgst || 0) > 0 ? " CGST+SGST" : ""}</div>
                     </td>
                     <td className="px-4 py-4 text-right font-black text-indigo-700">
                       {formatInr.format(inv.grandTotal)}
