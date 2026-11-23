@@ -100,12 +100,12 @@ export function plannedQtyByScheduleId(jobRows: Production[]) {
   return map;
 }
 
-// Owner's rule (21-Nov-2026): Pending Plate Planning shows only schedules
-// dated 17-Nov-2026 or later. PHP planning is unchanged.
-export const PLATE_PLANNING_FIRST_DATE = "2026-11-17";
-export function isScheduleInLinkedPlanningWindow(source: PlanningSource | string, schedule: Pick<OrderSchedule, "scheduledDate">) {
-  if (source !== "PLATE") return true;
-  return String(schedule.scheduledDate || "").slice(0, 10) >= PLATE_PLANNING_FIRST_DATE;
+// Owner's rule: Pending Plate Planning (21-Nov-2026) and Pending PHP Planning
+// (23-Nov-2026) show only schedules dated 17-Nov-2026 or later.
+export const LINKED_PLANNING_FIRST_DATE = "2026-11-17";
+export const PLATE_PLANNING_FIRST_DATE = LINKED_PLANNING_FIRST_DATE;
+export function isScheduleInLinkedPlanningWindow(_source: PlanningSource | string, schedule: Pick<OrderSchedule, "scheduledDate">) {
+  return String(schedule.scheduledDate || "").slice(0, 10) >= LINKED_PLANNING_FIRST_DATE;
 }
 
 /** Schedules that still need PHP / Plate planning: one row per schedule and linked item. */

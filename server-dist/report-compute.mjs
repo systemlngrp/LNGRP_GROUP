@@ -4006,10 +4006,9 @@ function plannedQtyByScheduleItem(jobRows) {
   };
 }
 var getSetsPerBox = (item) => toOptionalNumber((item?.raw || {}).numberOfSetsPerBox);
-var PLATE_PLANNING_FIRST_DATE = "2026-11-17";
-function isScheduleInLinkedPlanningWindow(source, schedule) {
-  if (source !== "PLATE") return true;
-  return String(schedule.scheduledDate || "").slice(0, 10) >= PLATE_PLANNING_FIRST_DATE;
+var LINKED_PLANNING_FIRST_DATE = "2026-11-17";
+function isScheduleInLinkedPlanningWindow(_source, schedule) {
+  return String(schedule.scheduledDate || "").slice(0, 10) >= LINKED_PLANNING_FIRST_DATE;
 }
 function computePendingLinkedPlanningRows(args) {
   const { source, schedules, sourceItems } = args;
