@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { isExportGstRateMaster } from "../lib/gstExport";
 import { MasterHeader } from "../components/MasterHeader";
 import { DateRangeFilter, ReportFilterBox, SelectFilter } from "../components/ReportFilterBox";
 import { getFirmDisplayName } from "../lib/firmDisplay";
@@ -659,7 +660,7 @@ export function Materials() {
 
   const gstRateOptions = useMemo(
     () => gstRateMasters
-      .filter((entry) => entry.active !== "No")
+      .filter((entry) => entry.active !== "No" && !isExportGstRateMaster(entry))
       .sort((a, b) => Number(a.rate || 0) - Number(b.rate || 0))
       .map((entry) => ({ value: String(Number(entry.rate || 0)), label: entry.name })),
     [gstRateMasters]

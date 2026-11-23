@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useData } from "../hooks/useData";
+import { EXPORT_GST_OPTION_VALUE, EXPORT_GST_RATE_NAME, isExportGstRateMaster } from "../lib/gstExport";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -17,6 +18,7 @@ import {
   MaterialIn,
   ProductionProcessing,
 } from "../types";
+import type { GstRateMaster } from "../types";
 import { jobIdsWithPrintingEntry } from "../lib/productionProcessingProgress";
 import { jobsMissingPrinting } from "../lib/invoicePrintingCheck";
 import {
@@ -129,6 +131,7 @@ export function PendingInvoicing() {
   const [invoiceLineItems, , , invoiceLineItemApi] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all", storageKey: "invoice-lines-all-firms" });
   const [gatePasses, , , gatePassApi] = useData<GatePass>("gate_passes", [], { firmScope: "all", storageKey: "gate-passes-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
+  const [gstRateMasters] = useData<GstRateMaster>("gst_rate_masters", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [interFirmPending, , , interFirmApi] = useData<InterFirmPendingInvoice>("inter_firm_pending_invoices", [], { firmScope: "all", storageKey: "inter-firm-pending-all-firms" });
   const [materialIns] = useData<MaterialIn>("material_in", [], { firmScope: "all" });
@@ -163,6 +166,8 @@ export function PendingInvoicing() {
   const [gstSupplyType, setGstSupplyType] = useState<"" | "INTRA_STATE" | "INTER_STATE">("");
   const [otherCharges, setOtherCharges] = useState<number | "">("");
   const [otherChargesGstRate, setOtherChargesGstRate] = useState<number | "">("");
+  // Export invoice (zero-rated): chosen as "Export" in a line's GST Rate; applies to every line.
+  const [isExportInvoice, setIsExportInvoice] = useState(false);
   const [roundOff, setRoundOff] = useState<number | "">("");
   const [isRoundOffManual, setIsRoundOffManual] = useState(false);
   const [tcsRate, setTcsRate] = useState<number | "">("");
@@ -688,6 +693,7 @@ export function PendingInvoicing() {
     setInvoiceModal({ companyId: companyGroup.companyId, slips: selected });
     setOtherCharges("");
     setOtherChargesGstRate("");
+    setIsExportInvoice(false);
     setRoundOff("");
     setIsRoundOffManual(false);
     setDestination("");
@@ -705,6 +711,7 @@ export function PendingInvoicing() {
     setTransporter("");
     setOtherCharges("");
     setOtherChargesGstRate("");
+    setIsExportInvoice(false);
     setRoundOff("");
     setIsRoundOffManual(false);
     setTcsRate("");
@@ -779,6 +786,29 @@ export function PendingInvoicing() {
 
   const updateItemGstRate = (itemRowId: string, gstRate: number) => {
     setInvoiceRows((prev) => prev.map((row) => (row.id === itemRowId ? { ...row, gstRate } : row)));
+  };
+
+  // Line GST Rate options from the GST Rate Master (with "Export"); falls back to the usual rates.
+  const invoiceGstOptions = useMemo(() => {
+    const active = gstRateMasters.filter((entry) => entry.active !== "No");
+    const rates = new Set<number>(active.filter((entry) => !isExportGstRateMaster(entry)).map((entry) => Number(entry.rate)).filter((rate) => Number.isFinite(rate) && rate >= 0));
+    if (rates.size === 0) [0, 5, 12, 18, 28].forEach((rate) => rates.add(rate));
+    invoiceRows.forEach((row) => { const rate = Number(row.gstRate); if (Number.isFinite(rate) && rate >= 0) rates.add(rate); });
+    const options = Array.from(rates).sort((a, b) => a - b).map((rate) => ({ value: String(rate), label: `${rate}%` }));
+    options.push({ value: EXPORT_GST_OPTION_VALUE, label: EXPORT_GST_RATE_NAME });
+    return options;
+  }, [gstRateMasters, invoiceRows]);
+
+  const handleItemGstSelect = (itemRowId: string, value: string) => {
+    if (value === EXPORT_GST_OPTION_VALUE) {
+      // An export invoice is fully export: every line goes to GST 0.
+      setIsExportInvoice(true);
+      setInvoiceRows((prev) => prev.map((row) => ({ ...row, gstRate: 0 })));
+      setOtherChargesGstRate("");
+      return;
+    }
+    if (isExportInvoice) setIsExportInvoice(false);
+    updateItemGstRate(itemRowId, Number(value));
   };
 
   const calculations = useMemo(() => {
@@ -906,6 +936,7 @@ export function PendingInvoicing() {
     setSelectedSlips(new Set(selected.map((slip) => slip.id)));
     setInvoiceModal({ companyId: invoice.companyId, slips: selected });
     setOtherCharges(Number(invoice.otherCharges || 0));
+    setIsExportInvoice(String((invoice as any).exportSupply || "").trim().toLowerCase() === "yes");
     setOtherChargesGstRate(invoice.otherChargesGstRate === null || invoice.otherChargesGstRate === undefined || Number(invoice.otherChargesGstRate || 0) <= 0 ? "" : Number(invoice.otherChargesGstRate));
     setRoundOff(Number(invoice.roundOff || 0));
     setIsRoundOffManual(true);
@@ -1020,6 +1051,7 @@ export function PendingInvoicing() {
         totalAfterGst: calculations.totalAfterGst,
         otherCharges: calculations.otherCharges,
         otherChargesGstRate: calculations.otherChargesGstRate,
+        exportSupply: isExportInvoice ? "Yes" : "No",
         otherChargesCgst: calculations.otherChargesCgst,
         otherChargesSgst: calculations.otherChargesSgst,
         otherChargesIgst: calculations.otherChargesIgst,
@@ -1560,13 +1592,13 @@ export function PendingInvoicing() {
                             </td>
                             <td className="px-2 py-2 text-right text-[11px]">
                               <select
-                                value={itemRow.gstRate}
-                                onChange={(e) => updateItemGstRate(itemRow.id, Number(e.target.value))}
-                                className="w-20 border border-black rounded px-2 py-1 text-right text-[11px] font-bold bg-white"
+                                value={isExportInvoice ? EXPORT_GST_OPTION_VALUE : String(Number(itemRow.gstRate || 0))}
+                                onChange={(e) => handleItemGstSelect(itemRow.id, e.target.value)}
+                                className={`w-24 border border-black rounded px-2 py-1 text-right text-[11px] font-bold ${isExportInvoice ? "bg-emerald-50 text-emerald-800" : "bg-white"}`}
                               >
-                                {[0, 5, 12, 18, 28].map((v) => (
-                                  <option key={v} value={v}>
-                                    {v}%
+                                {invoiceGstOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
                                   </option>
                                 ))}
                               </select>

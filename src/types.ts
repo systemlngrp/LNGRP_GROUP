@@ -1767,6 +1767,8 @@ export interface Invoice {
   totalAfterGst: number;
   otherCharges?: number;
   otherChargesGstRate?: number | null;
+  // "Yes" for a zero-rated export invoice ("Export" chosen in GST Rate); posted to Tally ledger "Sales Export".
+  exportSupply?: "Yes" | "No";
   otherChargesCgst?: number;
   otherChargesSgst?: number;
   otherChargesIgst?: number;

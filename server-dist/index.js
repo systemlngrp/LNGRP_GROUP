@@ -6653,6 +6653,19 @@ async function correctLnkiInterFirmInvoicesGstTo5(db) {
         conn.release();
     }
 }
+async function seedExportGstRateMaster(db) {
+    // GST Rate Master entry "Export" (GST 0) for zero-rated export sales invoices.
+    // Added once; if someone later edits or deactivates it, it is left alone.
+    const migrationKey = "migration/seed-gst-rate-export-v1";
+    const [markerRows] = await db.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [migrationKey]);
+    if (markerRows.length)
+        return;
+    const [existing] = await db.query("SELECT id FROM gst_rate_masters WHERE LOWER(TRIM(name)) = 'export' LIMIT 1");
+    if (!existing.length) {
+        await db.query("INSERT INTO gst_rate_masters (id, name, rate, active, updatedBy, updateTimestamp) VALUES (?, 'Export', 0, 'Yes', 'System', ?)", [crypto.randomUUID(), new Date().toISOString()]);
+    }
+    await db.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, 1)", [migrationKey]);
+}
 async function setPhpItemGstRateEighteenPercent(db) {
     // One-time (23-Nov-2026, owner's decision): PHP Item Master GST Rate is 18%.
     // Sets 18% on every PHP item with no rate, and on the items an earlier
@@ -9996,6 +10009,7 @@ async function initDb(retries = 5) {
                 { table: "gst_rate_masters", column: "active", type: "VARCHAR(10) DEFAULT 'Yes'" },
                 { table: "gst_rate_masters", column: "updatedBy", type: "VARCHAR(255)" },
                 { table: "gst_rate_masters", column: "updateTimestamp", type: "VARCHAR(255)" },
+                { table: "invoices", column: "exportSupply", type: "VARCHAR(10) DEFAULT 'No'" },
                 { table: "services", column: "name", type: "VARCHAR(255) NOT NULL" },
                 { table: "services", column: "active", type: "VARCHAR(10) DEFAULT 'Yes'" },
                 { table: "services", column: "updatedBy", type: "VARCHAR(255)" },
@@ -11008,6 +11022,12 @@ async function initDb(retries = 5) {
             }
             catch (err) {
                 console.warn("[DB] LNKI inter-firm GST correction failed:", err.message);
+            }
+            try {
+                await seedExportGstRateMaster(db);
+            }
+            catch (err) {
+                console.warn("[DB] GST Rate Master Export seed failed:", err.message);
             }
             try {
                 await setPhpItemGstRateEighteenPercent(db);

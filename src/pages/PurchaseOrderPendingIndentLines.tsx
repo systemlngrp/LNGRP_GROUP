@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { isExportGstRateMaster } from "../lib/gstExport";
 import { useNavigate } from "react-router-dom";
 import { Search, Eye, RotateCcw } from "lucide-react";
 import { useData } from "../hooks/useData";
@@ -163,7 +164,7 @@ export function PurchaseOrderPendingIndentLines() {
   const supplierOptions = useMemo(() => suppliers.map((s) => ({ value: s.id, label: s.name })), [suppliers]);
   const gstRateOptions = useMemo(() => {
     const rates = new Set<number>([0]);
-    gstRateMasters.filter((rate) => rate.active !== "No").forEach((rate) => {
+    gstRateMasters.filter((rate) => rate.active !== "No" && !isExportGstRateMaster(rate)).forEach((rate) => {
       const value = Number(rate.rate);
       if (Number.isFinite(value) && value >= 0) rates.add(value);
     });

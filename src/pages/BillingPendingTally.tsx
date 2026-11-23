@@ -222,7 +222,7 @@ export function BillingPendingTally() {
           companyName: company?.name || "Unknown",
           poNumbers,
           grandTotal: getInvoiceGrandTotal(inv),
-          gstRateText: (() => {
+          gstRateText: String((inv as any).exportSupply || "").trim().toLowerCase() === "yes" ? "Export" : (() => {
             const rates = Array.from(new Set((details as any[]).map((line) => Number(line.gstRate)).filter((rate) => Number.isFinite(rate) && rate > 0)));
             if (!rates.length && Number(inv.gstRate) > 0) rates.push(Number(inv.gstRate));
             return rates.length ? rates.sort((a, b) => a - b).map((rate) => `${rate}%`).join(", ") : "-";

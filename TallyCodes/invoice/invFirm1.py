@@ -63,6 +63,8 @@ VOUCHER_TYPE_NAME = os.getenv("SALES_VOUCHER_TYPE_NAME", "Sales")
 SALES_LEDGER_NAME = os.getenv("SALES_LEDGER_NAME", "Sales")
 SALES_5_LEDGER_NAME = os.getenv("SALES_5_LEDGER_NAME", "SALES 5%")
 SALES_18_LEDGER_NAME = os.getenv("SALES_18_LEDGER_NAME", "SALES 18%")
+# Zero-rated export invoices ("Export" chosen in the app's GST Rate): "Sales" + "Export".
+SALES_EXPORT_LEDGER_NAME = os.getenv("SALES_EXPORT_LEDGER_NAME", "Sales Export")
 OTHER_CHARGES_LEDGER_NAME = os.getenv("SALES_OTHER_CHARGES_LEDGER_NAME", "Other Charges")
 ROUND_OFF_LEDGER_NAME = os.getenv("SALES_ROUND_OFF_LEDGER_NAME", "Round Off")
 # TCS u/s 206C collected on the invoice (invoices.tcsAmount), e.g. scrap sales.
@@ -2428,7 +2430,13 @@ def validate_invoice_lines(item_lines):
     return errors
 
 
+def is_export_invoice(invoice_row):
+    return str((invoice_row or {}).get("exportSupply") or "").strip().lower() == "yes"
+
+
 def resolve_sales_ledger_name(invoice_row, company_row, item_lines):
+    if is_export_invoice(invoice_row):
+        return SALES_EXPORT_LEDGER_NAME
     gst_supply_type = str((company_row or {}).get("gstSupplyType") or "").strip().upper()
     igst_amount = round(to_float(invoice_row.get("igst")), 2)
 

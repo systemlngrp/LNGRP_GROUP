@@ -1,4 +1,5 @@
 import { useData } from "../hooks/useData";
+import { isExportGstRateMaster } from "../lib/gstExport";
 import { Company, Firm, GstRateMaster, Material, MaterialIn, Item, Supplier } from "../types";
 import { useState, useMemo } from "react";
 import { Spinner } from "../components/Spinner";
@@ -171,7 +172,7 @@ export function PendingAccountsApproval() {
   const gstRateOptions = useMemo(
     () =>
       [...gstRateMasters]
-        .filter((entry) => entry.active !== "No")
+        .filter((entry) => entry.active !== "No" && !isExportGstRateMaster(entry))
         .sort((a, b) => Number(a.rate || 0) - Number(b.rate || 0))
         .map((entry) => ({ value: String(Number(entry.rate || 0)), label: entry.name })),
     [gstRateMasters]

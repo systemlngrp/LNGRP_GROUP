@@ -9,6 +9,12 @@
 `invFirm1.py` holds the engine; `invFirm2.py` and `invFirm3.py` reuse it, so keep all three in this folder.
 Each firm's Tally port comes from `firms.tallyPortNo`.
 
+## Sales ledger
+
+By line GST rate: `SALES 5%` / `SALES 18%`, else `Sales`. An **export invoice** ("Export" chosen
+in the app's GST Rate; `invoices.exportSupply = 'Yes'`, GST 0) goes to `Sales Export`
+(`SALES_EXPORT_LEDGER_NAME` in `.env` to rename). The ledger must exist in Tally.
+
 ## Who gives the invoice number
 
 By default the number **continues Tally's own Sales series** (`INVOICE_NUMBER_SOURCE=tally`).

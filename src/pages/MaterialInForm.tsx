@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { isExportGstRateMaster } from "../lib/gstExport";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle, FileText, Plus, Trash2, Upload, Download, Wand2, X } from "lucide-react";
@@ -1128,7 +1129,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const gstRateOptions = useMemo(
     () => {
       const options = [...gstRateMasters]
-        .filter((entry) => entry.active !== "No")
+        .filter((entry) => entry.active !== "No" && !isExportGstRateMaster(entry))
         .sort((a, b) => Number(a.rate || 0) - Number(b.rate || 0))
         .map((entry) => ({
           value: String(Number(entry.rate || 0)),
