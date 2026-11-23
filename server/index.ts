@@ -4282,10 +4282,23 @@ async function automateInterFirmProduction(
       ? customerOrderRate
       : Number(sourceRecord.rate || production.rate || 0);
     const rate = Number((baseRate * interFirmRatePercent / 100).toFixed(2));
-    // GST rate: the Unit-I -> Unit-II transfer takes it from Corrugated Boards
-    // in Material Master (owner, 23-Nov-2026: not hard coded). The Printing ->
-    // LNKI transfer keeps the internal 18% until its item master has GST rates.
-    let gstRate = 18;
+    // GST rate (owner, 23-Nov-2026: never hard coded): the Unit-I -> Unit-II
+    // transfer takes it from Corrugated Boards in Material Master (set below);
+    // the Printing -> LNKI transfer takes it from the job's item in NPD Master.
+    let gstRate = NaN;
+    if (normalizedMachine !== "Corrugation Liner") {
+      const npdKey = String(sourceRecord.npdId || production.npdId || itemId);
+      const [npdGstRows] = await conn.query(
+        "SELECT itemName, erp, gstRate FROM `npd` WHERE id = ? OR npdId = ? LIMIT 1",
+        [npdKey, npdKey]
+      );
+      const npdItem = (npdGstRows as any[])[0];
+      const npdGstRate = Number(npdItem?.gstRate);
+      if (!npdItem || !Number.isFinite(npdGstRate) || npdGstRate <= 0 || npdGstRate > 100) {
+        throw new Error(`GST Rate of ${npdItem ? `${npdItem.itemName || "this item"} (ERP ${npdItem.erp || "-"})` : "this job's item"} is not set in NPD Master; set it there, then save this entry again.`);
+      }
+      gstRate = npdGstRate;
+    }
     // Unit-I's output is corrugated board, not the customer's finished box.
     // The Unit-I -> Unit-II documents (issue, MRR, invoice) therefore carry
     // the Corrugated Boards material, while the job's own NPD stays on the
@@ -6951,6 +6964,34 @@ async function bulkClosePhpPlateJobsBefore17Nov(db: mysql.Pool) {
     }
     await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)", [migrationKey, changed]);
     await conn.commit();
+    return { changed, alreadyApplied: false };
+  } catch (error) {
+    try { await conn.rollback(); } catch {}
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
+async function fillNpdGstRateFivePercent(db: mysql.Pool) {
+  // One-time (23-Nov-2026, asked by the owner): corrugated boxes and scrap are
+  // billed at 5% GST, so every NPD item with no GST Rate gets 5%. Items can then
+  // be changed one by one on NPD Master. The NPD sheet has no GST column, so
+  // the sheet sync never overwrites this field.
+  const migrationKey = "migration/fill-npd-gst-rate-5-v1";
+  const conn = await db.getConnection();
+  try {
+    const [markerRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [migrationKey]);
+    if ((markerRows as any[]).length) return { changed: 0, alreadyApplied: true };
+    const where = "(gstRate IS NULL OR TRIM(gstRate) = '' OR CAST(gstRate AS DECIMAL(6,2)) = 0)";
+    await conn.query("DROP TABLE IF EXISTS npd_gst_backup_20261123");
+    await conn.query(`CREATE TABLE npd_gst_backup_20261123 AS SELECT id, npdId, erp, gstRate FROM npd WHERE ${where}`);
+    await conn.beginTransaction();
+    const [result] = await conn.query(`UPDATE npd SET gstRate = '5' WHERE ${where}`);
+    const changed = Number((result as any)?.affectedRows || 0);
+    await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)", [migrationKey, changed]);
+    await conn.commit();
+    console.log(`[DB] NPD GST Rate set to 5% on ${changed} items.`);
     return { changed, alreadyApplied: false };
   } catch (error) {
     try { await conn.rollback(); } catch {}
@@ -11335,6 +11376,12 @@ await db.query(`
         await bulkCloseMrrTallyBefore17Nov(db);
       } catch (err) {
         console.warn("[DB] MRR Pending Tally bulk close failed:", (err as Error).message);
+      }
+
+      try {
+        await fillNpdGstRateFivePercent(db);
+      } catch (err) {
+        console.warn("[DB] NPD GST Rate fill failed:", (err as Error).message);
       }
 
       try {

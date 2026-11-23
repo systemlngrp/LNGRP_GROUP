@@ -84,6 +84,9 @@ export function NpdMaster() {
   };
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [consumableDrafts, setConsumableDrafts] = useState<Record<string, boolean>>({});
+  // GST Rate is edited here (the NPD sheet has no GST column); saved on Enter / leaving the box.
+  const [gstDrafts, setGstDrafts] = useState<Record<string, string>>({});
+  const [gstSaving, setGstSaving] = useState<Record<string, "saving" | "error" | "saved">>({});
   const [savingRowIds, setSavingRowIds] = useState<Record<string, boolean>>({});
   const [rowSaveStates, setRowSaveStates] = useState<Record<string, RowSaveState>>({});
   const [allFirms] = useData<Firm>("firms", [], { firmScope: "all" });
@@ -305,6 +308,39 @@ export function NpdMaster() {
       if (next[id]?.status !== "saving") delete next[id];
       return next;
     });
+  };
+
+  const saveGstRate = async (row: NpdRecord) => {
+    const id = String(row.id || "").trim();
+    const draft = gstDrafts[id];
+    if (!id || draft === undefined) return;
+    const text = draft.trim();
+    const current = row.gstRate === null || row.gstRate === undefined || row.gstRate === "" ? "" : String(Number(row.gstRate));
+    if (text === current) { setGstDrafts((prev) => { const next = { ...prev }; delete next[id]; return next; }); return; }
+    const value = Number(text);
+    if (!text || !Number.isFinite(value) || value < 0 || value > 100) {
+      setGstSaving((prev) => ({ ...prev, [id]: "error" }));
+      return;
+    }
+    setGstSaving((prev) => ({ ...prev, [id]: "saving" }));
+    try {
+      const token = window.localStorage.getItem("authToken") || "";
+      const response = await fetch("/api/npd", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ id, erp: String(row.erp || "").trim(), gstRate: value, updatedBy: "System User", updateTimestamp: new Date().toISOString() }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to save GST Rate.");
+      }
+      setRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, gstRate: value } : item)));
+      setGstDrafts((prev) => { const next = { ...prev }; delete next[id]; return next; });
+      setGstSaving((prev) => ({ ...prev, [id]: "saved" }));
+    } catch (error) {
+      console.error("Failed to save NPD GST Rate:", error);
+      setGstSaving((prev) => ({ ...prev, [id]: "error" }));
+    }
   };
 
   const handleUpdateConsumable = async (row: NpdRecord) => {
@@ -537,7 +573,21 @@ export function NpdMaster() {
                                 : "whitespace-nowrap"
                             }`}
                           >
-                            {column.key === "consumable" ? (
+                            {column.key === "gstRate" ? (
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="any"
+                                value={gstDrafts[row.id] ?? (rawValue === null || rawValue === undefined || rawValue === "" ? "" : String(Number(rawValue)))}
+                                disabled={gstSaving[row.id] === "saving"}
+                                onChange={(e) => { const value = e.target.value; setGstDrafts((prev) => ({ ...prev, [row.id]: value })); setGstSaving((prev) => { const next = { ...prev }; delete next[row.id]; return next; }); }}
+                                onBlur={() => void saveGstRate(row)}
+                                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                                className={`box-border block w-16 rounded border bg-yellow-50 px-1 py-1 text-right text-sm font-bold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${gstSaving[row.id] === "error" ? "border-red-600" : gstSaving[row.id] === "saved" ? "border-emerald-600" : "border-black"} disabled:opacity-50`}
+                                title="GST Rate %. Press Enter or click outside to save."
+                              />
+                            ) : column.key === "consumable" ? (
                               <label className="inline-flex items-center gap-2">
                                 <input
                                   type="checkbox"
