@@ -6954,6 +6954,38 @@ async function bulkClosePhpPlateJobsBefore17Nov(db: mysql.Pool) {
   }
 }
 
+async function bulkCloseMrrTallyBefore17Nov(db: mysql.Pool) {
+  // One-time (23-Nov-2026, asked by the owner): close every MRR dated before
+  // 17-Nov-2026 still at Pending Tally (old receipts already entered in Tally
+  // before the app). Rejection In MRRs are left alone. Rows are copied to
+  // material_in_backup_20261123 first, so the change can be undone.
+  const migrationKey = "migration/bulk-close-mrr-tally-before-2026-11-17-v1";
+  const where = "`date` < '2026-11-17' AND status = 'Pending Tally' AND LOWER(TRIM(COALESCE(mrrType, ''))) <> 'rejection in'";
+  const conn = await db.getConnection();
+  try {
+    const [markerRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [migrationKey]);
+    if ((markerRows as any[]).length) return { changed: 0, alreadyApplied: true };
+    await conn.query("DROP TABLE IF EXISTS material_in_backup_20261123");
+    await conn.query(`CREATE TABLE material_in_backup_20261123 AS SELECT * FROM material_in WHERE ${where}`);
+    await conn.beginTransaction();
+    const now = new Date().toISOString();
+    const [result] = await conn.query(
+      "UPDATE material_in m JOIN material_in_backup_20261123 b ON b.id = m.id SET m.status = 'Completed', m.tallyTimestamp = COALESCE(NULLIF(TRIM(m.tallyTimestamp), ''), ?), m.updatedBy = 'Bulk close', m.updateTimestamp = ?",
+      [now, now],
+    );
+    const changed = Number((result as any)?.affectedRows || 0);
+    await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)", [migrationKey, changed]);
+    await conn.commit();
+    console.log(`[DB] Bulk close before 17-Nov: ${changed} MRRs moved from Pending Tally to Completed.`);
+    return { changed, alreadyApplied: false };
+  } catch (error) {
+    try { await conn.rollback(); } catch {}
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
 async function bulkCloseJobsBefore17Nov(db: mysql.Pool) {
   // One-time (21-Nov-2026, asked by the owner): close every open job dated
   // before 17-Nov-2026 (Pending PH and Pending Consumption). Most are old jobs
@@ -11291,6 +11323,12 @@ await db.query(`
         await bulkClosePhpPlateJobsBefore17Nov(db);
       } catch (err) {
         console.warn("[DB] PHP/Plate bulk close failed:", (err as Error).message);
+      }
+
+      try {
+        await bulkCloseMrrTallyBefore17Nov(db);
+      } catch (err) {
+        console.warn("[DB] MRR Pending Tally bulk close failed:", (err as Error).message);
       }
 
       try {
