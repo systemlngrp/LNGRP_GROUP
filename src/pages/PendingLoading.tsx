@@ -1,3 +1,4 @@
+import { normalizeMachineName } from "../lib/productionMachineNames";
 import React, { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import {
@@ -136,6 +137,16 @@ export function PendingLoading() {
   const [loadingSlips, updateLoadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
   const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", storageKey: "production-processing-all-firms", fields: ["id", "productionId", "machineName", "qty"] });
   const corrugationQtyByJobId = useMemo(() => corrugationLinerQtyByJobId(processing), [processing]);
+  // Shown only (no validation): total Printing qty per job.
+  const printedQtyByJobId = useMemo(() => {
+    const totals = new Map<string, number>();
+    processing.forEach((entry) => {
+      if (normalizeMachineName(entry.machineName) !== "Printing") return;
+      const jobId = String(entry.productionId || "").trim();
+      if (jobId) totals.set(jobId, (totals.get(jobId) || 0) + (Number(entry.qty) || 0));
+    });
+    return totals;
+  }, [processing]);
   const [phpLoadingSlips, updatePhpLoadingSlips] = useData<LoadingSlip>("php_loading_slips", []);
   const [plateLoadingSlips, updatePlateLoadingSlips] = useData<LoadingSlip>("plate_loading_slips", []);
 
@@ -1090,6 +1101,7 @@ export function PendingLoading() {
                               <tr className="divide-x divide-slate-300 bg-slate-100">
                                 <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider">Job No</th>
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider">{loadingModal.itemSource === "FG" ? "Corrugation (Liner)" : "Prod"}</th>
+                                {loadingModal.itemSource === "FG" ? <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider">Already Printed</th> : null}
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider">Already Loaded</th>
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider text-emerald-700">Available</th>
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider bg-indigo-50">Load Now</th>
@@ -1103,6 +1115,7 @@ export function PendingLoading() {
                                   <tr key={job.jobId} className="divide-x divide-slate-200 transition-colors hover:bg-indigo-50/40">
                                     <td className="px-4 py-3 text-xs font-black text-black">{job.jobNo}</td>
                                     <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.productionQty.toLocaleString()}</td>
+                                    {loadingModal.itemSource === "FG" ? <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{(printedQtyByJobId.get(String(job.jobId || "").trim()) || 0).toLocaleString()}</td> : null}
                                     <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.alreadyLoaded.toLocaleString()}</td>
                                     <td className="px-4 py-3 text-right text-xs font-black text-emerald-700">{job.yetToLoad.toLocaleString()}{job.atJobWorker ? <div className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-black text-amber-900" title="Sent on a Job Work gate pass and not yet returned">At Job Worker: {job.atJobWorker.toLocaleString()}</div> : null}</td>
                                     <td className="px-4 py-2 text-right bg-indigo-50/30">
@@ -1132,13 +1145,14 @@ export function PendingLoading() {
                                 <td className="px-4 py-4 text-xs font-black uppercase text-emerald-800">{loadingModal.itemSource === "FG" ? `FG Stock - ${getFirmDisplayNameById(loadingModal.firmId, firms)}` : `${loadingModal.itemSource} Stock`}</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
+                                {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-500">-</td> : null}
                                 <td className="px-4 py-4 text-right text-xs font-black text-emerald-700">{loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId).toLocaleString() : "-"}</td>
                                 <td className="px-4 py-4 text-right text-xs font-black text-slate-400">-</td>
                               </tr>
                             </tbody>
                             <tfoot className="bg-slate-900 text-white font-black border-t-2 border-black">
                                 <tr className="divide-x divide-white/20">
-                                    <td colSpan={4} className="px-4 py-3 text-right text-xs uppercase tracking-widest">Total Allocated</td>
+                                    <td colSpan={loadingModal.itemSource === "FG" ? 5 : 4} className="px-4 py-3 text-right text-xs uppercase tracking-widest">Total Allocated</td>
                                     <td className="px-4 py-3 text-right text-sm">{validation.allocatedTotal.toLocaleString()}</td>
                                 </tr>
                             </tfoot>
