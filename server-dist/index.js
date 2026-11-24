@@ -4351,6 +4351,41 @@ async function backfillIndentRequisitionNumbers(db) {
     console.log(`[DB] Indent requisition backfill complete: updated=${updated}, unchanged=${unchanged}, invalid=${invalid}, duplicates=${duplicates}`);
 }
 /** Synchronize the source PHP/Plate output from a completed Corrugation Liner report. */
+/** FG job quantity on active loading slips: total loaded, and the part already invoiced. */
+async function getJobLoadedAndInvoicedQty(db, jobId) {
+    const key = String(jobId || "").trim();
+    if (!key)
+        return { loaded: 0, invoiced: 0 };
+    const [slipRows] = await db.query("SELECT `lines`, invoiceId, status FROM `loading_slips` WHERE CAST(`lines` AS CHAR) LIKE ?", [`%${key}%`]);
+    let loaded = 0, invoiced = 0;
+    for (const slip of slipRows) {
+        if (["cancelled", "canceled"].includes(String(slip.status || "").trim().toLowerCase()))
+            continue;
+        let lines = [];
+        try {
+            lines = typeof slip.lines === "string" ? JSON.parse(slip.lines) : (slip.lines || []);
+        }
+        catch {
+            lines = [];
+        }
+        let qty = 0;
+        for (const line of Array.isArray(lines) ? lines : []) {
+            if (String(line?.itemSource || "FG").trim().toUpperCase() !== "FG")
+                continue;
+            for (const allocation of Array.isArray(line?.allocations) ? line.allocations : []) {
+                if (String(allocation?.sourceType || "").trim().toLowerCase() !== "job")
+                    continue;
+                if (String(allocation?.jobId || "").trim() !== key)
+                    continue;
+                qty += Number(allocation?.qty) || 0;
+            }
+        }
+        loaded += qty;
+        if (String(slip.invoiceId || "").trim())
+            invoiced += qty;
+    }
+    return { loaded, invoiced };
+}
 async function syncCorrugationLinerOutput(db, processingId) {
     const [processingRows] = await db.query(`SELECT pp.*, p.status AS productionStatus, p.phpScheduledJobId, p.plateScheduledJobId
      FROM production_processing pp
@@ -14026,7 +14061,7 @@ const createHandlers = (tableName) => {
                 }
                 let previousProcessing;
                 if (tableName === "production_processing") {
-                    const [previousRows] = await db.query("SELECT productionId, machineName FROM production_processing WHERE id = ? LIMIT 1", [data.id]);
+                    const [previousRows] = await db.query("SELECT productionId, machineName, qty FROM production_processing WHERE id = ? LIMIT 1", [data.id]);
                     previousProcessing = previousRows[0];
                     // Processing reports are flat records. Never let a stale client/cache or
                     // shared form payload turn collection-only fields into SQL columns.
@@ -14154,6 +14189,26 @@ const createHandlers = (tableName) => {
                                     data.lowYieldApprovedBy = null;
                                     data.lowYieldApprovedAt = null;
                                 }
+                            }
+                        }
+                        // Printed vs loading slips on this job.
+                        if (isPrintingEntry) {
+                            const finalPrintedTotal = printedQty + qtyNumber;
+                            const { loaded, invoiced } = await getJobLoadedAndInvoicedQty(db, String(data.productionId || ""));
+                            const jobLabel = String(data.jobNo || "");
+                            // Invoiced boxes are final: printing can never be reduced below them.
+                            const previousPrintedTotal = printedQty + (previousProcessing && String(previousProcessing.productionId || "") === String(data.productionId || "") &&
+                                normalizeMachineName(String(previousProcessing.machineName || "")) === "Printing" ? Number(previousProcessing.qty || 0) : 0);
+                            if (invoiced > 0 && finalPrintedTotal + 0.0001 < invoiced && finalPrintedTotal + 0.0001 < previousPrintedTotal) {
+                                return res.status(400).json({
+                                    error: `Printed quantity cannot be less than the quantity already invoiced. Job ${jobLabel}: already invoiced ${fmt(invoiced)}, printed would become ${fmt(finalPrintedTotal)}. Printed must be at least ${fmt(invoiced)}.`,
+                                });
+                            }
+                            // At Complete, every loaded box must have been printed.
+                            if (printingComplete && loaded > 0 && finalPrintedTotal + 0.0001 < loaded) {
+                                return res.status(400).json({
+                                    error: `Printed quantity cannot be less than the quantity already loaded when Printing is Complete. Job ${jobLabel}: already loaded ${fmt(loaded)}, printed would be ${fmt(finalPrintedTotal)} (short by ${fmt(loaded - finalPrintedTotal)}). Correct the printing entry, or correct the loading slip first.`,
+                                });
                             }
                         }
                     }
@@ -15370,9 +15425,23 @@ const createHandlers = (tableName) => {
                     await db.query("DELETE FROM `material_firm_openings` WHERE materialId = ?", [id]);
                 }
                 const [deletedProcessingRows] = tableName === "production_processing"
-                    ? await db.query("SELECT productionId, machineName FROM production_processing WHERE id = ? LIMIT 1", [id])
+                    ? await db.query("SELECT productionId, machineName, qty, jobNo FROM production_processing WHERE id = ? LIMIT 1", [id])
                     : [[]];
                 const deletedProcessing = deletedProcessingRows[0];
+                // Deleting a Printing entry may not take printed below what is already invoiced.
+                if (tableName === "production_processing" && deletedProcessing &&
+                    normalizeMachineName(String(deletedProcessing.machineName || "")) === "Printing") {
+                    const jobId = String(deletedProcessing.productionId || "");
+                    const [printedRows] = await db.query("SELECT COALESCE(SUM(qty), 0) AS printed FROM production_processing WHERE productionId = ? AND LOWER(TRIM(machineName)) = 'printing' AND id <> ?", [jobId, id]);
+                    const remaining = Number(printedRows[0]?.printed || 0);
+                    const { invoiced } = await getJobLoadedAndInvoicedQty(db, jobId);
+                    if (invoiced > 0 && remaining + 0.0001 < invoiced) {
+                        const fmtQty = (value) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+                        return res.status(409).json({
+                            error: `Cannot delete this Printing entry. Job ${String(deletedProcessing.jobNo || "")}: already invoiced ${fmtQty(invoiced)}, printed would become ${fmtQty(remaining)}. Printed cannot be less than invoiced.`,
+                        });
+                    }
+                }
                 if (tableName === "production_processing") {
                     const ids = normalizeMachineName(String(deletedProcessing?.machineName || "")) === "Printing"
                         ? [String(deletedProcessing.productionId || "")] : [];

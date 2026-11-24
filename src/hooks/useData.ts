@@ -419,7 +419,8 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       const authHeaders = getDataAuthHeaders(includeActiveFirm);
       const response = await fetch(`${writeEndpoint}/${id}`, { method: "DELETE", headers: { ...authHeaders } });
       if (!response.ok) {
-        throw new Error("Failed to delete item");
+        const errData = await response.json().catch(() => ({} as any));
+        throw new Error(String(errData?.error || "Failed to delete item"));
       }
       window.dispatchEvent(new CustomEvent(syncEvent));
     } catch (err) {
