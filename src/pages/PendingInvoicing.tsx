@@ -20,7 +20,7 @@ import {
 } from "../types";
 import type { GstRateMaster } from "../types";
 import { jobIdsWithPrintingEntry } from "../lib/productionProcessingProgress";
-import { jobsMissingPrinting } from "../lib/invoicePrintingCheck";
+import { jobsInvoicedAbovePrinted, jobsMissingPrinting } from "../lib/invoicePrintingCheck";
 import {
   FileText, 
   Search, 
@@ -1000,6 +1000,17 @@ export function PendingInvoicing() {
       const missingPrinting = jobsMissingPrinting(invoiceModal.slips, printedJobIds);
       if (missingPrinting.length > 0) {
         alert(`Invoice cannot be saved. Printing is not updated in Production Processing for: ${missingPrinting.join(", ")}.`);
+        return;
+      }
+      // Invoiced quantity per job may not be more than the job's printed quantity.
+      const overPrinted = jobsInvoicedAbovePrinted(invoiceModal.slips, loadingSlips as any, processing);
+      if (overPrinted.length > 0) {
+        const fmt = (value: number) => value.toLocaleString();
+        alert(
+          "Invoice cannot be saved. Invoiced quantity is greater than printed quantity for:\n\n" +
+          overPrinted.map((job) => `${job.jobNo}: printed ${fmt(job.printed)}, already invoiced ${fmt(job.alreadyInvoiced)}, this invoice ${fmt(job.thisInvoice)} (excess ${fmt(job.alreadyInvoiced + job.thisInvoice - job.printed)})`).join("\n") +
+          "\n\nUpdate Printing in Production Processing, or reduce the loaded quantity for these jobs."
+        );
         return;
       }
     }

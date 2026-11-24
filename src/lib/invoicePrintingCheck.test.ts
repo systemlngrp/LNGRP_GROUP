@@ -31,3 +31,14 @@ describe("loading / invoicing processing rules", () => {
     assert.deepEqual(jobsMissingPrinting(slips, printed), ["JOB/2"]);
   });
 });
+
+import { jobsInvoicedAbovePrinted } from "./invoicePrintingCheck";
+describe("invoiced vs printed quantity", () => {
+  const proc: any[] = [{ productionId: "j1", machineName: "Printing", qty: 1000 }, { productionId: "j2", machineName: "Printing", qty: 500 }];
+  const slip = (id: string, jobId: string, qty: number, invoiceId?: string): any => ({ id, invoiceId, status: "Loaded", lines: [{ itemSource: "FG", allocations: [{ sourceType: "job", jobId, jobNo: jobId.toUpperCase(), qty }] }] });
+  it("flags a job whose already invoiced + this invoice exceeds printed", () => {
+    const all = [slip("s1", "j1", 700, "inv1"), slip("s2", "j1", 400), slip("s3", "j2", 500)];
+    const over = jobsInvoicedAbovePrinted([all[1], all[2]], all, proc);
+    assert.deepEqual(over, [{ jobNo: "J1", printed: 1000, alreadyInvoiced: 700, thisInvoice: 400 }]);
+  });
+});
