@@ -135,7 +135,7 @@ export function PendingLoading() {
   const [phpItemMaster] = useData<any>("php_item_master", []);
   const [plateItemMaster] = useData<any>("plate_item_master", []);
   const [loadingSlips, updateLoadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
-  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", storageKey: "production-processing-all-firms", fields: ["id", "productionId", "machineName", "qty"] });
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", storageKey: "production-processing-all-firms", fields: ["id", "productionId", "machineName", "qty", "completionStatus"] });
   const corrugationQtyByJobId = useMemo(() => corrugationLinerQtyByJobId(processing), [processing]);
   // Shown only (no validation): total Printing qty per job.
   const printedQtyByJobId = useMemo(() => {
@@ -146,6 +146,18 @@ export function PendingLoading() {
       if (jobId) totals.set(jobId, (totals.get(jobId) || 0) + (Number(entry.qty) || 0));
     });
     return totals;
+  }, [processing]);
+  // Jobs whose Printing is Complete: loading is then limited to the printed qty.
+  const printingCompleteJobIds = useMemo(() => {
+    const ids = new Set<string>();
+    processing.forEach((entry) => {
+      if (normalizeMachineName(entry.machineName) !== "Printing") return;
+      const status = String(entry.completionStatus || "").trim().toLowerCase();
+      if (status && status !== "full") return;
+      const jobId = String(entry.productionId || "").trim();
+      if (jobId) ids.add(jobId);
+    });
+    return ids;
   }, [processing]);
   const [phpLoadingSlips, updatePhpLoadingSlips] = useData<LoadingSlip>("php_loading_slips", []);
   const [plateLoadingSlips, updatePlateLoadingSlips] = useData<LoadingSlip>("plate_loading_slips", []);
@@ -433,6 +445,21 @@ export function PendingLoading() {
     // Corrugation (Liner) balance, so loading no longer waits for Prod (FG).
 
     // A job may be loaded beyond its Available (Corrugation Liner) balance; the row shows how much over.
+    // Once Printing is Complete, a job cannot be loaded beyond what was printed.
+    if (modal.itemSource === "FG") {
+      Object.entries(byJobId).forEach(([jobId, qty]) => {
+        const key = String(jobId || "").trim();
+        if (!(Number(qty || 0) > 0) || !printingCompleteJobIds.has(key)) return;
+        const printed = printedQtyByJobId.get(key) || 0;
+        const loaded = getAlreadyLoadedForJob(key);
+        const atJobWorker = atJobWorkerByJobId.get(key) || 0;
+        const enteredNow = currentAdjustmentByJobId.get(key) || 0;
+        if (loaded + atJobWorker + enteredNow > printed + 0.0001) {
+          const jobNo = modal.eligibleJobs?.find((job: any) => String(job.jobId) === key)?.jobNo || key;
+          errors.push(`${jobNo}: Printing is Complete. Printed ${printed.toLocaleString()}, already loaded ${loaded.toLocaleString()}${atJobWorker ? `, at job worker ${atJobWorker.toLocaleString()}` : ""}, so at most ${Math.max(0, printed - loaded - atJobWorker).toLocaleString()} can be loaded. You entered ${enteredNow.toLocaleString()}.`);
+        }
+      });
+    }
 
     if (modal.itemSource === "FG" && npdStockLoading) errors.unshift("FG stock is still loading. Please wait a moment.");
     const stockLabel = modal.itemSource === "FG" ? "FG Stock" : `${modal.itemSource} Stock`;
@@ -1110,14 +1137,18 @@ export function PendingLoading() {
                             <tbody className="divide-y divide-slate-200 bg-white">
                               {jobs.map((job) => {
                                 const currentValue = jobSplitQtys[modalKey]?.[job.jobId] ?? "";
-                                const overAvailable = Math.max(0, Number(currentValue || 0) - job.yetToLoad);
+                                const printingDone = loadingModal.itemSource === "FG" && printingCompleteJobIds.has(String(job.jobId || "").trim());
+                                const rowAvailable = printingDone
+                                  ? Math.max(0, (printedQtyByJobId.get(String(job.jobId || "").trim()) || 0) - job.alreadyLoaded - (job.atJobWorker || 0))
+                                  : job.yetToLoad;
+                                const overAvailable = Math.max(0, Number(currentValue || 0) - rowAvailable);
                                 return (
                                   <tr key={job.jobId} className="divide-x divide-slate-200 transition-colors hover:bg-indigo-50/40">
                                     <td className="px-4 py-3 text-xs font-black text-black">{job.jobNo}</td>
                                     <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.productionQty.toLocaleString()}</td>
                                     {loadingModal.itemSource === "FG" ? <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{(printedQtyByJobId.get(String(job.jobId || "").trim()) || 0).toLocaleString()}</td> : null}
                                     <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.alreadyLoaded.toLocaleString()}</td>
-                                    <td className="px-4 py-3 text-right text-xs font-black text-emerald-700">{job.yetToLoad.toLocaleString()}{job.atJobWorker ? <div className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-black text-amber-900" title="Sent on a Job Work gate pass and not yet returned">At Job Worker: {job.atJobWorker.toLocaleString()}</div> : null}</td>
+                                    <td className="px-4 py-3 text-right text-xs font-black text-emerald-700">{rowAvailable.toLocaleString()}{printingDone ? <div className="mt-0.5 text-[10px] font-black text-indigo-700" title="Printing is Complete: Available = Printed − Already Loaded">Printing Complete</div> : null}{job.atJobWorker ? <div className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-black text-amber-900" title="Sent on a Job Work gate pass and not yet returned">At Job Worker: {job.atJobWorker.toLocaleString()}</div> : null}</td>
                                     <td className="px-4 py-2 text-right bg-indigo-50/30">
                                       <input
                                         type="number"
@@ -1136,7 +1167,7 @@ export function PendingLoading() {
                                         }}
                                         className="h-9 w-28 rounded border-2 border-amber-400 bg-amber-50 px-2 py-1.5 text-right text-xs font-black text-black focus:border-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-100"
                                       />
-                                      {overAvailable > 0 ? <div className="mt-1 text-[10px] font-black text-red-700">{overAvailable.toLocaleString()} more than Available</div> : null}
+                                      {overAvailable > 0 ? <div className="mt-1 text-[10px] font-black text-red-700">{overAvailable.toLocaleString()} more than Available{printingDone ? " (blocked: Printing Complete)" : ""}</div> : null}
                                     </td>
                                   </tr>
                                 );
