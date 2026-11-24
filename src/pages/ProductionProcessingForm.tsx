@@ -48,6 +48,16 @@ function printingOverCorrugationMessage(processing: ProductionProcessing[], prod
   return `Printing quantity is more than corrugated.\n\nCorrugated: ${corrugated.toLocaleString()}\nAlready printed: ${printed.toLocaleString()}\nBalance: ${Math.max(0, corrugated - printed).toLocaleString()}\nYou entered: ${qtyNow.toLocaleString()}`;
 }
 
+/** Total Corrugation Liner qty of an FG job; undefined when not a Printing entry on an FG job. */
+function corrugatedQtyForPrinting(isPrinting: boolean, processing: ProductionProcessing[], production: Production | undefined, productionId: string) {
+  if (!isPrinting) return undefined;
+  if (!production) return null;
+  if (production.itemSource === "PHP" || production.itemSource === "PLATE") return undefined;
+  return processing
+    .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner")
+    .reduce((sum, entry) => sum + Number(entry.qty || 0), 0);
+}
+
 function getAuditUser(user: { id?: string; name?: string } | null | undefined) {
   return {
     id: user?.id || "system",
@@ -302,6 +312,7 @@ function LockedReportForm() {
             <ProcessingQtyFields
               plannedQty={selectedProduction ? plannedQty : null}
               alreadyCompletedQty={selectedProduction ? alreadyCompletedQty : null}
+              corrugatedQty={corrugatedQtyForPrinting(isPrinting, processing, selectedProduction, productionId)}
               qty={qty}
               onQtyChange={setQty}
             />
@@ -644,6 +655,7 @@ function FullReportForm() {
             <ProcessingQtyFields
               plannedQty={qtyContext ? qtyContext.plannedQty : null}
               alreadyCompletedQty={qtyContext ? qtyContext.alreadyProcessedQty : null}
+              corrugatedQty={corrugatedQtyForPrinting(isPrinting, processing, selectedProduction, productionId)}
               qty={qty}
               onQtyChange={setQty}
             />
