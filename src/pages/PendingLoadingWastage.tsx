@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useQtyAtJobWorker } from "../hooks/useQtyAtJobWorker";
 import type { Company, DispatchPlan, Firm, LoadingSlip, LoadingSlipJobConfirmation, Order, ProductionProcessing } from "../types";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { orderedFirmTabs } from "../components/FirmTabs";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { formatDate } from "../lib/serial";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
@@ -34,6 +35,7 @@ type Row = {
   jobNo: string;
   loadedOnSlip: number;
   companyName: string;
+  firmId: string;
   firmName: string;
   daysWaiting: number;
   printed: number;
@@ -63,6 +65,7 @@ export function PendingLoadingWastage() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "ready" | "waiting">("");
+  const [firmTab, setFirmTab] = useState("");
   const [wastageDraft, setWastageDraft] = useState<Record<string, string>>({});
   const [ticks, setTicks] = useState<Record<string, { wastage?: string; pendingFg?: string }>>({});
   const [savingKey, setSavingKey] = useState("");
@@ -84,7 +87,8 @@ export function PendingLoadingWastage() {
         const plan = planById.get(String(firstLine?.dispatchPlanId || ""));
         const order = orderById.get(String(plan?.orderId || ""));
         const companyName = companyById.get(String(order?.companyId || slip.companyId || firstLine?.companyId || ""))?.name || slip.companyName || firstLine?.companyName || "";
-        const firmName = getFirmDisplayNameById(String(order?.firmId || slip.orderFirmId || slip.firmId || ""), firms);
+        const firmId = String(order?.firmId || slip.orderFirmId || slip.firmId || "");
+        const firmName = getFirmDisplayNameById(firmId, firms);
         return unconfirmedSlipJobs(slip).map((job) => {
           const jobKey = lower(job.jobId);
           const savedWastage = slipJobWastage(slip, job.jobId);
@@ -99,6 +103,7 @@ export function PendingLoadingWastage() {
             jobNo: job.jobNo,
             loadedOnSlip: job.loadedQty,
             companyName,
+            firmId,
             firmName,
             daysWaiting: daysBetween(String(slip.date || today).slice(0, 10), today),
             printed,
@@ -114,14 +119,25 @@ export function PendingLoadingWastage() {
       .sort((a, b) => b.daysWaiting - a.daysWaiting || String(a.slip.slipNo).localeCompare(String(b.slip.slipNo), undefined, { numeric: true }));
   }, [atJobWorkerByJobId, companies, firms, loadingSlips, orders, plans, printing, totals]);
 
+  // One tab per firm that has slips under the rule (Unit-II, LNKI), Unit-II first.
+  const firmTabs = useMemo(() => {
+    const counts = new Map<string, number>();
+    rows.forEach((row) => counts.set(row.firmId, (counts.get(row.firmId) || 0) + 1));
+    return orderedFirmTabs(firms.filter((firm) => counts.has(String(firm.id)) || /UNIT[\s-]*(II|2)\b|LNKI/i.test(`${firm.firmName} ${firm.shortName || ""}`)))
+      .filter((tab) => tab.label !== "UNIT 1")
+      .map((tab) => ({ ...tab, count: counts.get(tab.id) || 0 }));
+  }, [firms, rows]);
+  const activeFirmId = firmTab || firmTabs[0]?.id || "";
+
   const filteredRows = useMemo(() => {
     const words = searchWords(searchTerm);
     return rows.filter((row) => {
+      if (activeFirmId && row.firmId !== activeFirmId) return false;
       if (statusFilter === "ready" && !row.printingComplete) return false;
       if (statusFilter === "waiting" && row.printingComplete) return false;
       return matchesTableSearch([row.slip.slipNo, formatDate(row.slip.date), row.companyName, row.firmName, row.jobNo], words);
     });
-  }, [rows, searchTerm, statusFilter]);
+  }, [activeFirmId, rows, searchTerm, statusFilter]);
 
   const draftOf = (row: Row) => (wastageDraft[row.key] ?? (row.savedWastage > 0 ? String(row.savedWastage) : ""));
 
@@ -166,7 +182,8 @@ export function PendingLoadingWastage() {
     }
   };
 
-  const readyCount = rows.filter((row) => row.printingComplete).length;
+  const firmRows = rows.filter((row) => !activeFirmId || row.firmId === activeFirmId);
+  const readyCount = firmRows.filter((row) => row.printingComplete).length;
   const dialogRow = dialogKey ? rows.find((row) => row.key === dialogKey) : undefined;
   const TH = "px-2 py-2 text-[10px] font-black uppercase tracking-wide border border-black whitespace-nowrap";
   const TD = "px-2 py-1.5 text-xs border border-black";
@@ -184,13 +201,24 @@ export function PendingLoadingWastage() {
       <div className="flex flex-wrap items-center gap-3 rounded border-2 border-black bg-white p-3">
         <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search slip, company, job…" className="min-w-[260px] flex-1 rounded border-2 border-black px-3 py-2 text-sm" />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className="rounded border-2 border-black px-3 py-2 text-sm">
-          <option value="">All ({rows.length})</option>
+          <option value="">All ({firmRows.length})</option>
           <option value="ready">Ready to confirm ({readyCount})</option>
-          <option value="waiting">Waiting for Printing Complete ({rows.length - readyCount})</option>
+          <option value="waiting">Waiting for Printing Complete ({firmRows.length - readyCount})</option>
         </select>
       </div>
 
       {message ? <div className="rounded border-2 border-black bg-amber-50 px-3 py-2 text-sm font-bold">{message}</div> : null}
+
+      <div className="flex flex-wrap gap-1 border-b-2 border-black" role="tablist">
+        {firmTabs.map((tab) => {
+          const active = tab.id === activeFirmId;
+          return (
+            <button key={tab.id} type="button" title={tab.name} onClick={() => setFirmTab(tab.id)} className={`rounded-t border-2 border-b-0 border-black px-4 py-2 text-sm font-black uppercase tracking-wide ${active ? "bg-indigo-700 text-white" : "bg-white text-black hover:bg-indigo-50"}`}>
+              {tab.label} <span className={`ml-1 rounded px-1.5 py-0.5 text-xs ${active ? "bg-white text-indigo-700" : "bg-slate-200 text-black"}`}>{tab.count.toLocaleString()}</span>
+            </button>
+          );
+        })}
+      </div>
 
       <div className="overflow-x-auto rounded border-2 border-black bg-white">
         <table className="min-w-full border-collapse">
