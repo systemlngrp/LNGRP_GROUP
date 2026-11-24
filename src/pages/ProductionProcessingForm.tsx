@@ -35,6 +35,19 @@ function confirmCompleteBelowPlan(plannedQty: number, alreadyCompletedQty: numbe
   );
 }
 
+/** Printing may not exceed the boxes corrugated on the same FG job (server enforces this too). */
+function printingOverCorrugationMessage(processing: ProductionProcessing[], production: Production | undefined, productionId: string, qtyNow: number) {
+  if (!production || production.itemSource === "PHP" || production.itemSource === "PLATE") return "";
+  const totalFor = (machine: string) => processing
+    .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === machine)
+    .reduce((sum, entry) => sum + Number(entry.qty || 0), 0);
+  const corrugated = totalFor("Corrugation Liner");
+  const printed = totalFor("Printing");
+  if (printed + qtyNow <= corrugated + 0.0001) return "";
+  if (corrugated <= 0) return "Printing cannot be reported: no Corrugation Liner quantity is reported for this job yet.";
+  return `Printing quantity is more than corrugated.\n\nCorrugated: ${corrugated.toLocaleString()}\nAlready printed: ${printed.toLocaleString()}\nBalance: ${Math.max(0, corrugated - printed).toLocaleString()}\nYou entered: ${qtyNow.toLocaleString()}`;
+}
+
 function getAuditUser(user: { id?: string; name?: string } | null | undefined) {
   return {
     id: user?.id || "system",
@@ -143,6 +156,10 @@ function LockedReportForm() {
     if (!Number.isFinite(qtyNumber) || qtyNumber <= 0) {
       alert("Please enter a quantity greater than 0.");
       return;
+    }
+    if (isPrinting) {
+      const overMessage = printingOverCorrugationMessage(processing, selectedProduction, productionId, qtyNumber);
+      if (overMessage) { alert(overMessage); return; }
     }
     if (requiresCompletionStatus && completionStatus === "Full" && selectedProduction &&
         !confirmCompleteBelowPlan(plannedQty, alreadyCompletedQty, qtyNumber)) {
@@ -488,6 +505,10 @@ function FullReportForm() {
     if (!Number.isFinite(qtyNumber) || qtyNumber <= 0) {
       alert("Please enter a quantity greater than 0.");
       return;
+    }
+    if (isPrinting) {
+      const overMessage = printingOverCorrugationMessage(processing, selectedProduction, productionId, qtyNumber);
+      if (overMessage) { alert(overMessage); return; }
     }
     if (requiresCompletionStatus && completionStatus === "Full" && qtyContext &&
         !confirmCompleteBelowPlan(qtyContext.plannedQty, qtyContext.alreadyProcessedQty, qtyNumber)) {

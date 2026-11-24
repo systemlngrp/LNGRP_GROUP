@@ -14069,6 +14069,31 @@ const createHandlers = (tableName) => {
                     const [machineRows] = await db.query("SELECT `name` FROM `machines` WHERE `id` = ? LIMIT 1", [data.machineId]);
                     const storedMachineName = String(machineRows[0]?.name || "").trim();
                     data.machineName = normalizeMachineName(storedMachineName || String(data.machineName || ""));
+                    // Printing can never exceed the boxes corrugated on the same job
+                    // (all Corrugation Liner entries, In Progress and Complete). A
+                    // Corrugation Liner edit may not drop below what is already printed.
+                    if (jobRows[0].source === "FG" && (data.machineName === "Printing" || data.machineName === "Corrugation Liner")) {
+                        const [totalRows] = await db.query(`SELECT
+                 COALESCE(SUM(CASE WHEN LOWER(TRIM(machineName)) IN ('corrugation liner', 'corrugation linear') THEN qty ELSE 0 END), 0) AS corrugatedQty,
+                 COALESCE(SUM(CASE WHEN LOWER(TRIM(machineName)) = 'printing' THEN qty ELSE 0 END), 0) AS printedQty
+               FROM production_processing WHERE productionId = ? AND id <> ?`, [data.productionId, String(data.id || "")]);
+                        const corrugatedQty = Number(totalRows[0]?.corrugatedQty || 0);
+                        const printedQty = Number(totalRows[0]?.printedQty || 0);
+                        const fmt = (value) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+                        if (data.machineName === "Printing" && printedQty + qtyNumber > corrugatedQty + 0.0001) {
+                            const balance = Math.max(0, corrugatedQty - printedQty);
+                            return res.status(400).json({
+                                error: corrugatedQty <= 0
+                                    ? `Printing cannot be reported: no Corrugation Liner quantity is reported for job ${String(data.jobNo || "")} yet.`
+                                    : `Printing quantity is more than corrugated. Job ${String(data.jobNo || "")}: corrugated ${fmt(corrugatedQty)}, already printed ${fmt(printedQty)}, balance ${fmt(balance)}. You entered ${fmt(qtyNumber)}.`,
+                            });
+                        }
+                        if (data.machineName === "Corrugation Liner" && corrugatedQty + qtyNumber + 0.0001 < printedQty) {
+                            return res.status(400).json({
+                                error: `Corrugation Liner total cannot be less than printed. Job ${String(data.jobNo || "")}: already printed ${fmt(printedQty)}, corrugation would become ${fmt(corrugatedQty + qtyNumber)}.`,
+                            });
+                        }
+                    }
                     if (data.machineName === "Corrugation Liner" && completionStatus === "Full") {
                         const wastageInputFields = ["warpageBoxes", "delaminationBoxes", "misalignmentBoxes", "twoPlyPaperKg", "deckelWastageKg", "sheerCutterBoxes", "noHisabBoxes"];
                         for (const field of wastageInputFields) {
