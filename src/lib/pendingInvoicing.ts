@@ -67,8 +67,6 @@ export function getPendingInvoicingLineKey(ctx: PendingInvoicingContext, line: L
  */
 export function getPendingInvoicingSlip(ctx: PendingInvoicingContext, slip: LoadingSlip, includeInvoiceId = "") {
   if (slip.status === "Cancelled") return null;
-  // An edited slip waits until its corrected PDF has been downloaded again.
-  if (!includeInvoiceId && !slip.invoiceId && String(slip.pdfRedownloadRequired || "").trim() === "Yes") return null;
 
   const relevantLineItems = (ctx.lineItemsBySlipId.get(slip.id) || []).filter(
     (line) => !includeInvoiceId || String(line.invoiceId || "").trim() !== includeInvoiceId

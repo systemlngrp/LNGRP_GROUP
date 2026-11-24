@@ -1664,7 +1664,6 @@ function getPendingInvoicingLineKey(ctx, line, order) {
 }
 function getPendingInvoicingSlip(ctx, slip, includeInvoiceId = "") {
   if (slip.status === "Cancelled") return null;
-  if (!includeInvoiceId && !slip.invoiceId && String(slip.pdfRedownloadRequired || "").trim() === "Yes") return null;
   const relevantLineItems = (ctx.lineItemsBySlipId.get(slip.id) || []).filter(
     (line) => !includeInvoiceId || String(line.invoiceId || "").trim() !== includeInvoiceId
   );

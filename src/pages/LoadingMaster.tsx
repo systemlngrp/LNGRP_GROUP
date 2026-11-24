@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useData } from "../hooks/useData";
 import { 
   LoadingSlip, 
   LoadingSlipAllocation,
+  ProductionProcessing,
   Truck, 
   DispatchPlan,
   Order,
@@ -47,12 +48,16 @@ function getSlipNoSortValue(slipNo: string) {
   return match ? Number(match[1]) : 0;
 }
 
-export function LoadingMaster() {
+/**
+ * focusSlipId: show only that slip, opened for editing (used by "Adjust Loading"
+ * in Pending Invoicing, where everyone who can open the page may adjust it).
+ */
+export function LoadingMaster({ focusSlipId, onFocusDone }: { focusSlipId?: string; onFocusDone?: () => void } = {}) {
   // Jobs with qty still at a job worker: their loaded qty may not be raised here.
   const atJobWorkerByJobId = useQtyAtJobWorker();
   const phpPlateReceipts = usePhpPlateReceipts();
   const { user } = useAuth();
-  const canManage = canManageMasterRecords(user?.role);
+  const canManage = Boolean(focusSlipId) || canManageMasterRecords(user?.role);
   const confirm = useConfirm();
   const [loadingSlips, setLoadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
@@ -79,6 +84,23 @@ export function LoadingMaster() {
   const [firmFilter, setFirmFilter] = useState("");
   const [expandedSlipIds, setExpandedSlipIds] = useState<Set<string>>(new Set());
   const [editingSlipIds, setEditingSlipIds] = useState<Set<string>>(new Set());
+  const [focusSaved, setFocusSaved] = useState(false);
+  // Printing totals per FG job: once Printing is Complete, loaded + loading
+  // wastage of a job cannot go above what was printed.
+  const [processingRows] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", storageKey: "production-processing-all-firms", fields: ["id", "productionId", "machineName", "qty", "completionStatus"] });
+  const printingByJobId = useMemo(() => {
+    const map = new Map<string, { printed: number; complete: boolean }>();
+    processingRows.forEach((entry) => {
+      if (String(entry.machineName || "").trim().toLowerCase() !== "printing") return;
+      const jobId = String(entry.productionId || "").trim();
+      if (!jobId) return;
+      const current = map.get(jobId) || { printed: 0, complete: false };
+      const status = String(entry.completionStatus || "").trim().toLowerCase();
+      map.set(jobId, { printed: current.printed + (Number(entry.qty) || 0), complete: current.complete || !status || status === "full" });
+    });
+    return map;
+  }, [processingRows]);
+  const focusStartedRef = useRef(false);
   const [draftBySlipId, setDraftBySlipId] = useState<Record<string, LoadingSlip>>({});
   const [isDownloading, setIsDownloading] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState("");
@@ -331,6 +353,33 @@ export function LoadingMaster() {
     (draft.jobWastage || []).forEach((row) => {
       if (Number(row.qty || 0) < 0) errors.push(`Job ${row.jobNo}: Loading wastage cannot be negative.`);
     });
+    // Printing Complete: this slip's load + wastage, plus every other active
+    // slip's, cannot exceed the job's printed quantity.
+    const slipJobTotals = new Map<string, { jobNo: string; qty: number }>();
+    lines.flatMap((line) => line.allocations || []).forEach((allocation: any) => {
+      if (allocation.sourceType !== "job" || !allocation.jobId) return;
+      const current = slipJobTotals.get(allocation.jobId) || { jobNo: allocation.jobNo, qty: 0 };
+      slipJobTotals.set(allocation.jobId, { jobNo: current.jobNo, qty: current.qty + Number(allocation.qty || 0) });
+    });
+    (draft.jobWastage || []).forEach((row) => {
+      const current = slipJobTotals.get(row.jobId) || { jobNo: row.jobNo, qty: 0 };
+      slipJobTotals.set(row.jobId, { jobNo: current.jobNo, qty: current.qty + Number(row.qty || 0) });
+    });
+    slipJobTotals.forEach(({ jobNo, qty }, jobId) => {
+      const printing = printingByJobId.get(String(jobId).trim());
+      if (!printing?.complete) return;
+      let others = 0;
+      loadingSlips.forEach((other) => {
+        if (other.id === draft.id || String(other.status || "").toLowerCase() === "cancelled") return;
+        (other.lines || []).forEach((line) => (line.allocations || []).forEach((allocation: any) => {
+          if (allocation.sourceType === "job" && allocation.jobId === jobId) others += Number(allocation.qty || 0);
+        }));
+        (other.jobWastage || []).forEach((row) => { if (row.jobId === jobId) others += Number(row.qty || 0); });
+      });
+      if (others + qty > printing.printed + 0.0001) {
+        errors.push(`Job ${jobNo}: Printing is Complete. Printed ${printing.printed.toLocaleString()}, on other slips (loaded + wastage) ${others.toLocaleString()}, so this slip can have at most ${Math.max(0, printing.printed - others).toLocaleString()} loaded + wastage. You entered ${qty.toLocaleString()}.`);
+      }
+    });
     lines.forEach((line, index) => {
       const loadedQty = Number(line.loadedQty || 0);
       if (loadedQty < 0) errors.push(`Line ${index + 1}: Loaded qty cannot be negative.`);
@@ -515,6 +564,7 @@ export function LoadingMaster() {
     }
 
     cancelEdit(slipId);
+    setFocusSaved(true);
   };
 
   const cancelSlip = async (slip: LoadingSlip) => {
@@ -792,6 +842,32 @@ export function LoadingMaster() {
   const statusBadge = (slip: (typeof paginatedSlips)[number]) => (
     <span className={`whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-black uppercase ${slip.statusLabel === "Cancelled" ? "border-red-700 bg-red-100 text-red-800" : slip.statusLabel === "Invoiced" ? "border-emerald-700 bg-emerald-100 text-emerald-800" : "border-slate-300 bg-slate-100 text-slate-700"}`}>{slip.statusLabel}</span>
   );
+
+  const focusSlip = focusSlipId ? slipRows.find((row) => row.id === focusSlipId) : undefined;
+  useEffect(() => {
+    if (!focusSlip || focusStartedRef.current) return;
+    focusStartedRef.current = true;
+    if (!focusSlip.invoiceId && focusSlip.status !== "Cancelled") startEdit(focusSlip);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSlip?.id]);
+
+  if (focusSlipId) {
+    if (!focusSlip) return <div className="p-6 text-sm text-slate-600">Loading slip…</div>;
+    const stored = loadingSlips.find((row) => row.id === focusSlip.id);
+    const needsPdf = stored?.pdfRedownloadRequired === "Yes" && !stored?.invoiceId;
+    return (
+      <div className="space-y-3">
+        {renderSlipDetails(focusSlip)}
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {needsPdf ? <span className="text-xs font-black text-amber-800">Download the updated PDF; until then this slip cannot be invoiced.</span> : focusSaved ? <span className="text-xs font-black text-emerald-700">Saved.</span> : null}
+          <button type="button" onClick={() => void handleDownloadPdf(focusSlip)} disabled={isDownloading === focusSlip.id} className="flex items-center gap-2 rounded border border-indigo-600 bg-indigo-50 px-3 py-1.5 text-xs font-bold uppercase text-indigo-700 hover:bg-indigo-100 disabled:opacity-50">
+            {isDownloading === focusSlip.id ? <Spinner size={14} /> : <Download size={14} />} PDF
+          </button>
+          {!editingSlipIds.has(focusSlip.id) ? <button type="button" onClick={() => onFocusDone?.()} className="rounded border-2 border-black bg-white px-4 py-1.5 text-xs font-bold hover:bg-slate-100">Close</button> : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

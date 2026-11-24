@@ -47,6 +47,9 @@ import { useAuth } from "../auth/AuthContext";
 import { FirmTabs } from "../components/FirmTabs";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { getPendingInvoicingSlip } from "../lib/pendingInvoicing";
+const LoadingMasterFocus = React.lazy(() => import("./LoadingMaster").then((module) => ({ default: module.LoadingMaster })));
+const needsPdfRedownload = (slip: { invoiceId?: string; pdfRedownloadRequired?: string }) =>
+  !String(slip.invoiceId || "").trim() && String(slip.pdfRedownloadRequired || "").trim() === "Yes";
 import { companyTcsRate, computeTcsAmount, normalizeTcsRate } from "../lib/invoiceTcs";
 
 interface GroupedLoading {
@@ -657,7 +660,14 @@ export function PendingInvoicing() {
     setExpandedCompanies((previous) => new Set(previous).add(groupKey));
   };
 
+  const [adjustSlipId, setAdjustSlipId] = useState<string | null>(null);
+
   const handleToggleSlip = (id: string) => {
+    const slip = loadingSlips.find((row) => row.id === id);
+    if (slip && needsPdfRedownload(slip) && !selectedSlips.has(id)) {
+      alert(`Loading slip ${slip.slipNo} was adjusted. Download its updated PDF (Adjust Loading → PDF) before invoicing.`);
+      return;
+    }
     const next = new Set(selectedSlips);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -690,6 +700,11 @@ export function PendingInvoicing() {
     if (!companyGroup) return;
     
     const selected = companyGroup.slips.filter(s => selectedSlips.has(s.id));
+    const waitingPdf = selected.filter((slip) => needsPdfRedownload(loadingSlips.find((row) => row.id === slip.id) || slip));
+    if (waitingPdf.length > 0) {
+      alert(`Download the updated PDF first for: ${waitingPdf.map((slip) => slip.slipNo).join(", ")}.`);
+      return;
+    }
     setInvoiceModal({ companyId: companyGroup.companyId, slips: selected });
     setOtherCharges("");
     setOtherChargesGstRate("");
@@ -1369,7 +1384,8 @@ export function PendingInvoicing() {
                           {selecting ? <input type="checkbox" checked={checked} onChange={() => handleToggleSlip(s.id)} className="mt-0.5 h-5 w-5 shrink-0" /> : null}
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-sm font-black">{s.slipNo}</span>
+                              <span className="text-sm font-black">{s.slipNo}{needsPdfRedownload(s) ? <span className="ml-1 rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-black text-amber-900">Download updated PDF</span> : null}</span>
+                              <button type="button" onClick={(event) => { event.preventDefault(); setAdjustSlipId(s.id); }} className="rounded border border-black bg-white px-2 py-0.5 text-[11px] font-bold hover:bg-slate-100">Adjust Loading</button>
                               <span className="text-xs font-bold text-slate-600">Qty <span className="text-sm font-black text-black">{s.totalQty.toLocaleString()}</span></span>
                             </div>
                             <div className="text-[11px] font-semibold text-slate-700">{formatDate(s.date)} · <span className="font-bold uppercase text-indigo-700">{s.truckNo || trucks.find(t => t.id === s.truckId)?.truckNo || "N/A"}</span></div>
@@ -1391,6 +1407,7 @@ export function PendingInvoicing() {
                       <th className="w-[130px] px-3 py-2 text-left text-[10px] font-bold uppercase"><SortHeader label={"Truck No"} sortKey="truckNo" sort={slipSort} onToggle={toggleSlipSort} align="left" /></th>
                       <th className="min-w-[360px] px-3 py-2 text-left text-[10px] font-bold uppercase"><SortHeader label={"Item Name(s)"} sortKey="items" sort={slipSort} onToggle={toggleSlipSort} align="left" /></th>
                       <th className="w-[120px] px-3 py-2 text-right text-[10px] font-bold uppercase"><SortHeader label={"Total Qty"} sortKey="totalQty" sort={slipSort} onToggle={toggleSlipSort} align="right" /></th>
+                      <th className="w-[140px] px-3 py-2 text-center text-[10px] font-bold uppercase">Action</th>
                     </tr>
                   </thead>
                       <tbody className="divide-y divide-black">
@@ -1406,7 +1423,7 @@ export function PendingInvoicing() {
                             />
                           </td>
                         )}
-                        <td className="px-3 py-2 text-xs font-bold">{s.slipNo}</td>
+                        <td className="px-3 py-2 text-xs font-bold">{s.slipNo}{needsPdfRedownload(s) ? <div className="mt-1 inline-block rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-black text-amber-900" title="Adjusted: download the updated PDF before invoicing">Download updated PDF</div> : null}</td>
                         <td className="px-3 py-2 text-xs">{formatDate(s.date)}</td>
                         <td className="px-3 py-2 text-xs font-bold text-indigo-700">
                           {s.truckNo || trucks.find(t => t.id === s.truckId)?.truckNo || "N/A"}
@@ -1421,6 +1438,9 @@ export function PendingInvoicing() {
                           </div>
                         </td>
                         <td className="px-3 py-2 text-xs text-right font-medium">{s.totalQty.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-center">
+                          <button type="button" onClick={() => setAdjustSlipId(s.id)} className="rounded border border-black bg-white px-2 py-1 text-[11px] font-bold uppercase hover:bg-slate-100" title="Correct loaded qty per job and enter loading wastage">Adjust Loading</button>
+                        </td>
                       </tr>
                     ))}
                       </tbody>
@@ -1432,6 +1452,20 @@ export function PendingInvoicing() {
           </div>
         ))}
       </div>
+
+      {adjustSlipId ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[92vh] w-full max-w-6xl overflow-auto rounded border-2 border-black bg-white p-4 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
+            <div className="mb-3 flex items-center justify-between border-b-2 border-black pb-2">
+              <div className="text-sm font-black uppercase">Adjust Loading</div>
+              <button type="button" onClick={() => setAdjustSlipId(null)} className="rounded border border-black px-3 py-1 text-xs font-bold hover:bg-slate-100">Close</button>
+            </div>
+            <React.Suspense fallback={<div className="p-6 text-sm text-slate-600">Loading…</div>}>
+              <LoadingMasterFocus focusSlipId={adjustSlipId} onFocusDone={() => setAdjustSlipId(null)} />
+            </React.Suspense>
+          </div>
+        </div>
+      ) : null}
 
       {/* Invoice Modal */}
       {invoiceModal && (
