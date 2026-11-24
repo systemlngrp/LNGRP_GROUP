@@ -62,6 +62,7 @@ interface GroupedLoading {
     totalQty: number;
     items: string[];
     itemKeys: string[];
+    erps?: string[];
   })[];
 }
 
@@ -558,8 +559,15 @@ export function PendingInvoicing() {
         return itemId || `${itemName}::${erp}`;
       });
 
+      // ERP codes of the slip's items, so the search finds a slip by ERP too.
+      const slipErps = s.lines.map(l => {
+        const lp = lookup.planById.get(l.dispatchPlanId);
+        const lo = lookup.orderById.get(lp?.orderId as string);
+        return String(l.erpCode || l.masterErp || lo?.erpCode || "").trim();
+      }).filter(Boolean);
       companyMap.get(groupId)!.slips.push({
         ...s,
+        erps: Array.from(new Set(slipErps)),
         totalQty,
         items: Array.from(new Set(slipItems)),
         itemKeys: Array.from(new Set(slipItemKeys))
@@ -589,6 +597,7 @@ export function PendingInvoicing() {
             formatDate(slip.date),
             slip.truckNo || truckNoById.get(String(slip.truckId || "")) || "N/A",
             slip.items,
+            slip.erps,
             slip.totalQty,
           ], words)),
         };
