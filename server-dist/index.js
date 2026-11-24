@@ -14082,7 +14082,7 @@ const createHandlers = (tableName) => {
                         const printedQty = Number(totalRows[0]?.printedQty || 0);
                         const printingWastage = Number(totalRows[0]?.printingWastage || 0);
                         const fmt = (value) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
-                        const wastageNow = ["slotting", "delaminationPrinting", "misalignmentPrinting", "drySheets", "warp", "misprinting", "jobSetting"]
+                        const wastageNow = completionStatus !== "Full" ? 0 : ["slotting", "delaminationPrinting", "misalignmentPrinting", "drySheets", "warp", "misprinting", "jobSetting"]
                             .reduce((sum, key) => sum + (Number(data[key] || 0) || 0), 0);
                         // Printed + printing wastage come out of the corrugated boxes.
                         if (data.machineName === "Printing" && printedQty + printingWastage + qtyNumber + wastageNow > corrugatedQty + 0.0001) {
