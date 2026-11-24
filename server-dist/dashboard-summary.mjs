@@ -68,8 +68,8 @@ function buildProductionMaterialUsageMap(materialIssues, materialIssueLines, mat
     if (!productionId) return;
     totals.set(productionId, (totals.get(productionId) || 0) - Number(line.weightKg || 0));
   });
-  totals.forEach((value, key) => {
-    totals.set(key, Math.max(0, Number(value.toFixed(5))));
+  totals.forEach((value, key2) => {
+    totals.set(key2, Math.max(0, Number(value.toFixed(5))));
   });
   return totals;
 }
@@ -96,8 +96,8 @@ function buildProductionCorrugatedSheetUsageMap(materials, materialIssues, mater
     if (!productionId) return;
     totals.set(productionId, (totals.get(productionId) || 0) - Number(line.qty || 0));
   });
-  totals.forEach((value, key) => {
-    totals.set(key, Math.max(0, Number(value.toFixed(5))));
+  totals.forEach((value, key2) => {
+    totals.set(key2, Math.max(0, Number(value.toFixed(5))));
   });
   return totals;
 }
@@ -279,7 +279,7 @@ function buildReturnedReelKeys(returnReelLines, resolveProductionId) {
   const keys = /* @__PURE__ */ new Set();
   returnReelLines.forEach((line) => {
     if (Number(line.weightKg || 0) <= REEL_BALANCE_TOLERANCE_KG) return;
-    reelIdentityKeys(resolveProductionId(line), line).forEach((key) => keys.add(key));
+    reelIdentityKeys(resolveProductionId(line), line).forEach((key2) => keys.add(key2));
   });
   return keys;
 }
@@ -289,9 +289,9 @@ function getAllReturnableReelLines(issueReelLines, returnReelLines, productions 
   const latestIssueLineByJobAndSlip = /* @__PURE__ */ new Map();
   issueReelLines.forEach((line) => {
     const productionId = resolveProductionId(line);
-    const key = reelBalanceKey(productionId, line);
-    if (!key || reelIdentityKeys(productionId, line).some((identity) => returnedReelKeys.has(identity))) return;
-    latestIssueLineByJobAndSlip.set(key, { ...line, productionId });
+    const key2 = reelBalanceKey(productionId, line);
+    if (!key2 || reelIdentityKeys(productionId, line).some((identity) => returnedReelKeys.has(identity))) return;
+    latestIssueLineByJobAndSlip.set(key2, { ...line, productionId });
   });
   return Array.from(latestIssueLineByJobAndSlip.values()).flatMap((line) => {
     const issuedWeight = round2(Number(line.weightKg || 0));
@@ -351,27 +351,27 @@ function buildReelStockRows({
   const filteredReturnLines = returnReelLines.filter(includeReturnLine);
   const issueLinesByPackingSlipId = /* @__PURE__ */ new Map();
   filteredIssueLines.forEach((line) => {
-    const key = String(line.packingSlipId || "");
-    if (!key) return;
-    const rows = issueLinesByPackingSlipId.get(key) || [];
+    const key2 = String(line.packingSlipId || "");
+    if (!key2) return;
+    const rows = issueLinesByPackingSlipId.get(key2) || [];
     rows.push(line);
-    issueLinesByPackingSlipId.set(key, rows);
+    issueLinesByPackingSlipId.set(key2, rows);
   });
   const returnLinesByPackingSlipId = /* @__PURE__ */ new Map();
   filteredReturnLines.forEach((line) => {
-    const key = String(line.packingSlipId || "");
-    if (!key) return;
-    const rows = returnLinesByPackingSlipId.get(key) || [];
+    const key2 = String(line.packingSlipId || "");
+    if (!key2) return;
+    const rows = returnLinesByPackingSlipId.get(key2) || [];
     rows.push(line);
-    returnLinesByPackingSlipId.set(key, rows);
+    returnLinesByPackingSlipId.set(key2, rows);
   });
   const getRelatedLines = (map, keys) => {
     const rows = [];
     const seen = /* @__PURE__ */ new Set();
-    keys.forEach((key) => {
-      if (seen.has(key)) return;
-      seen.add(key);
-      rows.push(...map.get(key) || []);
+    keys.forEach((key2) => {
+      if (seen.has(key2)) return;
+      seen.add(key2);
+      rows.push(...map.get(key2) || []);
     });
     return rows;
   };
@@ -970,9 +970,9 @@ function parseMandatoryMachinesByType(setting) {
       if (!typeName || typeof typeName !== "string") continue;
       const list = Array.isArray(value) ? value : [];
       const machines = list.map((v) => normalizeMachineName(String(v || "")).trim()).filter(Boolean);
-      const key = typeName.trim();
-      if (!key) continue;
-      normalized2[key] = Array.from(new Set(machines));
+      const key2 = typeName.trim();
+      if (!key2) continue;
+      normalized2[key2] = Array.from(new Set(machines));
     }
     return normalized2;
   } catch {
@@ -980,11 +980,11 @@ function parseMandatoryMachinesByType(setting) {
   }
 }
 function getRequiredMachinesForType(mapping, typeName) {
-  const key = String(typeName || "").trim();
-  if (!key) return [];
-  const exact = mapping[key];
+  const key2 = String(typeName || "").trim();
+  if (!key2) return [];
+  const exact = mapping[key2];
   if (exact) return exact;
-  const matchingKey = Object.keys(mapping).find((candidate) => candidate.toUpperCase() === key.toUpperCase());
+  const matchingKey = Object.keys(mapping).find((candidate) => candidate.toUpperCase() === key2.toUpperCase());
   return matchingKey ? mapping[matchingKey] : [];
 }
 
@@ -1159,15 +1159,15 @@ function plannedQtyByScheduleItem(jobRows) {
     const effectiveQty = Math.max(0, Number(row.plannedQty || row.qty || 0));
     if (effectiveQty <= 0) return;
     const itemId = String(row.itemId || "").trim();
-    const key = `${row.scheduleId}::${itemId}`;
-    byItem.set(key, (byItem.get(key) || 0) + effectiveQty);
+    const key2 = `${row.scheduleId}::${itemId}`;
+    byItem.set(key2, (byItem.get(key2) || 0) + effectiveQty);
     if (!itemId) unassigned.set(row.scheduleId, (unassigned.get(row.scheduleId) || 0) + effectiveQty);
   });
   return (scheduleId, itemIds, itemId) => {
     let qty = byItem.get(`${scheduleId}::${itemId}`) || 0;
     if (itemIds[0] === itemId) {
-      byItem.forEach((value, key) => {
-        const [sid, iid] = [key.slice(0, key.indexOf("::")), key.slice(key.indexOf("::") + 2)];
+      byItem.forEach((value, key2) => {
+        const [sid, iid] = [key2.slice(0, key2.indexOf("::")), key2.slice(key2.indexOf("::") + 2)];
         if (sid === scheduleId && iid && !itemIds.includes(iid)) qty += value;
       });
       qty += unassigned.get(scheduleId) || 0;
@@ -1421,8 +1421,8 @@ function firstText(...values) {
   return "";
 }
 function addKey(keys, value) {
-  const key = normalizeKey(value);
-  if (key) keys.add(key);
+  const key2 = normalizeKey(value);
+  if (key2) keys.add(key2);
 }
 function itemKeys(item, order) {
   const keys = /* @__PURE__ */ new Set();
@@ -1517,10 +1517,10 @@ function jobIndexFor(jobs) {
   if (index) return index;
   index = /* @__PURE__ */ new Map();
   jobs.forEach((production, position) => {
-    productionItemKeys(production).forEach((key) => {
-      const list = index.get(key);
+    productionItemKeys(production).forEach((key2) => {
+      const list = index.get(key2);
       if (list) list.push(position);
-      else index.set(key, [position]);
+      else index.set(key2, [position]);
     });
   });
   jobIndexCache.set(jobs, index);
@@ -1540,7 +1540,7 @@ function eligibleLoadingJobs(itemSource, itemId, firmId, productions, phpJobs, p
   if (targetItemKeys.size === 0) return [];
   const index = jobIndexFor(sourceJobs);
   const positions = /* @__PURE__ */ new Set();
-  targetItemKeys.forEach((key) => index.get(key)?.forEach((position) => positions.add(position)));
+  targetItemKeys.forEach((key2) => index.get(key2)?.forEach((position) => positions.add(position)));
   const candidates = Array.from(positions).sort((a, b) => a - b).map((position) => sourceJobs[position]);
   return candidates.filter((production) => {
     const jobFirm = normalizeKey(getJobFirmId(production));
@@ -1637,10 +1637,10 @@ function firstById(rows) {
 function buildPendingInvoicingContext(args) {
   const lineItemsBySlipId = /* @__PURE__ */ new Map();
   args.invoiceLineItems.forEach((line) => {
-    const key = String(line.loadingSlipId || "").trim();
-    const list = lineItemsBySlipId.get(key);
+    const key2 = String(line.loadingSlipId || "").trim();
+    const list = lineItemsBySlipId.get(key2);
     if (list) list.push(line);
-    else lineItemsBySlipId.set(key, [line]);
+    else lineItemsBySlipId.set(key2, [line]);
   });
   return {
     planById: firstById(args.plans),
@@ -1673,8 +1673,8 @@ function getPendingInvoicingSlip(ctx, slip, includeInvoiceId = "") {
     const itemSource = normalizeOrderItemSource(line.itemSource || "FG");
     const itemId = String(line.npdId || line.itemId || "").trim();
     if (!itemId) return;
-    const key = `${itemSource}::${itemId}`;
-    billedByLineKey.set(key, (billedByLineKey.get(key) || 0) + Number(line.qty || 0));
+    const key2 = `${itemSource}::${itemId}`;
+    billedByLineKey.set(key2, (billedByLineKey.get(key2) || 0) + Number(line.qty || 0));
   });
   const pendingLines = (slip.lines || []).map((line) => {
     const plan = ctx.planById.get(line.dispatchPlanId);
@@ -1712,6 +1712,55 @@ var buildLoadedQtyByScheduleId = (dispatchPlans, loadingSlips) => {
 };
 var getScheduleDispatchPendingQty = (schedule, loadedQty) => amount(schedule.qty) - amount(schedule.canceledQty) - amount(loadedQty);
 
+// src/lib/loadingWastageConfirmation.ts
+var LOADING_WASTAGE_CONFIRMATION_FIRST_DATE = "2026-11-17";
+var key = (value) => String(value ?? "").trim().toLowerCase();
+var isCancelled = (status) => ["cancelled", "canceled"].includes(key(status));
+function parseJobConfirmations(slip) {
+  const raw = slip.jobConfirmations;
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+function slipFgJobs(slip) {
+  const byJob = /* @__PURE__ */ new Map();
+  (slip.lines || []).forEach((line) => {
+    if (String(line.itemSource || "FG").trim().toUpperCase() !== "FG") return;
+    (line.allocations || []).forEach((allocation) => {
+      if (key(allocation?.sourceType) !== "job") return;
+      const jobId = String(allocation.jobId || "").trim();
+      if (!jobId) return;
+      const qty = Number(allocation.qty || 0);
+      const current = byJob.get(jobId) || { jobId, jobNo: String(allocation.jobNo || ""), loadedQty: 0 };
+      current.loadedQty += Number.isFinite(qty) ? qty : 0;
+      byJob.set(jobId, current);
+    });
+  });
+  return Array.from(byJob.values());
+}
+function slipUnderWastageRule(slip) {
+  if (isCancelled(slip.status)) return false;
+  if (String(slip.date || "").slice(0, 10) < LOADING_WASTAGE_CONFIRMATION_FIRST_DATE) return false;
+  return slipFgJobs(slip).length > 0;
+}
+var isJobConfirmed = (confirmation) => Boolean(confirmation && String(confirmation.confirmedAt || "").trim());
+function unconfirmedSlipJobs(slip) {
+  if (!slipUnderWastageRule(slip)) return [];
+  const confirmations = parseJobConfirmations(slip);
+  return slipFgJobs(slip).filter((job) => !isJobConfirmed(confirmations.find((row) => key(row.jobId) === key(job.jobId))));
+}
+function slipAwaitsWastageConfirmation(slip) {
+  if (String(slip.invoiceId || "").trim()) return false;
+  return unconfirmedSlipJobs(slip).length > 0;
+}
+
 // src/lib/pendingTaskCounts.ts
 var isPendingPH = (status) => !status || status === "Pending PH";
 function parseLocalYmd(dateStr) {
@@ -1729,18 +1778,18 @@ function parseLocalYmd(dateStr) {
 function groupBy(rows, getKey) {
   const groups = /* @__PURE__ */ new Map();
   rows.forEach((row) => {
-    const key = getKey(row);
-    const group = groups.get(key);
+    const key2 = getKey(row);
+    const group = groups.get(key2);
     if (group) group.push(row);
-    else groups.set(key, [row]);
+    else groups.set(key2, [row]);
   });
   return groups;
 }
 function firstBy(rows, getKey) {
   const index = /* @__PURE__ */ new Map();
   rows.forEach((row) => {
-    const key = getKey(row);
-    if (!index.has(key)) index.set(key, row);
+    const key2 = getKey(row);
+    if (!index.has(key2)) index.set(key2, row);
   });
   return index;
 }
@@ -1880,6 +1929,7 @@ function buildPendingTaskCounts(args) {
     ...args.phpJobMaster.filter((job) => !linkedPhpIds.has(String(job.id))).map((job) => ({ ...job, itemSource: "PHP" })),
     ...args.plateJobMaster.filter((job) => !linkedPlateIds.has(String(job.id))).map((job) => ({ ...job, itemSource: "PLATE" }))
   ];
+  const pendingLoadingWastageCount = args.loadingSlips.filter((slip) => slipAwaitsWastageConfirmation(slip)).length;
   return {
     "/material-receipt/approvals": args.materialIn.filter((m) => ["Pending PH", "Pending Accounts", "Pending MD"].includes(m.status)).length,
     "/material-receipt/pending-ph-approval": args.materialIn.filter((m) => m.status === "Pending PH").length,
@@ -2035,6 +2085,7 @@ function buildPendingTaskCounts(args) {
         if (!companyById.has(company.id)) companyById.set(company.id, company);
       });
       return args.loadingSlips.filter((slip) => {
+        if (slipAwaitsWastageConfirmation(slip)) return false;
         const pending = getPendingInvoicingSlip(ctx, slip);
         const firstLine = pending?.lines?.[0];
         if (!pending || !firstLine) return false;
@@ -2044,6 +2095,8 @@ function buildPendingTaskCounts(args) {
         return Boolean(company || pending.companyName || firstLine.companyName);
       }).length;
     })(),
+    "/billing/pending-loading-wastage": pendingLoadingWastageCount,
+    "/loading/pending-loading-wastage": pendingLoadingWastageCount,
     "/billing/pending-tally": args.invoices.filter((invoice) => !invoice.tallyTimestamp).length,
     "/gate-pass/pending-returnable": getPendingReturnableGatePassCount(args.gatePasses, args.gateEntries, args.materialIn),
     "/orders/upcoming": args.schedules.filter((schedule) => {
@@ -2131,9 +2184,9 @@ function createOrderItemCatalog({ fgRows, phpRows, plateRows, materialRows }) {
     const map = /* @__PURE__ */ new Map();
     Object.keys(itemsBySource).forEach((source) => {
       itemsBySource[source].forEach((item) => {
-        getLookupKeys(source, item).forEach((key) => {
-          if (!map.has(key)) {
-            map.set(key, item);
+        getLookupKeys(source, item).forEach((key2) => {
+          if (!map.has(key2)) {
+            map.set(key2, item);
           }
         });
       });
@@ -2154,8 +2207,8 @@ function createOrderItemCatalog({ fgRows, phpRows, plateRows, materialRows }) {
       for (const item of itemsBySource[source] || []) {
         const raw = item.raw || {};
         for (const value of [item.erp, raw.erpCode, raw.erpItemCode, raw.masterItemNameErpCode]) {
-          const key = String(value || "").trim().toLowerCase();
-          if (key && !index.has(key)) index.set(key, item);
+          const key2 = String(value || "").trim().toLowerCase();
+          if (key2 && !index.has(key2)) index.set(key2, item);
         }
       }
       erpIndexBySource.set(source, index);
@@ -2301,11 +2354,11 @@ function clearCollectionCache(changed = ["*"]) {
     completedNpdLoads.clear();
     return;
   }
-  for (const [key, entry] of completedLoads) {
-    if (realtimeChangeAffects(changed, Array.from(entry.tables), entry.derived)) completedLoads.delete(key);
+  for (const [key2, entry] of completedLoads) {
+    if (realtimeChangeAffects(changed, Array.from(entry.tables), entry.derived)) completedLoads.delete(key2);
   }
-  for (const [key, entry] of completedNpdLoads) {
-    if (!entry.catalog || realtimeChangeAffects(changed, ["npd_catalog"])) completedNpdLoads.delete(key);
+  for (const [key2, entry] of completedNpdLoads) {
+    if (!entry.catalog || realtimeChangeAffects(changed, ["npd_catalog"])) completedNpdLoads.delete(key2);
   }
 }
 if (typeof window !== "undefined" && !window.__lngrpCollectionCacheHooks) {
@@ -2446,8 +2499,8 @@ function computePendingCounts(lists) {
 function firstById2(rows, getKey) {
   const index = /* @__PURE__ */ new Map();
   rows.forEach((row) => {
-    const key = getKey(row);
-    if (!index.has(key)) index.set(key, row);
+    const key2 = getKey(row);
+    if (!index.has(key2)) index.set(key2, row);
   });
   return index;
 }
@@ -2615,8 +2668,8 @@ function computeOperationDashboard(lists, options) {
     const firmCounts = computePendingCounts(lists);
     if (!options.pendingLists) return firmCounts;
     const counts = computePendingCounts(options.pendingLists);
-    FIRM_SCOPED_PENDING_KEYS.forEach((key) => {
-      counts[key] = firmCounts[key] || 0;
+    FIRM_SCOPED_PENDING_KEYS.forEach((key2) => {
+      counts[key2] = firmCounts[key2] || 0;
     });
     return counts;
   })();

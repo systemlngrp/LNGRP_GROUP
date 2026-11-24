@@ -3048,7 +3048,7 @@ function normalizeNpdRowForItemConsumers(row: any) {
 function normalizeFetchedRow(tableName: string, row: any) {
   const newRow = normalizeWorkflowStatus(tableName, row);
 
-  const jsonColumns = new Set(["lines", "jobWastage", "packingDetails", "phpDetails", "plateDetails", "capaData", "filledFields", "layout", "templateSnapshot", "headerData", "cellValues"]);
+  const jsonColumns = new Set(["lines", "jobWastage", "jobConfirmations", "packingDetails", "phpDetails", "plateDetails", "capaData", "filledFields", "layout", "templateSnapshot", "headerData", "cellValues"]);
   Object.keys(newRow).forEach((key) => {
     if (jsonColumns.has(key) && typeof newRow[key] === "string") {
       try {
@@ -11119,6 +11119,7 @@ await db.query(`
         { table: "loading_slips", column: "packingDetails", type: "JSON" },
         { table: "loading_slips", column: "jobWastage", type: "JSON" },
         { table: "loading_slips", column: "pdfRedownloadRequired", type: "VARCHAR(10)" },
+        { table: "loading_slips", column: "jobConfirmations", type: "JSON" },
         { table: "loading_slips", column: "phpDetails", type: "JSON" },
         { table: "loading_slips", column: "plateDetails", type: "JSON" },
         { table: "loading_slips", column: "extraItemsQty", type: "DECIMAL(15,2)" },

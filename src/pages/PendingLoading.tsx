@@ -52,6 +52,7 @@ import { usePageDataStatus } from "../components/DataLoadingBoundary";
 import { getJobLoadingSlipLimitError } from "../lib/loadingValidation";
 import { corrugationLinerQtyByJobId } from "../lib/productionProcessingProgress";
 import { usePhpPlateReceipts } from "../hooks/usePhpPlateReceipts";
+import { pendingFgTickText, wastageTickText } from "../lib/loadingWastageConfirmation";
 import { useQtyAtJobWorker } from "../hooks/useQtyAtJobWorker";
 import {
   EligibleLoadingJob,
@@ -118,7 +119,8 @@ export function PendingLoading() {
   const phpPlateReceipts = usePhpPlateReceipts();
   // Qty of each job still at a job worker (Job Work gate pass) cannot be loaded.
   const atJobWorkerByJobId = useQtyAtJobWorker();
-  const { setActiveFirm } = useAuth();
+  const { setActiveFirm, user } = useAuth();
+  const confirmUserName = String(user?.name || "User").trim();
   const { loading: pageLoading } = usePageDataStatus();
   const [plans, updatePlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
@@ -172,6 +174,9 @@ export function PendingLoading() {
   const [loadedQuantities, setLoadedQuantities] = useState<Record<string, number>>({});
   const [jobSplitQtys, setJobSplitQtys] = useState<Record<string, Record<string, number | "">>>({});
   const [jobWastageQtys, setJobWastageQtys] = useState<Record<string, Record<string, number | "">>>({});
+  // The two ticks per job (Printing Complete jobs): each holds the "load|wastage"
+  // it was given for, so changing either figure clears it.
+  const [jobTicks, setJobTicks] = useState<Record<string, { wastage?: string; pendingFg?: string }>>({});
   const [openingStockQtys, setOpeningStockQtys] = useState<Record<string, number | "">>({});
   const [cancelingPlanId, setCancelingPlanId] = useState<string | null>(null);
   const [cancelQty, setCancelQty] = useState<number | "">("");
@@ -502,6 +507,16 @@ export function PendingLoading() {
         if (wastageNow < 0) errors.push(`${jobNo}: Loading wastage cannot be negative.`);
         if (!(loadNow > 0) && !(wastageNow > 0)) return;
         if (!printingCompleteJobIds.has(key)) return;
+        // Printing Complete: wastage must be entered (0 allowed) and both ticks given.
+        if (loadNow > 0) {
+          const rawWastage = wastageByJob[jobId];
+          if (rawWastage === undefined || rawWastage === "") errors.push(`${jobNo}: Enter Loading Wastage (0 if none).`);
+          else {
+            const sig = `${loadNow}|${wastageNow}`;
+            const ticks = jobTicks[`${modalKey}::${key}`] || {};
+            if (ticks.wastage !== sig || ticks.pendingFg !== sig) errors.push(`${jobNo}: Tick both confirmations (loading wastage and Pending FG).`);
+          }
+        }
         const printed = printedQtyByJobId.get(key) || 0;
         const loaded = getAlreadyLoadedForJob(key);
         const earlierWastage = existingWastageByJobId.get(key.toLowerCase()) || 0;
@@ -535,7 +550,7 @@ export function PendingLoading() {
   const modalHasErrors = useMemo(() => {
     if (!loadingModal) return false;
     return !getModalValidation(loadingModal).isValid;
-  }, [atJobWorkerByJobId, jobSplitQtys, jobWastageQtys, existingWastageByJobId, printedQtyByJobId, printingCompleteJobIds, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, corrugationQtyByJobId, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, npdStockLoading, itemsBySource.FG, firms]);
+  }, [atJobWorkerByJobId, jobSplitQtys, jobWastageQtys, existingWastageByJobId, printedQtyByJobId, printingCompleteJobIds, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, corrugationQtyByJobId, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, npdStockLoading, itemsBySource.FG, firms, jobTicks]);
 
   const handleOpenLoad = (firmId: string, companyId: string, itemSource: OrderItemSource, itemId: string, itemName: string, itemPlans: PendingPlan[]) => {
     const firm = firms.find((row) => row.id === firmId);
@@ -555,6 +570,7 @@ export function PendingLoading() {
       [modalKey]: Object.fromEntries(eligibleJobs.map((j) => [j.jobId, ""])),
     });
     setJobWastageQtys({ [modalKey]: {} });
+    setJobTicks({});
     setModalTruckId("");
     setModalManualTruckNo("");
     setPackingDetails(createEmptyPackingRows());
@@ -791,6 +807,30 @@ export function PendingLoading() {
                 return { jobId, jobNo: production ? getLoadingJobNumber(production) : "", qty: Number(qty || 0) };
               })
               .filter((row) => row.qty > 0 && row.jobNo)
+          : undefined,
+        // Per FG job: confirmed here when Printing was Complete (both ticks given),
+        // else left for Pending Loading Wastage after Printing is Complete.
+        jobConfirmations: loadingModal.itemSource === "FG"
+          ? Object.entries(byJobId)
+              .filter(([jobId, qty]) => jobId && Number(qty || 0) > 0)
+              .map(([jobId, qty]) => {
+                const key = String(jobId).trim();
+                const production = productionMap.get(jobId);
+                const jobNo = production ? getLoadingJobNumber(production) : "";
+                const printingCompleteAtLoading = printingCompleteJobIds.has(key);
+                if (!printingCompleteAtLoading) return { jobId, jobNo, printingCompleteAtLoading };
+                const wastage = Number(jobWastageQtys[modalKey]?.[jobId] || 0);
+                const job = loadingModal.eligibleJobs?.find((row) => String(row.jobId) === key);
+                const available = Math.max(0, (printedQtyByJobId.get(key) || 0) - (job?.alreadyLoaded || 0) - (job?.loadingWastage || 0) - (job?.atJobWorker || 0));
+                return {
+                  jobId, jobNo, printingCompleteAtLoading,
+                  wastage,
+                  pendingFg: available - Number(qty || 0) - wastage,
+                  confirmedBy: confirmUserName,
+                  confirmedById: String(user?.id || ""),
+                  confirmedAt: new Date().toISOString(),
+                };
+              })
           : undefined,
       };
       const phpDetails = buildLinkedLoadingDetailsFromSlip({
@@ -1210,7 +1250,8 @@ export function PendingLoading() {
                                 const overAvailable = Math.max(0, Number(currentValue || 0) + Number(wastageValue || 0) - rowAvailable);
                                 const fgLeft = rowAvailable - Number(currentValue || 0) - Number(wastageValue || 0);
                                 return (
-                                  <tr key={job.jobId} className="divide-x divide-slate-200 transition-colors hover:bg-indigo-50/40">
+                                  <React.Fragment key={job.jobId}>
+                                  <tr className="divide-x divide-slate-200 transition-colors hover:bg-indigo-50/40">
                                     <td className="px-4 py-3 text-xs font-black text-black">{job.jobNo}</td>
                                     <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.productionQty.toLocaleString()}</td>
                                     {loadingModal.itemSource === "FG" ? <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{(printedQtyByJobId.get(String(job.jobId || "").trim()) || 0).toLocaleString()}</td> : null}
@@ -1262,6 +1303,29 @@ export function PendingLoading() {
                                       </td>
                                     ) : null}
                                   </tr>
+                                  {printingDone && Number(currentValue || 0) > 0 ? (() => {
+                                    const tickKey = `${modalKey}::${String(job.jobId || "").trim()}`;
+                                    const wastageFilled = wastageValue !== "";
+                                    const sig = `${Number(currentValue || 0)}|${Number(wastageValue || 0)}`;
+                                    const ticks = jobTicks[tickKey] || {};
+                                    const setTick = (field: "wastage" | "pendingFg", on: boolean) =>
+                                      setJobTicks((prev) => ({ ...prev, [tickKey]: { ...(prev[tickKey] || {}), [field]: on ? sig : undefined } }));
+                                    return (
+                                      <tr className="bg-amber-50/60">
+                                        <td colSpan={8} className="px-4 py-2 text-xs font-bold text-black">
+                                          {!wastageFilled ? (
+                                            <div className="text-red-700">Printing is Complete: enter Loading Wastage for {job.jobNo} (0 if none), then confirm.</div>
+                                          ) : (
+                                            <div className="space-y-1">
+                                              <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" checked={ticks.wastage === sig} onChange={(e) => setTick("wastage", e.target.checked)} />{wastageTickText(confirmUserName, job.jobNo, Number(wastageValue || 0))}</label>
+                                              <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" checked={ticks.pendingFg === sig} onChange={(e) => setTick("pendingFg", e.target.checked)} disabled={fgLeft < 0} />{pendingFgTickText(confirmUserName, job.jobNo, fgLeft)}</label>
+                                            </div>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })() : null}
+                                  </React.Fragment>
                                 );
                               })}
                               <tr className="divide-x divide-black bg-emerald-50/40 border-t-2 border-black">

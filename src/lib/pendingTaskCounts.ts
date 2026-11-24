@@ -46,6 +46,7 @@ import { isPendingDailyConsumableTally } from "./materialIssueClassification";
 import { buildPendingInvoicingContext, getPendingInvoicingSlip } from "./pendingInvoicing";
 import { buildLoadedQtyByScheduleId, getScheduleDispatchPendingQty } from "./dispatchPlanBalances";
 import { normalizeOrderItemSource } from "./orderItems";
+import { slipAwaitsWastageConfirmation } from "./loadingWastageConfirmation";
 
 type OrderCatalogItem = {
   id: string;
@@ -105,6 +106,7 @@ export const PENDING_TASK_DEFINITIONS = [
   { section: "Sales", name: "Pending Loading", countKey: "/loading/pending" },
   { section: "Sales", name: "Pending PHP Loading Tally", countKey: "/loading/php/pending-tally" },
   { section: "Sales", name: "Pending Plate Loading Tally", countKey: "/loading/plate/pending-tally" },
+  { section: "Sales", name: "Pending Loading Wastage", countKey: "/billing/pending-loading-wastage" },
   { section: "Sales", name: "Pending Invoicing", countKey: "/billing/pending" },
   { section: "Sales", name: "Pending Billing Tally Posting", countKey: "/billing/pending-tally" },
   { section: "Gate Pass", name: "Pending Returnable Gate Pass Items", countKey: "/gate-pass/pending-returnable" },
@@ -426,6 +428,8 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     ...args.plateJobMaster.filter((job) => !linkedPlateIds.has(String(job.id))).map((job) => ({ ...job, itemSource: "PLATE" as const })),
   ];
 
+  // Loading slips (17-Nov-2026 on) whose FG jobs still need the wastage / Pending FG ticks: one count per slip.
+  const pendingLoadingWastageCount = args.loadingSlips.filter((slip) => slipAwaitsWastageConfirmation(slip)).length;
   return {
     "/material-receipt/approvals": args.materialIn.filter((m) => ["Pending PH", "Pending Accounts", "Pending MD"].includes(m.status)).length,
     "/material-receipt/pending-ph-approval": args.materialIn.filter((m) => m.status === "Pending PH").length,
@@ -583,6 +587,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       const companyById = new Map<string, Company>();
       (args.companies || []).forEach((company) => { if (!companyById.has(company.id)) companyById.set(company.id, company); });
       return args.loadingSlips.filter((slip) => {
+        if (slipAwaitsWastageConfirmation(slip)) return false;
         const pending = getPendingInvoicingSlip(ctx, slip);
         const firstLine: any = pending?.lines?.[0];
         if (!pending || !firstLine) return false;
@@ -592,6 +597,8 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
         return Boolean(company || (pending as any).companyName || firstLine.companyName);
       }).length;
     })(),
+    "/billing/pending-loading-wastage": pendingLoadingWastageCount,
+    "/loading/pending-loading-wastage": pendingLoadingWastageCount,
     "/billing/pending-tally": args.invoices.filter((invoice) => !invoice.tallyTimestamp).length,
     "/gate-pass/pending-returnable": getPendingReturnableGatePassCount(args.gatePasses, args.gateEntries, args.materialIn),
     "/orders/upcoming": args.schedules.filter((schedule) => {

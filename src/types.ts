@@ -1686,6 +1686,21 @@ export interface LoadingSlipJobWastage {
   qty: number;
 }
 
+/** Per FG job on a loading slip: the two ticks (loading wastage + Pending FG). */
+export interface LoadingSlipJobConfirmation {
+  jobId: string;
+  jobNo?: string;
+  /** Was the job's Printing Complete when the slip was made? */
+  printingCompleteAtLoading?: boolean;
+  /** Loading wastage and Pending FG as confirmed. */
+  wastage?: number;
+  pendingFg?: number;
+  confirmedBy?: string;
+  confirmedById?: string;
+  /** Set = confirmed; blank = still to confirm. */
+  confirmedAt?: string;
+}
+
 export interface LoadingSlip {
   id: string;
   slipNo: string;
@@ -1719,6 +1734,8 @@ export interface LoadingSlip {
   jobWastage?: LoadingSlipJobWastage[];
   /** "Yes" after the slip is edited: the PDF must be downloaded again before invoicing. */
   pdfRedownloadRequired?: "Yes" | "No" | string;
+  /** Loading wastage / Pending FG confirmation per FG job (slips from 17-Nov-2026). */
+  jobConfirmations?: LoadingSlipJobConfirmation[];
   packingDetails?: PackingDetail[];
   extraItemsQty?: number;
   tallyTimestamp?: string;

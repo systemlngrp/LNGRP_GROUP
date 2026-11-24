@@ -162,6 +162,7 @@ const PhpLoadingMaster = lazy(() => import("./pages/PhpLoadingMaster").then((mod
 const PlateLoadingMaster = lazy(() => import("./pages/PlateLoadingMaster").then((module) => ({ default: module.PlateLoadingMaster })));
 const PendingPhpLoadingTallyPosting = lazy(() => import("./pages/PendingLinkedLoadingTally").then((module) => ({ default: module.PendingPhpLoadingTallyPosting })));
 const PendingPlateLoadingTallyPosting = lazy(() => import("./pages/PendingLinkedLoadingTally").then((module) => ({ default: module.PendingPlateLoadingTallyPosting })));
+const PendingLoadingWastage = lazy(() => import("./pages/PendingLoadingWastage").then((module) => ({ default: module.PendingLoadingWastage })));
 const PendingInvoicing = lazy(() => import("./pages/PendingInvoicing").then((module) => ({ default: module.PendingInvoicing })));
 const BillingPendingTally = lazy(() => import("./pages/BillingPendingTally").then((module) => ({ default: module.BillingPendingTally })));
 const InvoicesMaster = lazy(() => import("./pages/InvoicesMaster").then((module) => ({ default: module.InvoicesMaster })));
@@ -476,6 +477,8 @@ export default function App() {
 
           {/* Billing */}
           <Route path="billing/pending" element={<PendingInvoicing />} />
+          <Route path="billing/pending-loading-wastage" element={<PendingLoadingWastage />} />
+          <Route path="loading/pending-loading-wastage" element={<PendingLoadingWastage />} />
           <Route path="billing/pending-tally" element={<BillingPendingTally />} />
           <Route path="billing/master" element={<InvoicesMaster />} />
 

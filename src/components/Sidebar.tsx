@@ -273,6 +273,7 @@ const dispatchItems: NavItem[] = [
 const loadingItems: NavItem[] = [
   { name: "Direct Loading Slip", href: "/loading/direct", icon: FilePlus },
   { name: "Pending Loading", href: "/loading/pending", icon: Truck, countKey: "/loading/pending" },
+  { name: "Pending Loading Wastage", href: "/loading/pending-loading-wastage", icon: ClipboardList, countKey: "/loading/pending-loading-wastage" },
   { name: "Loading Master", href: "/loading/master", icon: FileText },
 ];
 
@@ -287,6 +288,7 @@ const plateLoadingItems: NavItem[] = [
 ];
 
 const billingItems: NavItem[] = [
+  { name: "Pending Loading Wastage", href: "/billing/pending-loading-wastage", icon: ClipboardList, countKey: "/billing/pending-loading-wastage" },
   { name: "Pending Invoicing", href: "/billing/pending", icon: Receipt, countKey: "/billing/pending" },
   { name: "Pending Tally Posting", href: "/billing/pending-tally", icon: CheckCircle, countKey: "/billing/pending-tally" },
   { name: "Billing Master", href: "/billing/master", icon: FileText },

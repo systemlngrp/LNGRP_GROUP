@@ -1,3 +1,4 @@
+import { parseJobConfirmations, slipFgJobs, slipJobWastage, slipUnderWastageRule } from "../lib/loadingWastageConfirmation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useData } from "../hooks/useData";
@@ -52,6 +53,46 @@ function getSlipNoSortValue(slipNo: string) {
  * focusSlipId: show only that slip, opened for editing (used by "Adjust Loading"
  * in Pending Invoicing, where everyone who can open the page may adjust it).
  */
+/** Loading wastage / Pending FG confirmations of a slip (who, when, figures). */
+function renderWastageConfirmations(slip: LoadingSlip) {
+  if (!slipUnderWastageRule(slip)) return null;
+  const confirmations = parseJobConfirmations(slip);
+  const jobs = slipFgJobs(slip);
+  const fmt = (value?: string) => (value ? new Date(value).toLocaleString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
+  return (
+    <div className="mt-3 rounded border border-black p-2">
+      <div className="mb-1 text-xs font-black uppercase tracking-wide text-indigo-800">Loading Wastage Confirmation</div>
+      <table className="min-w-full text-xs">
+        <thead><tr className="text-left"><th className="px-2 py-1">Job No</th><th className="px-2 py-1">Printing at loading</th><th className="px-2 py-1 text-right">Wastage</th><th className="px-2 py-1 text-right">Pending FG</th><th className="px-2 py-1">Confirmed by</th></tr></thead>
+        <tbody>
+          {jobs.map((job) => {
+            const row = confirmations.find((entry) => String(entry.jobId) === String(job.jobId));
+            const done = Boolean(row?.confirmedAt);
+            return (
+              <tr key={job.jobId} className="border-t border-slate-200">
+                <td className="px-2 py-1 font-bold">{job.jobNo || row?.jobNo || job.jobId}</td>
+                <td className="px-2 py-1">{row?.printingCompleteAtLoading ? "Complete" : row ? "In Progress" : "-"}</td>
+                <td className="px-2 py-1 text-right">{done ? Number(row?.wastage || 0).toLocaleString() : "-"}</td>
+                <td className="px-2 py-1 text-right">{done ? Number(row?.pendingFg || 0).toLocaleString() : "-"}</td>
+                <td className="px-2 py-1">{done ? `${row?.confirmedBy || "-"}, ${fmt(row?.confirmedAt)}` : <span className="font-bold text-amber-700">Pending (Pending Loading Wastage)</span>}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Per FG job: loaded qty and loading wastage, to see whether an edit changed them. */
+function jobFiguresSignature(slip: LoadingSlip) {
+  return slipFgJobs(slip)
+    .map((job) => `${job.jobId}:${job.loadedQty}:${slipJobWastage(slip, job.jobId)}`)
+    .concat((slip.jobWastage || []).filter((row) => Number(row.qty || 0) > 0).map((row) => `w:${row.jobId}:${Number(row.qty || 0)}`))
+    .sort()
+    .join("|");
+}
+
 export function LoadingMaster({ focusSlipId, onFocusDone }: { focusSlipId?: string; onFocusDone?: () => void } = {}) {
   // Jobs with qty still at a job worker: their loaded qty may not be raised here.
   const atJobWorkerByJobId = useQtyAtJobWorker();
@@ -449,6 +490,11 @@ export function LoadingMaster({ focusSlipId, onFocusDone }: { focusSlipId?: stri
       jobWastage: (draft.jobWastage || []).filter((row) => Number(row.qty || 0) > 0),
       // Not invoiced yet: the corrected PDF must be downloaded before invoicing.
       ...(!original.invoiceId && !direct ? { pdfRedownloadRequired: "Yes" } : {}),
+      // A change to job qty or loading wastage undoes the wastage / Pending FG
+      // ticks: the slip goes back to Pending Loading Wastage.
+      ...(!original.invoiceId && jobFiguresSignature(original) !== jobFiguresSignature(draft)
+        ? { jobConfirmations: parseJobConfirmations(original).map((row) => ({ jobId: row.jobId, jobNo: row.jobNo, printingCompleteAtLoading: row.printingCompleteAtLoading })) }
+        : {}),
     };
     const shortages = getPhpPlateStockShortages({
       phpDetails,
@@ -1051,7 +1097,7 @@ export function LoadingMaster({ focusSlipId, onFocusDone }: { focusSlipId?: stri
               </tr>
               {expandedSlipIds.has(slip.id) ? (
                 <tr className="bg-white">
-                  <td colSpan={11} className="border-t border-black px-3 pb-4 pt-2">{renderSlipDetails(slip)}</td>
+                  <td colSpan={11} className="border-t border-black px-3 pb-4 pt-2">{renderSlipDetails(slip)}{renderWastageConfirmations(slip)}</td>
                 </tr>
               ) : null}
               </React.Fragment>
