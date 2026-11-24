@@ -67,6 +67,7 @@ export function PendingLoadingWastage() {
   const [ticks, setTicks] = useState<Record<string, { wastage?: string; pendingFg?: string }>>({});
   const [savingKey, setSavingKey] = useState("");
   const [message, setMessage] = useState("");
+  const [dialogKey, setDialogKey] = useState("");
 
   const printing = useMemo(() => printingByJob(processing, normalizeMachineName), [processing]);
   const totals = useMemo(() => loadedAndWastageByJob(loadingSlips), [loadingSlips]);
@@ -166,8 +167,10 @@ export function PendingLoadingWastage() {
   };
 
   const readyCount = rows.filter((row) => row.printingComplete).length;
-  const TH = "px-3 py-2 text-left text-[11px] font-black uppercase tracking-wider border border-black whitespace-nowrap";
-  const TD = "px-3 py-2 text-xs border border-black align-top";
+  const dialogRow = dialogKey ? rows.find((row) => row.key === dialogKey) : undefined;
+  const TH = "px-2 py-2 text-[10px] font-black uppercase tracking-wide border border-black whitespace-nowrap";
+  const TD = "px-2 py-1.5 text-xs border border-black";
+  const num = (value: number) => value.toLocaleString();
 
   return (
     <div className="space-y-4 pb-8">
@@ -178,7 +181,7 @@ export function PendingLoadingWastage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded border-2 border-black bg-white p-3">
+      <div className="flex flex-wrap items-center gap-3 rounded border-2 border-black bg-white p-3">
         <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search slip, company, job…" className="min-w-[260px] flex-1 rounded border-2 border-black px-3 py-2 text-sm" />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className="rounded border-2 border-black px-3 py-2 text-sm">
           <option value="">All ({rows.length})</option>
@@ -193,55 +196,53 @@ export function PendingLoadingWastage() {
         <table className="min-w-full border-collapse">
           <thead className="sticky top-0 z-10 bg-indigo-700 text-white">
             <tr>
-              <th className={TH}>Slip No</th><th className={TH}>Date</th><th className={`${TH} text-right`}>Days</th><th className={TH}>Company</th><th className={TH}>Firm</th><th className={TH}>Job No</th>
-              <th className={`${TH} text-right`}>Loaded (slip)</th><th className={`${TH} text-right`}>Printed</th><th className={`${TH} text-right`}>Loaded so far</th><th className={`${TH} text-right`}>Other wastage</th><th className={`${TH} text-right`}>At Job Worker</th>
-              <th className={`${TH} text-right`}>Loading Wastage</th><th className={`${TH} text-right`}>Pending FG</th><th className={TH}>Confirm</th>
+              <th className={`${TH} text-left`}>Slip No / Date</th>
+              <th className={`${TH} text-right`}>Days</th>
+              <th className={`${TH} text-left`}>Company / Firm</th>
+              <th className={`${TH} text-left`}>Job No</th>
+              <th className={`${TH} text-right`}>Loaded (slip)</th>
+              <th className={`${TH} text-right`}>Printed</th>
+              <th className={`${TH} text-right`}>Loaded so far</th>
+              <th className={`${TH} text-right`}>Other wastage</th>
+              <th className={`${TH} text-right`}>At job worker</th>
+              <th className={`${TH} text-right`}>Loading wastage</th>
+              <th className={`${TH} text-right`}>Pending FG</th>
+              <th className={`${TH} text-center`}>Action</th>
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
-              <tr><td colSpan={14} className="p-8 text-center text-sm font-semibold text-slate-500">Nothing pending.</td></tr>
+              <tr><td colSpan={12} className="p-8 text-center text-sm font-semibold text-slate-500">Nothing pending.</td></tr>
             ) : filteredRows.map((row) => {
               const raw = draftOf(row);
               const wastage = raw.trim() === "" ? 0 : Number(raw) || 0;
               const pendingFg = row.baseFg - wastage;
-              const sig = `${wastage}`;
-              const given = ticks[row.key] || {};
               const flagged = row.printingComplete && row.baseFg < 0;
-              const canConfirm = row.printingComplete && !flagged && raw.trim() !== "" && pendingFg >= 0 && given.wastage === sig && given.pendingFg === sig;
               const changed = raw.trim() !== (row.savedWastage > 0 ? String(row.savedWastage) : "");
-              const setTick = (field: "wastage" | "pendingFg", on: boolean) => setTicks((prev) => ({ ...prev, [row.key]: { ...(prev[row.key] || {}), [field]: on ? sig : undefined } }));
               return (
                 <tr key={row.key} className={flagged ? "bg-red-50" : row.printingComplete ? "bg-white" : "bg-slate-50"}>
-                  <td className={`${TD} font-black whitespace-nowrap`}>{row.slip.slipNo}</td>
-                  <td className={`${TD} whitespace-nowrap`}>{formatDate(row.slip.date)}</td>
+                  <td className={`${TD} whitespace-nowrap`}><div className="font-black">{row.slip.slipNo}</div><div className="text-[11px] text-slate-600">{formatDate(row.slip.date)}</div></td>
                   <td className={`${TD} text-right font-bold ${row.daysWaiting > 3 ? "text-red-700" : ""}`}>{row.daysWaiting}</td>
-                  <td className={TD}>{row.companyName || "-"}</td>
-                  <td className={`${TD} whitespace-nowrap`}>{row.firmName}</td>
-                  <td className={`${TD} font-bold whitespace-nowrap`}>{row.jobNo}</td>
-                  <td className={`${TD} text-right`}>{row.loadedOnSlip.toLocaleString()}</td>
-                  <td className={`${TD} text-right`}>{row.printed.toLocaleString()}{row.printingComplete ? <div className="text-[10px] font-black text-indigo-700">Printing Complete</div> : <div className="text-[10px] font-black text-amber-700">In Progress</div>}</td>
-                  <td className={`${TD} text-right`}>{row.loadedAll.toLocaleString()}</td>
-                  <td className={`${TD} text-right`}>{row.otherWastage.toLocaleString()}</td>
-                  <td className={`${TD} text-right`}>{row.atJobWorker.toLocaleString()}</td>
+                  <td className={`${TD} max-w-[220px]`}><div className="font-semibold leading-tight">{row.companyName || "-"}</div><div className="text-[11px] text-slate-600">{row.firmName}</div></td>
+                  <td className={`${TD} whitespace-nowrap font-bold`}>{row.jobNo}</td>
+                  <td className={`${TD} text-right`}>{num(row.loadedOnSlip)}</td>
+                  <td className={`${TD} text-right whitespace-nowrap`}>{num(row.printed)}<div className={`text-[10px] font-black ${row.printingComplete ? "text-indigo-700" : "text-amber-700"}`}>{row.printingComplete ? "Complete" : "In Progress"}</div></td>
+                  <td className={`${TD} text-right`}>{num(row.loadedAll)}</td>
+                  <td className={`${TD} text-right text-slate-600`}>{num(row.otherWastage)}</td>
+                  <td className={`${TD} text-right text-slate-600`}>{num(row.atJobWorker)}</td>
                   <td className={`${TD} text-right`}>
-                    <input type="number" min={0} value={raw} onChange={(e) => setWastageDraft((prev) => ({ ...prev, [row.key]: e.target.value }))} className="h-8 w-24 rounded border-2 border-amber-400 bg-amber-50 px-2 text-right text-xs font-black" />
-                    {changed ? <button type="button" disabled={savingKey === row.key} onClick={() => void saveRow(row, false)} className="mt-1 block w-full rounded border border-black px-2 py-0.5 text-[10px] font-bold uppercase hover:bg-slate-100 disabled:opacity-50">Save wastage</button> : null}
+                    <input type="number" min={0} value={raw} placeholder="0" onChange={(e) => setWastageDraft((prev) => ({ ...prev, [row.key]: e.target.value }))} className="h-8 w-20 rounded border-2 border-amber-400 bg-amber-50 px-2 text-right text-xs font-black" />
                   </td>
-                  <td className={`${TD} text-right text-sm font-black ${pendingFg < 0 ? "text-red-700" : ""}`}>{pendingFg.toLocaleString()}</td>
-                  <td className={`${TD} min-w-[320px]`}>
-                    {!row.printingComplete ? (
-                      <div className="font-bold text-amber-700">Waiting for Printing Complete</div>
-                    ) : flagged ? (
-                      <div className="font-bold text-red-700">Pending FG is already below 0 before this slip's wastage. Admin to check the job's production / loading entries.</div>
-                    ) : raw.trim() === "" ? (
-                      <div className="font-bold text-red-700">Enter Loading Wastage (0 if none).</div>
+                  <td className={`${TD} text-right text-sm font-black ${pendingFg < 0 ? "text-red-700" : ""}`}>{num(pendingFg)}</td>
+                  <td className={`${TD} w-[150px] text-center`}>
+                    {flagged ? (
+                      <span className="text-[11px] font-bold text-red-700" title="Pending FG is below 0 before this slip's wastage: check the job's production and loading entries.">Admin to check</span>
+                    ) : row.printingComplete ? (
+                      <button type="button" disabled={raw.trim() === "" || pendingFg < 0} onClick={() => { setMessage(""); setDialogKey(row.key); }} className="rounded bg-emerald-600 px-3 py-1 text-[11px] font-black uppercase text-white disabled:opacity-40" title={raw.trim() === "" ? "Enter loading wastage (0 if none) first" : "Confirm wastage and Pending FG"}>Confirm</button>
+                    ) : changed ? (
+                      <button type="button" disabled={savingKey === row.key} onClick={() => void saveRow(row, false)} className="rounded border border-black px-2 py-1 text-[11px] font-bold uppercase hover:bg-slate-100 disabled:opacity-50">Save wastage</button>
                     ) : (
-                      <div className="space-y-1">
-                        <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" checked={given.wastage === sig} onChange={(e) => setTick("wastage", e.target.checked)} />{wastageTickText(userName, row.jobNo, wastage)}</label>
-                        <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" disabled={pendingFg < 0} checked={given.pendingFg === sig} onChange={(e) => setTick("pendingFg", e.target.checked)} />{pendingFgTickText(userName, row.jobNo, pendingFg)}</label>
-                        <button type="button" disabled={!canConfirm || savingKey === row.key} onClick={() => void saveRow(row, true)} className="mt-1 rounded bg-emerald-600 px-3 py-1 text-[11px] font-black uppercase text-white disabled:opacity-40">{savingKey === row.key ? "Saving…" : "Confirm"}</button>
-                      </div>
+                      <span className="text-[11px] font-bold text-amber-700">Waiting for Printing</span>
                     )}
                   </td>
                 </tr>
@@ -250,6 +251,39 @@ export function PendingLoadingWastage() {
           </tbody>
         </table>
       </div>
+
+      {dialogRow ? (() => {
+        const raw = draftOf(dialogRow);
+        const wastage = raw.trim() === "" ? 0 : Number(raw) || 0;
+        const pendingFg = dialogRow.baseFg - wastage;
+        const sig = `${wastage}`;
+        const given = ticks[dialogRow.key] || {};
+        const setTick = (field: "wastage" | "pendingFg", on: boolean) => setTicks((prev) => ({ ...prev, [dialogRow.key]: { ...(prev[dialogRow.key] || {}), [field]: on ? sig : undefined } }));
+        const ready = given.wastage === sig && given.pendingFg === sig;
+        const close = () => { setDialogKey(""); setTicks((prev) => { const copy = { ...prev }; delete copy[dialogRow.key]; return copy; }); };
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-lg rounded border-2 border-black bg-white p-5 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+              <div className="mb-3 border-b-2 border-black pb-2 text-sm font-black uppercase">Confirm loading wastage</div>
+              <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <span className="text-slate-600">Slip</span><span className="font-bold">{dialogRow.slip.slipNo}</span>
+                <span className="text-slate-600">Job</span><span className="font-bold">{dialogRow.jobNo}</span>
+                <span className="text-slate-600">Company</span><span className="font-bold">{dialogRow.companyName || "-"}</span>
+                <span className="text-slate-600">Loading wastage</span><span className="font-bold">{num(wastage)}</span>
+                <span className="text-slate-600">Pending FG</span><span className="font-black">{num(pendingFg)}</span>
+              </div>
+              <div className="space-y-2 text-sm">
+                <label className="flex items-start gap-2"><input type="checkbox" className="mt-1" checked={given.wastage === sig} onChange={(e) => setTick("wastage", e.target.checked)} /><span>{wastageTickText(userName, dialogRow.jobNo, wastage)}</span></label>
+                <label className="flex items-start gap-2"><input type="checkbox" className="mt-1" checked={given.pendingFg === sig} onChange={(e) => setTick("pendingFg", e.target.checked)} /><span>{pendingFgTickText(userName, dialogRow.jobNo, pendingFg)}</span></label>
+              </div>
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" onClick={close} className="rounded border-2 border-black px-4 py-1.5 text-xs font-bold uppercase">Cancel</button>
+                <button type="button" disabled={!ready || savingKey === dialogRow.key} onClick={async () => { await saveRow(dialogRow, true); setDialogKey(""); }} className="rounded bg-emerald-600 px-4 py-1.5 text-xs font-black uppercase text-white disabled:opacity-40">{savingKey === dialogRow.key ? "Saving…" : "Confirm"}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
     </div>
   );
 }
