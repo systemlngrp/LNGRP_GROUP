@@ -6,7 +6,7 @@ import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useData } from "../hooks/useData";
-import { Firm, Machine, Production, ProductionProcessing } from "../types";
+import { Firm, Machine, OrderSchedule, Production, ProductionProcessing } from "../types";
 import { Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
 import { TableControls } from "../components/TableControls";
 import { useNavigate } from "react-router-dom";
@@ -60,6 +60,10 @@ export function ProductionProcessingMaster() {
   const [plateJobs, setPlateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const [machines] = useData<Machine>("machines", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
+  const scheduleById = useMemo(() => new Map(schedules.map((schedule) => [String(schedule.id), schedule])), [schedules]);
+  // Order schedule of a report's job (blank when the job has none).
+  const scheduleOfReport = (report: ProductionProcessing) => scheduleById.get(String(jobById.get(report.productionId)?.scheduleId || ""));
   const firmSelectOptions = useMemo(() => firms.map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })).sort((a, b) => a.label.localeCompare(b.label)), [firms]);
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
@@ -206,6 +210,8 @@ export function ProductionProcessingMaster() {
         formatDate(p.date),
         p.date,
         p.jobNo,
+        scheduleById.get(String(production?.scheduleId || ""))?.scheduleNo,
+        formatDate(scheduleById.get(String(production?.scheduleId || ""))?.scheduledDate || ""),
         getFirmDisplayNameById(firmId, firms),
         p.itemName,
         p.erp,
@@ -218,7 +224,7 @@ export function ProductionProcessingMaster() {
       ]));
     });
     return map;
-  }, [firms, jobById, processing]);
+  }, [firms, jobById, processing, scheduleById]);
 
   // Users ticked on machines only see those machines' reports.
   const visibleMachineNames = useMemo(() => getUserVisibleMachineNames(user, machines), [machines, user]);
@@ -256,6 +262,8 @@ export function ProductionProcessingMaster() {
   const { sorted: sortedReports, sort, toggle: toggleSort } = useTableSort(filtered, (p: ProductionProcessing, key) => {
     if (key === "firm") { const production = jobById.get(p.productionId); return getFirmDisplayNameById(String(production?.firmId || production?.orderFirmId || ""), firms); }
     if (key === "shift") return p.shift || "Day";
+    if (key === "scheduleNo") return scheduleOfReport(p)?.scheduleNo || "";
+    if (key === "scheduledDate") return String(scheduleOfReport(p)?.scheduledDate || "").slice(0, 10);
     if (key === "completionStatus") return p.completionStatus || "Full";
     if (key === "qty") return Number(p.qty || 0);
     return (p as any)[key];
@@ -312,6 +320,8 @@ export function ProductionProcessingMaster() {
               <tr className="divide-x divide-black">
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Job No" sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black whitespace-nowrap"><SortHeader label="Schedule No" sortKey="scheduleNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black whitespace-nowrap"><SortHeader label="Schedule Date" sortKey="scheduledDate" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Item Name" sortKey="itemName" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="left" /></th>
@@ -327,7 +337,7 @@ export function ProductionProcessingMaster() {
             <tbody className="bg-white divide-y divide-black">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-8 text-center text-slate-500 font-medium border border-black">No reporting records found.</td>
+                  <td colSpan={14} className="px-6 py-8 text-center text-slate-500 font-medium border border-black">No reporting records found.</td>
                 </tr>
               ) : (
                 pagedReports.map((item) => {
@@ -370,6 +380,8 @@ export function ProductionProcessingMaster() {
                           <span title={item.jobNo}>{displayJobNo(item.jobNo)}</span>
                         )}
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-black border border-black">{scheduleOfReport(item)?.scheduleNo || "-"}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-black border border-black">{scheduleOfReport(item)?.scheduledDate ? formatDate(scheduleOfReport(item)!.scheduledDate) : "-"}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-black border border-black">{firmName}</td>
                       <td className="px-6 py-4 text-sm text-black border border-black">{item.itemName || "-"}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-black border border-black">{item.erp || "-"}</td>
