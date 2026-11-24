@@ -383,7 +383,7 @@ export function PendingLoading() {
   const getPlanOpeningStockQty = (key: string) => Number(openingStockQtys[key] || 0);
   const getAlreadyLoadedForJob = (jobId: string) => existingLoadedByJobId.get(String(jobId || "").trim().toLowerCase()) || 0;
 
-  const getFirmStockBalance = (itemId: string, firmId: string) => {
+  const getFirmStockBalance = (itemId: string, firmId: string, jobs: EligibleLoadingJob[] = []) => {
     const catalogItem = itemsBySource.FG.find((row) => row.id === itemId);
     const lookupKeys = [
       itemId,
@@ -416,7 +416,30 @@ export function PendingLoading() {
       }, 0);
     }, 0);
     const nonJobIn = Number(firmStock.opening || 0) + Number(firmStock.receiptNonJob ?? firmStock.receipt ?? 0);
-    return Math.max(0, nonJobIn - usedFromStock);
+    const nonJobFormula = nonJobIn - usedFromStock;
+    // Cap by the firm's book stock: Balance (Opening + Receipts + Production −
+    // Invoiced) − slips loaded but not invoiced − loading wastage − what the job
+    // rows already offer. Old invoices used the opening stock without an FG
+    // Stock entry, so the formula above alone can overstate it.
+    let loadedNotInvoiced = 0;
+    let slipWastage = 0;
+    loadingSlips.forEach((slip) => {
+      if (["cancelled", "canceled"].includes(String(slip.status || "").trim().toLowerCase())) return;
+      if (String(slip.firmId || slip.orderFirmId || "").trim() !== firmId) return;
+      const itemLines = (slip.lines || []).filter((line) => String(line.itemSource || "FG").trim().toUpperCase() === "FG" && itemKeys.has(String(line.itemId || "").trim().toLowerCase()));
+      if (!itemLines.length) return;
+      if (!String(slip.invoiceId || "").trim()) loadedNotInvoiced += itemLines.reduce((sum, line) => sum + (Number(line.loadedQty) || 0), 0);
+      slipWastage += (slip.jobWastage || []).reduce((sum, row) => sum + (Number(row.qty) || 0), 0);
+    });
+    const jobRowsAvailable = jobs.reduce((sum, job) => {
+      const key = String(job.jobId || "").trim();
+      const available = printingCompleteJobIds.has(key)
+        ? Math.max(0, (printedQtyByJobId.get(key) || 0) - job.alreadyLoaded - (job.loadingWastage || 0) - (job.atJobWorker || 0))
+        : job.yetToLoad;
+      return sum + available;
+    }, 0);
+    const bookRemainder = Number(firmStock.balance || 0) - loadedNotInvoiced - slipWastage - jobRowsAvailable;
+    return Math.max(0, Math.min(nonJobFormula, bookRemainder));
   };
 
   const isTruckAvailableForLoading = (truckId: string) => {
@@ -495,7 +518,7 @@ export function PendingLoading() {
     const stockLabel = modal.itemSource === "FG" ? "FG Stock" : `${modal.itemSource} Stock`;
     if (openingStockQty < 0) errors.push(`${stockLabel} quantity cannot be negative.`);
     if (modal.itemSource === "FG") {
-      const firmBalance = getFirmStockBalance(modal.itemId, modal.firmId);
+      const firmBalance = getFirmStockBalance(modal.itemId, modal.firmId, modal.eligibleJobs || []);
       if (openingStockQty > firmBalance + 0.0001) errors.push(`${stockLabel} cannot exceed ${firmBalance.toLocaleString()} available for ${getFirmDisplayNameById(modal.firmId, firms)}.`);
     }
     if (allocatedTotal <= 0) errors.push("At least one positive adjustment is required.");
@@ -1246,7 +1269,7 @@ export function PendingLoading() {
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-500">-</td> : null}
-                                <td className="px-4 py-4 text-right text-xs font-black text-emerald-700" title={loadingModal.itemSource === "FG" ? "Stock with no job behind it: Opening + FG receipts − loaded from FG Stock" : undefined}>{loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId).toLocaleString() : "-"}</td>
+                                <td className="px-4 py-4 text-right text-xs font-black text-emerald-700" title={loadingModal.itemSource === "FG" ? "Stock with no job behind it: Opening + FG receipts − loaded from FG Stock, never more than the firm's book stock left after the job rows" : undefined}>{loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId, loadingModal.eligibleJobs || []).toLocaleString() : "-"}</td>
                                 <td className="px-4 py-4 text-right text-xs font-black text-slate-400">-</td>
                                 {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-400">-</td> : null}
                                 {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-400">-</td> : null}
