@@ -1,7 +1,7 @@
 import { displayJobNo } from "../lib/jobNumber";
 import React, { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
-import { Production, Machine, ProductionProcessing } from "../types";
+import { Production, Machine, ProductionProcessing, Setting } from "../types";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -72,6 +72,35 @@ function printingLimitForForm(isPrinting: boolean, processing: ProductionProcess
   return printingLimitTotals(processing, production, productionId) ?? undefined;
 }
 
+/**
+ * Printing Complete: good printed qty must be at least the minimum % of corrugated.
+ * Returns { ok, reason } — a non-Admin is stopped; an Admin must give a reason.
+ */
+function checkPrintedYield(processing: ProductionProcessing[], production: Production | undefined, productionId: string, qtyNow: number, minPercent: number, isAdmin: boolean) {
+  const totals = printingLimitTotals(processing, production, productionId);
+  if (!totals || totals.corrugated <= 0) return { ok: true, reason: "" };
+  const printed = totals.printed + qtyNow;
+  const minPrinted = totals.corrugated * minPercent / 100;
+  if (printed + 0.0001 >= minPrinted) return { ok: true, reason: "" };
+  const percent = Math.round(printed / totals.corrugated * 10000) / 100;
+  const summary = `Printed ${printed.toLocaleString()} is ${percent}% of corrugated ${totals.corrugated.toLocaleString()}, below the minimum ${minPercent}% (${minPrinted.toLocaleString()}).`;
+  if (!isAdmin) {
+    alert(`${summary}\n\nOnly an Admin can mark this Printing Complete, with a reason. Save as In Progress or ask the Admin.`);
+    return { ok: false, reason: "" };
+  }
+  const reason = (window.prompt(`${summary}\n\nAdmin: enter the reason to complete Printing anyway:`) || "").trim();
+  if (reason.length < 5) {
+    alert("A reason (at least 5 characters) is required to complete Printing below the minimum.");
+    return { ok: false, reason: "" };
+  }
+  return { ok: true, reason };
+}
+
+const minPrintedPercent = (setting?: Setting) => {
+  const raw = setting?.minPrintedPercentOfCorrugated;
+  return raw === null || raw === undefined || raw === "" || !Number.isFinite(Number(raw)) ? 90 : Number(raw);
+};
+
 function getAuditUser(user: { id?: string; name?: string } | null | undefined) {
   return {
     id: user?.id || "system",
@@ -86,6 +115,7 @@ function getProcessingBackUrl(machineId: string) {
 function LockedReportForm() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [settingsRows] = useData<Setting>("settings", [], { cacheToLocalStorage: false });
   const [searchParams] = useSearchParams();
 
   const productionId = searchParams.get("productionId") || "";
@@ -185,6 +215,12 @@ function LockedReportForm() {
       const overMessage = printingOverCorrugationMessage(processing, selectedProduction, productionId, qtyNumber, showPrintingWastage ? printingWastageBoxes(buildPrintingWastageValues(printingWastageDraft)) : 0, completionStatus === "Full");
       if (overMessage) { alert(overMessage); return; }
     }
+    let lowYieldReason = "";
+    if (isPrinting && completionStatus === "Full") {
+      const yieldCheck = checkPrintedYield(processing, selectedProduction, productionId, qtyNumber, minPrintedPercent(settingsRows[0]), user?.role === "Admin");
+      if (!yieldCheck.ok) return;
+      lowYieldReason = yieldCheck.reason;
+    }
     if (requiresCompletionStatus && completionStatus === "Full" && selectedProduction &&
         !confirmCompleteBelowPlan(plannedQty, alreadyCompletedQty, qtyNumber)) {
       return;
@@ -214,6 +250,7 @@ function LockedReportForm() {
       ...(showCorrugationWastage ? buildCorrugationWastageValues(wastageDraft, selectedProduction) : {}),
       ...(showPrintingWastage ? buildPrintingWastageValues(printingWastageDraft) : {}),
       ...(isPrinting ? { printingMachine } : {}),
+      ...(lowYieldReason ? { lowYieldReason } : {}),
     };
 
     setIsSubmitting(true);
@@ -387,6 +424,7 @@ function LockedReportForm() {
 function FullReportForm() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [settingsRows] = useData<Setting>("settings", [], { cacheToLocalStorage: false });
   const [searchParams] = useSearchParams();
   const initialProductionId = searchParams.get("productionId") || "";
   const initialMachineId = searchParams.get("machineId") || "";
@@ -537,6 +575,12 @@ function FullReportForm() {
       const overMessage = printingOverCorrugationMessage(processing, selectedProduction, productionId, qtyNumber, showPrintingWastage ? printingWastageBoxes(buildPrintingWastageValues(printingWastageDraft)) : 0, completionStatus === "Full");
       if (overMessage) { alert(overMessage); return; }
     }
+    let lowYieldReason = "";
+    if (isPrinting && completionStatus === "Full") {
+      const yieldCheck = checkPrintedYield(processing, selectedProduction, productionId, qtyNumber, minPrintedPercent(settingsRows[0]), user?.role === "Admin");
+      if (!yieldCheck.ok) return;
+      lowYieldReason = yieldCheck.reason;
+    }
     if (requiresCompletionStatus && completionStatus === "Full" && qtyContext &&
         !confirmCompleteBelowPlan(qtyContext.plannedQty, qtyContext.alreadyProcessedQty, qtyNumber)) {
       return;
@@ -568,6 +612,7 @@ function FullReportForm() {
         ...(showCorrugationWastage ? { ...buildCorrugationWastageValues(wastageDraft, selectedProduction), noHisabKg: automaticNoHisab } : {}),
         ...(showPrintingWastage ? buildPrintingWastageValues(printingWastageDraft) : {}),
         ...(isPrinting ? { printingMachine } : {}),
+        ...(lowYieldReason ? { lowYieldReason } : {}),
       };
 
       await setProcessing((prev) => [...prev, newEntry]);

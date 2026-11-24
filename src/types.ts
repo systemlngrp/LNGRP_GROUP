@@ -645,6 +645,10 @@ export interface ProductionProcessing {
   completionStatus?: "Part" | "Full";
   /** Printing entries: which printer (Bobst / Big / Small Printer). */
   printingMachine?: string;
+  /** Printing Complete below the minimum printed %: Admin's reason and approval. */
+  lowYieldReason?: string | null;
+  lowYieldApprovedBy?: string | null;
+  lowYieldApprovedAt?: string | null;
   tallyPostingStatus?: string;
   tallyTimestamp?: string;
   tallyPostingError?: string;
@@ -1988,6 +1992,8 @@ export interface Setting {
   poMandatoryMrrTypes?: string;
   /** PDI passes when CS Achieved >= CS Std x (1 + this % / 100). Blank = 10. */
   pdiCsMarginPercent?: number | string | null;
+  /** Printing Complete: good printed qty must be at least this % of corrugated (default 90). */
+  minPrintedPercentOfCorrugated?: number | string | null;
   /** JSON { "<ply>": <tolerance mm> } for PDI Achieved L/W/H (PDI Report). */
   pdiPlyTolerance?: string | null;
   /** JSON array of user ids who may change an order's PO Type / PO Number in Orders Master. */

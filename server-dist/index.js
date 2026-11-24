@@ -10633,9 +10633,13 @@ async function initDb(retries = 5) {
                 { table: "settings", column: "roles", type: "LONGTEXT" },
                 { table: "settings", column: "poMandatoryMrrTypes", type: "LONGTEXT" },
                 { table: "settings", column: "pdiCsMarginPercent", type: "DECIMAL(6,2) DEFAULT 10" },
+                { table: "settings", column: "minPrintedPercentOfCorrugated", type: "DECIMAL(6,2) DEFAULT 90" },
                 { table: "settings", column: "pdiPlyTolerance", type: "TEXT" },
                 { table: "settings", column: "orderPoUpdateUsers", type: "TEXT" },
                 { table: "production_processing", column: "printingMachine", type: "VARCHAR(100)" },
+                { table: "production_processing", column: "lowYieldReason", type: "TEXT" },
+                { table: "production_processing", column: "lowYieldApprovedBy", type: "VARCHAR(255)" },
+                { table: "production_processing", column: "lowYieldApprovedAt", type: "VARCHAR(50)" },
                 { table: "settings", column: "samplingPlanQtyDivisor", type: "DECIMAL(15,2) DEFAULT 2000" },
                 { table: "settings", column: "samplingPlanQtyMin", type: "INT DEFAULT 2" },
                 { table: "settings", column: "samplingPlanQtyMax", type: "INT DEFAULT 4" },
@@ -14119,6 +14123,37 @@ const createHandlers = (tableName) => {
                                 return res.status(400).json({
                                     error: `Printed + printing wastage must equal corrugated when Printing is Complete. Job ${String(data.jobNo || "")}: corrugated ${fmt(finalCorrugated)}, printed + wastage ${fmt(finalUsed)}, ${finalCorrugated > finalUsed ? `${fmt(finalCorrugated - finalUsed)} boxes not accounted for` : `${fmt(finalUsed - finalCorrugated)} boxes over`}.`,
                                 });
+                            }
+                            // Good printed boxes must be at least the minimum % of corrugated
+                            // (Settings). Below it only an Admin can complete Printing, with a reason.
+                            if (isPrintingEntry && completionStatus === "Full" && finalCorrugated > 0) {
+                                const [minRows] = await db.query("SELECT minPrintedPercentOfCorrugated FROM `settings` ORDER BY updateTimestamp DESC LIMIT 1").catch(() => [[]]);
+                                const rawMin = minRows[0]?.minPrintedPercentOfCorrugated;
+                                const minPercent = rawMin === null || rawMin === undefined || rawMin === "" || !Number.isFinite(Number(rawMin)) ? 90 : Number(rawMin);
+                                const finalPrinted = printedQty + qtyNumber;
+                                const minPrinted = finalCorrugated * minPercent / 100;
+                                if (finalPrinted + 0.0001 < minPrinted) {
+                                    const reason = String(data.lowYieldReason || "").trim();
+                                    const printedPercent = Math.round(finalPrinted / finalCorrugated * 10000) / 100;
+                                    if (requestUser?.role !== "Admin") {
+                                        return res.status(400).json({
+                                            error: `Printed ${fmt(finalPrinted)} is ${printedPercent}% of corrugated ${fmt(finalCorrugated)}, below the minimum ${minPercent}% (${fmt(minPrinted)}). Only an Admin can mark this Printing Complete, with a reason.`,
+                                        });
+                                    }
+                                    if (reason.length < 5) {
+                                        return res.status(400).json({
+                                            error: `Printed is ${printedPercent}% of corrugated, below the minimum ${minPercent}%. Admin must enter the reason to complete Printing.`,
+                                        });
+                                    }
+                                    data.lowYieldReason = reason;
+                                    data.lowYieldApprovedBy = String(requestUser?.name || requestUser?.email || "Admin");
+                                    data.lowYieldApprovedAt = new Date().toISOString();
+                                }
+                                else {
+                                    data.lowYieldReason = null;
+                                    data.lowYieldApprovedBy = null;
+                                    data.lowYieldApprovedAt = null;
+                                }
                             }
                         }
                     }

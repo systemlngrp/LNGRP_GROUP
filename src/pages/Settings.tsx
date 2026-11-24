@@ -371,6 +371,8 @@ export function SettingsPage() {
   const [samplingPlanQtyError, setSamplingPlanQtyError] = useState("");
   const [qcBgsmToleranceDraft, setQcBgsmToleranceDraft] = useState("3");
   const [pdiCsMarginDraft, setPdiCsMarginDraft] = useState(String(DEFAULT_PDI_CS_MARGIN_PERCENT));
+  const [minPrintedDraft, setMinPrintedDraft] = useState("90");
+  const [minPrintedError, setMinPrintedError] = useState("");
   const [pdiCsMarginError, setPdiCsMarginError] = useState("");
   const [qcBgsmToleranceError, setQcBgsmToleranceError] = useState("");
 
@@ -379,6 +381,10 @@ export function SettingsPage() {
   useEffect(() => { setSamplingPlanQtyDraft({ divisor: String(currentSetting?.samplingPlanQtyDivisor || 2000), minimum: String(currentSetting?.samplingPlanQtyMin || 2), maximum: String(currentSetting?.samplingPlanQtyMax || 4) }); }, [currentSetting?.samplingPlanQtyDivisor, currentSetting?.samplingPlanQtyMin, currentSetting?.samplingPlanQtyMax]);
   useEffect(() => { setQcBgsmToleranceDraft(String(currentSetting?.qcBgsmTolerancePercent ?? 3)); }, [currentSetting?.qcBgsmTolerancePercent]);
   useEffect(() => { setPdiCsMarginDraft(String(parsePdiCsMarginPercent(currentSetting))); }, [currentSetting?.pdiCsMarginPercent]);
+  useEffect(() => {
+    const raw = currentSetting?.minPrintedPercentOfCorrugated;
+    setMinPrintedDraft(raw === null || raw === undefined || raw === "" || !Number.isFinite(Number(raw)) ? "90" : String(Number(raw)));
+  }, [currentSetting?.minPrintedPercentOfCorrugated]);
   // PDI dimension tolerance (mm) per ply: Achieved L/W/H green inside Required ± tolerance, red outside.
   const [plyToleranceDraft, setPlyToleranceDraft] = useState<Array<{ ply: string; tolerance: string }>>([]);
   const [plyToleranceError, setPlyToleranceError] = useState("");
@@ -398,6 +404,13 @@ export function SettingsPage() {
     }
     setPlyToleranceError("");
     await handleChange({ pdiPlyTolerance: JSON.stringify(value) });
+  };
+  const saveMinPrinted = async () => {
+    const raw = minPrintedDraft.trim();
+    const value = Number(raw);
+    if (!/^\d+(\.\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 100) return setMinPrintedError("Enter a percentage from 0 to 100 (up to 2 decimals).");
+    setMinPrintedError("");
+    await handleChange({ minPrintedPercentOfCorrugated: value });
   };
   const savePdiCsMargin = async () => {
     const raw = pdiCsMarginDraft.trim();
@@ -2141,6 +2154,7 @@ export function SettingsPage() {
         </div>
 
         <div className="space-y-3 border-t border-dashed border-black pt-4"><h3 className="text-xs font-black uppercase tracking-wide text-black">Sampling Plan Quantity</h3><p className="text-sm leading-6 text-black">Plan Quantity is divided by the configured divisor, rounded up, and clamped between the minimum and maximum.</p><div className="grid grid-cols-1 gap-3 md:grid-cols-3"><label>Divisor<input type="number" min="1" step="any" value={samplingPlanQtyDraft.divisor} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, divisor: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label><label>Minimum<input type="number" min="1" step="1" value={samplingPlanQtyDraft.minimum} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, minimum: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label><label>Maximum<input type="number" min="1" step="1" value={samplingPlanQtyDraft.maximum} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, maximum: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label></div>{samplingPlanQtyError && <div className="font-bold text-red-700">{samplingPlanQtyError}</div>}<button type="button" onClick={() => void saveSamplingPlanQty()} disabled={loading || saving} className="rounded bg-indigo-600 px-5 py-2 font-bold text-white">Save</button></div>
+        <div className="space-y-3 border-t border-dashed border-black pt-4"><h3 className="text-xs font-black uppercase tracking-wide text-black">Minimum Printed % of Corrugated</h3><p className="text-sm leading-6 text-black">When Printing is marked <span className="font-bold">Complete</span> on an FG job, good printed boxes (without wastage) must be at least this % of the job's total corrugated. Example: corrugated 100 and {minPrintedDraft || 0}% → at least {Math.ceil(100 * (Number(minPrintedDraft) || 0) / 100)} printed. Below it only an Admin can complete Printing, and must give a reason.</p><div className="max-w-xs"><label>Minimum printed (%)<input type="number" min="0" max="100" step="0.01" value={minPrintedDraft} onChange={(event) => setMinPrintedDraft(event.target.value)} disabled={loading || saving || user?.role !== "Admin"} className="w-full rounded border-2 border-black p-2" /></label></div>{minPrintedError && <div className="font-bold text-red-700">{minPrintedError}</div>}<button type="button" onClick={() => void saveMinPrinted()} disabled={loading || saving || user?.role !== "Admin"} className="rounded bg-indigo-600 px-5 py-2 font-bold text-white disabled:bg-slate-400">Save</button></div>
         <div className="space-y-3 border-t border-dashed border-black pt-4"><h3 className="text-xs font-black uppercase tracking-wide text-black">PDI CS Margin</h3><p className="text-sm leading-6 text-black">A PDI passes on CS when <span className="font-bold">CS Achieved</span> is at least <span className="font-bold">CS Std + this %</span> (item CS Std from the NPD master). Example: CS Std 120 and {pdiCsMarginDraft || 0}% → CS needed {Math.round(120 * (1 + (Number(pdiCsMarginDraft) || 0) / 100) * 100) / 100}. Saved PDIs keep their result until they are updated again; the PDI Report recalculates at once.</p><div className="max-w-xs"><label>Margin over CS Std (%)<input type="number" min="0" max="100" step="0.01" value={pdiCsMarginDraft} onChange={(event) => setPdiCsMarginDraft(event.target.value)} disabled={loading || saving} className="w-full rounded border-2 border-black p-2" /></label></div>{pdiCsMarginError && <div className="font-bold text-red-700">{pdiCsMarginError}</div>}<button type="button" onClick={() => void savePdiCsMargin()} disabled={loading || saving} className="rounded bg-indigo-600 px-5 py-2 font-bold text-white">Save</button></div>
         <div className="space-y-3 border-t border-dashed border-black pt-4"><h3 className="text-xs font-black uppercase tracking-wide text-black">PDI Dimension Tolerance (mm)</h3><p className="text-sm leading-6 text-black">PDI Report: Min / Max = Required ± the tolerance of the item's ply. <span className="font-bold">Achieved Length / Width / Height</span> is green inside that range, red outside, white when blank. A ply not listed here uses its ply number as the tolerance.</p>
           <div className="max-w-md space-y-2">{plyToleranceDraft.map((row, index) => <div key={index} className="flex items-end gap-2"><label className="flex-1 text-sm">Ply<input type="number" min="1" step="1" value={row.ply} onChange={(event) => setPlyToleranceDraft((current) => current.map((entry, position) => position === index ? { ...entry, ply: event.target.value } : entry))} disabled={loading || saving} className="w-full rounded border-2 border-black p-2" /></label><label className="flex-1 text-sm">Tolerance (mm)<input type="number" min="0" step="0.01" value={row.tolerance} onChange={(event) => setPlyToleranceDraft((current) => current.map((entry, position) => position === index ? { ...entry, tolerance: event.target.value } : entry))} disabled={loading || saving} className="w-full rounded border-2 border-black p-2" /></label><button type="button" onClick={() => setPlyToleranceDraft((current) => current.filter((_, position) => position !== index))} disabled={loading || saving} className="h-[42px] rounded border-2 border-red-600 px-3 text-sm font-bold text-red-600">Remove</button></div>)}
