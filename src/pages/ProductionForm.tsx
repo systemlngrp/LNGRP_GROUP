@@ -137,6 +137,9 @@ function findNpdItemForOrder(order: Order | undefined, catalogItem: any, npdItem
   return npdItems.find((item) => erpKeys.some((key) => getNpdLookupKeys(item).includes(key)));
 }
 
+/** Production In Progress counts only jobs dated on or after this date. */
+const PRODUCTION_IN_PROGRESS_FIRST_DATE = "2026-11-17";
+
 function isSameNpdItem(item: Item | undefined, value: any) {
   if (!item) return false;
   const itemKeys = getNpdLookupKeys(item);
@@ -382,7 +385,9 @@ export function ProductionForm() {
         const prodFromFFGValue = production.prodFromFFG;
         const hasFFGValue = !(prodFromFFGValue === null || prodFromFFGValue === undefined || String(prodFromFFGValue) === "");
 
-        return isSameNpdItem(selectedItem, production) && !production.cancelTimestamp && !hasFFGValue;
+        // Jobs dated before 17-Nov-2026 are not counted.
+        const fromCutoff = String(production.date || "").slice(0, 10) >= PRODUCTION_IN_PROGRESS_FIRST_DATE;
+        return fromCutoff && isSameNpdItem(selectedItem, production) && !production.cancelTimestamp && !hasFFGValue;
       })
       .reduce((sum, production) => sum + (Number(production.qty) || 0), 0);
   }, [productions, selectedItem?.id]);
@@ -819,7 +824,7 @@ export function ProductionForm() {
               label="Production In Progress"
               value={productionInProgress}
               suffix={selectedItem?.uom || ""}
-              helpText="For the selected item, this sums production rows where Production from FFG is blank and Cancel Timestamp is blank."
+              helpText="For the selected item, this sums planned qty of jobs dated 17-Nov-2026 or later where Production from FFG is blank and Cancel Timestamp is blank."
             />}
 
             {/* Shown with Maximum Allowed Production (same setting). */}
