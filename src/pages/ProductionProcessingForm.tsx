@@ -10,7 +10,7 @@ import { MandatoryLabel } from "../components/Mandatory";
 import { ProcessingQtyFields } from "../components/ProcessingQtyFields";
 import { isMandatoryField } from "../lib/mandatoryFields";
 import { useAuth } from "../auth/AuthContext";
-import { usesPartFullProgress } from "../lib/productionProcessingProgress";
+import { isProcessingStepFull, usesPartFullProgress } from "../lib/productionProcessingProgress";
 import { useProductionMaterialUsage } from "../hooks/useProductionMaterialUsage";
 import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
 import { CorrugationWastageFields } from "../components/CorrugationWastageFields";
@@ -41,22 +41,25 @@ const printingWastageBoxes = (entry: Partial<Record<string, unknown>>) =>
 /** Corrugated, printed and printing-wastage totals of an FG job; null when the limit does not apply. */
 function printingLimitTotals(processing: ProductionProcessing[], production: Production | undefined, productionId: string) {
   if (!production || production.itemSource === "PHP" || production.itemSource === "PLATE") return null;
-  let corrugated = 0, printed = 0, wastage = 0;
+  let corrugated = 0, printed = 0, wastage = 0, corrugationComplete = false;
   processing.forEach((entry) => {
     if (entry.productionId !== productionId) return;
     const machine = normalizeMachineName(entry.machineName);
-    if (machine === "Corrugation Liner") corrugated += Number(entry.qty || 0);
+    if (machine === "Corrugation Liner") { corrugated += Number(entry.qty || 0); if (isProcessingStepFull(entry)) corrugationComplete = true; }
     if (machine === "Printing") { printed += Number(entry.qty || 0); wastage += printingWastageBoxes(entry as any); }
   });
-  return { corrugated, printed, wastage };
+  return { corrugated, printed, wastage, corrugationComplete };
 }
 
 /** Printed + printing wastage may not exceed the boxes corrugated on the same FG job (server enforces this too). */
-function printingOverCorrugationMessage(processing: ProductionProcessing[], production: Production | undefined, productionId: string, qtyNow: number, wastageNow: number) {
+function printingOverCorrugationMessage(processing: ProductionProcessing[], production: Production | undefined, productionId: string, qtyNow: number, wastageNow: number, isComplete = false) {
   const totals = printingLimitTotals(processing, production, productionId);
   if (!totals) return "";
-  const { corrugated, printed, wastage } = totals;
+  const { corrugated, printed, wastage, corrugationComplete } = totals;
   const used = printed + wastage;
+  if (isComplete && !corrugationComplete) return "Printing cannot be marked Complete: Corrugation Liner is not Complete yet for this job.\n\nSave this entry as In Progress, or complete Corrugation first.";
+  const finalUsed = used + qtyNow + wastageNow;
+  if (isComplete && corrugated > 0 && finalUsed + 0.0001 < corrugated) return `Printed + printing wastage must equal corrugated when Printing is Complete.\n\nCorrugated: ${corrugated.toLocaleString()}\nPrinted + wastage (with this entry): ${finalUsed.toLocaleString()}\nNot accounted for: ${(corrugated - finalUsed).toLocaleString()} boxes\n\nEnter the missing boxes as printed or as wastage.`;
   if (used + qtyNow + wastageNow <= corrugated + 0.0001) return "";
   if (corrugated <= 0) return "Printing cannot be reported: no Corrugation Liner quantity is reported for this job yet.";
   return `Printed + printing wastage is more than corrugated.\n\nCorrugated: ${corrugated.toLocaleString()}\nAlready printed: ${printed.toLocaleString()}\nPrinting wastage so far: ${wastage.toLocaleString()}\nBalance: ${Math.max(0, corrugated - used).toLocaleString()}\n\nYou entered: ${qtyNow.toLocaleString()} printed + ${wastageNow.toLocaleString()} wastage`;
@@ -179,7 +182,7 @@ function LockedReportForm() {
       return;
     }
     if (isPrinting) {
-      const overMessage = printingOverCorrugationMessage(processing, selectedProduction, productionId, qtyNumber, showPrintingWastage ? printingWastageBoxes(buildPrintingWastageValues(printingWastageDraft)) : 0);
+      const overMessage = printingOverCorrugationMessage(processing, selectedProduction, productionId, qtyNumber, showPrintingWastage ? printingWastageBoxes(buildPrintingWastageValues(printingWastageDraft)) : 0, completionStatus === "Full");
       if (overMessage) { alert(overMessage); return; }
     }
     if (requiresCompletionStatus && completionStatus === "Full" && selectedProduction &&
@@ -325,6 +328,7 @@ function LockedReportForm() {
               alreadyCompletedQty={selectedProduction ? alreadyCompletedQty : null}
               printingLimit={printingLimitForForm(isPrinting, processing, selectedProduction, productionId)}
               wastageNow={showPrintingWastage ? printingWastageBoxes(buildPrintingWastageValues(printingWastageDraft)) : 0}
+              printingComplete={isPrinting && completionStatus === "Full"}
               qty={qty}
               onQtyChange={setQty}
             />
@@ -530,7 +534,7 @@ function FullReportForm() {
       return;
     }
     if (isPrinting) {
-      const overMessage = printingOverCorrugationMessage(processing, selectedProduction, productionId, qtyNumber, showPrintingWastage ? printingWastageBoxes(buildPrintingWastageValues(printingWastageDraft)) : 0);
+      const overMessage = printingOverCorrugationMessage(processing, selectedProduction, productionId, qtyNumber, showPrintingWastage ? printingWastageBoxes(buildPrintingWastageValues(printingWastageDraft)) : 0, completionStatus === "Full");
       if (overMessage) { alert(overMessage); return; }
     }
     if (requiresCompletionStatus && completionStatus === "Full" && qtyContext &&
@@ -669,6 +673,7 @@ function FullReportForm() {
               alreadyCompletedQty={qtyContext ? qtyContext.alreadyProcessedQty : null}
               printingLimit={printingLimitForForm(isPrinting, processing, selectedProduction, productionId)}
               wastageNow={showPrintingWastage ? printingWastageBoxes(buildPrintingWastageValues(printingWastageDraft)) : 0}
+              printingComplete={isPrinting && completionStatus === "Full"}
               qty={qty}
               onQtyChange={setQty}
             />

@@ -14076,7 +14076,9 @@ const createHandlers = (tableName) => {
                         const [totalRows] = await db.query(`SELECT
                  COALESCE(SUM(CASE WHEN LOWER(TRIM(machineName)) IN ('corrugation liner', 'corrugation linear') THEN qty ELSE 0 END), 0) AS corrugatedQty,
                  COALESCE(SUM(CASE WHEN LOWER(TRIM(machineName)) = 'printing' THEN qty ELSE 0 END), 0) AS printedQty,
-                 COALESCE(SUM(CASE WHEN LOWER(TRIM(machineName)) = 'printing' THEN COALESCE(slotting,0) + COALESCE(delaminationPrinting,0) + COALESCE(misalignmentPrinting,0) + COALESCE(drySheets,0) + COALESCE(warp,0) + COALESCE(misprinting,0) + COALESCE(jobSetting,0) ELSE 0 END), 0) AS printingWastage
+                 COALESCE(SUM(CASE WHEN LOWER(TRIM(machineName)) = 'printing' THEN COALESCE(slotting,0) + COALESCE(delaminationPrinting,0) + COALESCE(misalignmentPrinting,0) + COALESCE(drySheets,0) + COALESCE(warp,0) + COALESCE(misprinting,0) + COALESCE(jobSetting,0) ELSE 0 END), 0) AS printingWastage,
+                 COALESCE(SUM(CASE WHEN LOWER(TRIM(machineName)) IN ('corrugation liner', 'corrugation linear') AND LOWER(TRIM(COALESCE(completionStatus, ''))) IN ('full', '') THEN 1 ELSE 0 END), 0) AS corrugationFullCount,
+                 COALESCE(SUM(CASE WHEN LOWER(TRIM(machineName)) = 'printing' AND LOWER(TRIM(COALESCE(completionStatus, ''))) IN ('full', '') THEN 1 ELSE 0 END), 0) AS printingFullCount
                FROM production_processing WHERE productionId = ? AND id <> ?`, [data.productionId, String(data.id || "")]);
                         const corrugatedQty = Number(totalRows[0]?.corrugatedQty || 0);
                         const printedQty = Number(totalRows[0]?.printedQty || 0);
@@ -14097,6 +14099,27 @@ const createHandlers = (tableName) => {
                             return res.status(400).json({
                                 error: `Corrugation Liner total cannot be less than printed + printing wastage. Job ${String(data.jobNo || "")}: printed ${fmt(printedQty)} + wastage ${fmt(printingWastage)}, corrugation would become ${fmt(corrugatedQty + qtyNumber)}.`,
                             });
+                        }
+                        // Once Printing is Complete, Corrugation must be Complete and every
+                        // corrugated box must be printed or recorded as printing wastage.
+                        const isPrintingEntry = data.machineName === "Printing";
+                        const corrugationComplete = Number(totalRows[0]?.corrugationFullCount || 0) > 0 || (!isPrintingEntry && completionStatus === "Full");
+                        const printingComplete = Number(totalRows[0]?.printingFullCount || 0) > 0 || (isPrintingEntry && completionStatus === "Full");
+                        if (printingComplete) {
+                            if (!corrugationComplete) {
+                                return res.status(400).json({
+                                    error: isPrintingEntry
+                                        ? `Printing cannot be marked Complete for job ${String(data.jobNo || "")}: Corrugation Liner is not Complete yet. Save this entry as In Progress, or complete Corrugation first.`
+                                        : `Corrugation Liner must stay Complete for job ${String(data.jobNo || "")} because Printing is already Complete.`,
+                                });
+                            }
+                            const finalCorrugated = corrugatedQty + (isPrintingEntry ? 0 : qtyNumber);
+                            const finalUsed = printedQty + printingWastage + (isPrintingEntry ? qtyNumber + wastageNow : 0);
+                            if (Math.abs(finalCorrugated - finalUsed) > 0.0001) {
+                                return res.status(400).json({
+                                    error: `Printed + printing wastage must equal corrugated when Printing is Complete. Job ${String(data.jobNo || "")}: corrugated ${fmt(finalCorrugated)}, printed + wastage ${fmt(finalUsed)}, ${finalCorrugated > finalUsed ? `${fmt(finalCorrugated - finalUsed)} boxes not accounted for` : `${fmt(finalUsed - finalCorrugated)} boxes over`}.`,
+                                });
+                            }
                         }
                     }
                     if (data.machineName === "Corrugation Liner" && completionStatus === "Full") {

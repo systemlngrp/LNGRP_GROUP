@@ -7,7 +7,9 @@ type Props = {
   qty: string;
   onQtyChange: (value: string) => void;
   /** Printing on FG jobs: corrugated / printed / printing-wastage totals (null while loading). */
-  printingLimit?: { corrugated: number; printed: number; wastage: number } | null;
+  printingLimit?: { corrugated: number; printed: number; wastage: number; corrugationComplete: boolean } | null;
+  /** Printing entry marked Complete: printed + wastage must equal corrugated. */
+  printingComplete?: boolean;
   /** Printing wastage boxes typed in this entry. */
   wastageNow?: number;
 };
@@ -15,7 +17,7 @@ type Props = {
 const readOnlyBox = "border-2 border-black rounded bg-slate-100 p-2 text-sm font-bold text-black text-right";
 
 /** Planned Job Qty and Already Completed are read-only; Completed Now is this entry's quantity. */
-export function ProcessingQtyFields({ plannedQty, alreadyCompletedQty, qty, onQtyChange, printingLimit, wastageNow = 0 }: Props) {
+export function ProcessingQtyFields({ plannedQty, alreadyCompletedQty, qty, onQtyChange, printingLimit, wastageNow = 0, printingComplete = false }: Props) {
   const showCorrugated = printingLimit !== undefined;
   const corrugatedBalance = printingLimit
     ? printingLimit.corrugated - printingLimit.printed - printingLimit.wastage - Number(qty || 0) - wastageNow
@@ -64,10 +66,16 @@ export function ProcessingQtyFields({ plannedQty, alreadyCompletedQty, qty, onQt
         </div>
       ) : null}
       {corrugatedBalance !== null ? (
-        <div className={`text-[11px] font-bold ${showCorrugated ? "sm:col-span-5" : "sm:col-span-3"} ${corrugatedBalance < 0 ? "text-red-700" : "text-slate-600"}`}>
+        <div className={`text-[11px] font-bold ${showCorrugated ? "sm:col-span-5" : "sm:col-span-3"} ${corrugatedBalance < 0 || (printingComplete && (corrugatedBalance > 0 || (printingLimit && !printingLimit.corrugationComplete))) ? "text-red-700" : printingComplete ? "text-emerald-700" : "text-slate-600"}`}>
           {corrugatedBalance < 0
             ? `Printed + wastage will exceed corrugated by ${Math.abs(corrugatedBalance).toLocaleString()}. Save will be blocked.`
-            : `Corrugated balance after this entry (printed + wastage): ${corrugatedBalance.toLocaleString()}`}
+            : printingComplete && printingLimit && !printingLimit.corrugationComplete
+              ? "Corrugation Liner is not Complete yet. Printing can only be saved as In Progress."
+              : printingComplete && corrugatedBalance > 0
+                ? `Unaccounted: ${corrugatedBalance.toLocaleString()} boxes. For Complete, printed + wastage must equal corrugated. Save will be blocked.`
+                : printingComplete
+                  ? "All corrugated boxes accounted for."
+                  : `Corrugated balance after this entry (printed + wastage): ${corrugatedBalance.toLocaleString()}`}
         </div>
       ) : null}
     </div>
