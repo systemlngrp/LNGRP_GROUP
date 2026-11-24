@@ -392,18 +392,51 @@ export function ProductionForm() {
       .reduce((sum, production) => sum + (Number(production.qty) || 0), 0);
   }, [productions, selectedItem?.id]);
 
+  // Current Balance (temporary rule from 24-Nov-2026, review due 27-Nov):
+  // Production since 17-Nov − Invoiced since 17-Nov; Opening and Receipt left out.
+  // Previous rule: Opening + Receipt + Production − Invoiced (all dates) = selectedItem.balance.
+  const [recentBalance, setRecentBalance] = useState<{ itemId: string; production: number; invoiced: number } | null>(null);
+  const [recentBalanceError, setRecentBalanceError] = useState("");
+  useEffect(() => {
+    const itemId = String(selectedItem?.id || "");
+    setRecentBalanceError("");
+    if (!itemId) {
+      setRecentBalance(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/npd/${encodeURIComponent(itemId)}/recent-balance?since=${PRODUCTION_IN_PROGRESS_FIRST_DATE}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("authToken") || ""}` },
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        if (!cancelled) setRecentBalance({ itemId, production: Number(data.production || 0), invoiced: Number(data.invoiced || 0) });
+      })
+      .catch((error) => {
+        if (!cancelled) setRecentBalanceError(error instanceof Error ? error.message : "Unable to load");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedItem?.id]);
+  const recentBalanceReady = Boolean(recentBalance && recentBalance.itemId === String(selectedItem?.id || ""));
+  const currentBalance = recentBalanceReady ? Math.max(recentBalance!.production - recentBalance!.invoiced, 0) : 0;
+
   const maximumAllowedProduction = Math.max(
-    pendingOrderQtyForItem - Number(selectedItem?.balance || 0) - productionInProgress,
+    pendingOrderQtyForItem - currentBalance - productionInProgress,
     0
   );
 
   // Shown in red under Maximum Allowed Production: how the figure is reached.
   const maximumAllowedWorking = (() => {
     const fmt = (value: number) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
-    const balance = Number(selectedItem?.balance || 0);
+    const balance = currentBalance;
     const raw = pendingOrderQtyForItem - balance - productionInProgress;
     const uom = selectedItem?.uom ? ` ${selectedItem.uom}` : "";
     const line = `Pending Order ${fmt(pendingOrderQtyForItem)} − Current Balance ${fmt(balance)} − Production In Progress ${fmt(productionInProgress)} = ${fmt(raw)}${uom}${raw < 0 ? " → shown as 0" : ""}`;
+    if (selectedItem && recentBalanceError) return `Current Balance could not be loaded (${recentBalanceError}); figure below uses 0.`;
+    if (selectedItem && !recentBalanceReady) return "Loading Current Balance…";
     return selectedItem
       ? line
       : `${line}. Item not found in NPD Master${selectedErp ? ` for ERP ${selectedErp}` : ""}, so all three are 0.`;
@@ -827,9 +860,10 @@ export function ProductionForm() {
 
             {showField("Current Balance") && <ReadOnlyNumberField
               label="Current Balance"
-              value={Number(selectedItem?.balance || 0)}
+              value={currentBalance}
               suffix={selectedItem?.uom || ""}
-              helpText="This comes from the item balance logic used in Item Master. Formula: Opening + Receipt + Production - Invoiced."
+              helpText="Production (FFG) of jobs dated 17-Nov-2026 or later minus quantity invoiced on invoices dated 17-Nov-2026 or later. Opening and Receipt are not included. Never shown below zero."
+              note={selectedItem && recentBalanceReady ? `Production since 17-Nov ${recentBalance!.production.toLocaleString("en-IN", { maximumFractionDigits: 2 })} − Invoiced since 17-Nov ${recentBalance!.invoiced.toLocaleString("en-IN", { maximumFractionDigits: 2 })} = ${(recentBalance!.production - recentBalance!.invoiced).toLocaleString("en-IN", { maximumFractionDigits: 2 })}${selectedItem?.uom ? ` ${selectedItem.uom}` : ""}${recentBalance!.production - recentBalance!.invoiced < 0 ? " → shown as 0" : ""}` : undefined}
             />}
 
             {showField("Production In Progress") && <ReadOnlyNumberField
@@ -852,7 +886,7 @@ export function ProductionForm() {
               value={maximumAllowedProduction}
               suffix={selectedItem?.uom || ""}
               note={selectedSchedule ? maximumAllowedWorking : undefined}
-              helpText={`Maximum allowed production is calculated as Pending Order Quantity (${pendingOrderQtyForItem.toLocaleString()} ${selectedItem?.uom || "units"}) - Current Balance (${Number(selectedItem?.balance || 0).toLocaleString()} ${selectedItem?.uom || "units"}) - Production In Progress (${productionInProgress.toLocaleString()} ${selectedItem?.uom || "units"}) = ${maximumAllowedProduction.toLocaleString()} ${selectedItem?.uom || "units"}. The result is never shown below zero.`}
+              helpText={`Maximum allowed production is calculated as Pending Order Quantity (${pendingOrderQtyForItem.toLocaleString()} ${selectedItem?.uom || "units"}) - Current Balance (${currentBalance.toLocaleString()} ${selectedItem?.uom || "units"}) - Production In Progress (${productionInProgress.toLocaleString()} ${selectedItem?.uom || "units"}) = ${maximumAllowedProduction.toLocaleString()} ${selectedItem?.uom || "units"}. The result is never shown below zero.`}
             />}
 
             {showField("Sample Item") && <ReadOnlyTextField

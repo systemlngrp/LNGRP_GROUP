@@ -1577,6 +1577,46 @@ app.get("/api/npd-firm-wise", async (req, res) => {
   }
 });
 
+  // Production form "Current Balance" (temporary rule from 24-Nov-2026):
+  // Production from FFG of jobs dated on/after `since` minus quantity invoiced
+  // on invoices dated on/after `since`. Opening and Receipt are left out.
+  // Invoiced follows the same matching as the NPD stock (computeInvoicedByItem).
+  app.get("/api/npd/:id/recent-balance", requireAuth, async (req, res) => {
+    const db = await getPool();
+    if (!db) return res.status(500).json({ error: "DB connection not available" });
+    const since = String(req.query.since || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) return res.status(400).json({ error: "since must be YYYY-MM-DD" });
+    try {
+      const [npdRows] = await db.query("SELECT id FROM `npd` WHERE id = ? OR npdId = ? LIMIT 1", [req.params.id, req.params.id]);
+      const itemId = String((npdRows as any[])[0]?.id || "");
+      if (!itemId) return res.status(404).json({ error: "Item not found" });
+      const [productionRows] = await db.query(
+        "SELECT COALESCE(SUM(COALESCE(prodFromFFG, 0)), 0) AS production FROM `productions` WHERE COALESCE(NULLIF(npdId, ''), itemId) = ? AND (status <> 'Cancelled' OR status IS NULL) AND LEFT(`date`, 10) >= ?",
+        [itemId, since]
+      );
+      const production = npdRound2(Number((productionRows as any[])[0]?.production || 0));
+      const raw = await loadNpdStockRaw(db);
+      const [recentInvoiceRows] = await db.query("SELECT id FROM `invoices` WHERE LEFT(`date`, 10) >= ?", [since]);
+      const recentInvoiceIds = new Set((recentInvoiceRows as any[]).map((row) => String(row.id)));
+      const invoicedByItem = computeInvoicedByItem({
+        npd: buildNpdIndexes(raw.npd),
+        // Keep only slip lines / invoice lines of invoices dated on/after `since`;
+        // the full invoice list stays so the matching rules are unchanged.
+        slipLines: raw.slipLines.filter((line: any) => recentInvoiceIds.has(String(line.invoiceId || ""))),
+        invoices: raw.invoices,
+        dispatchPlans: raw.dispatchPlans,
+        orders: raw.orders,
+        invoiceLineItems: raw.invoiceLineItems.filter((line: any) => recentInvoiceIds.has(String(line.invoiceId || ""))),
+        loadingSlips: raw.loadingSlips,
+      });
+      const invoiced = npdRound2(invoicedByItem.get(npdCk(itemId) ?? "") || 0);
+      return res.json({ itemId, since, production, invoiced, balance: npdRound2(production - invoiced) });
+    } catch (error) {
+      console.error("[DB] recent-balance failed:", error);
+      return res.status(500).json({ error: (error as Error).message || "Failed to work out balance" });
+    }
+  });
+
   app.get("/api/npd/catalog", requireAuth, async (req, res) => {
   const db = await getPool();
   if (!db) return res.status(500).json({ error: "DB connection not available" });
