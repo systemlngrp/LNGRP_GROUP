@@ -1680,6 +1680,12 @@ export interface LinkedLoadingDetail {
   extraItemsQty?: number;
 }
 
+export interface LoadingSlipJobWastage {
+  jobId: string;
+  jobNo: string;
+  qty: number;
+}
+
 export interface LoadingSlip {
   id: string;
   slipNo: string;
@@ -1709,6 +1715,10 @@ export interface LoadingSlip {
   cancelledBy?: string;
   invoiceId?: string;
   invoiceNo?: string;
+  /** Loading wastage per FG job on this slip (boxes damaged/lost at loading). */
+  jobWastage?: LoadingSlipJobWastage[];
+  /** "Yes" after the slip is edited: the PDF must be downloaded again before invoicing. */
+  pdfRedownloadRequired?: "Yes" | "No" | string;
   packingDetails?: PackingDetail[];
   extraItemsQty?: number;
   tallyTimestamp?: string;

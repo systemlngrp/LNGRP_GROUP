@@ -24,6 +24,8 @@ export type EligibleLoadingJob = {
   alreadyLoaded: number;
   yetToLoad: number;
   atJobWorker?: number;
+  /** Loading wastage already recorded on earlier slips. */
+  loadingWastage?: number;
 };
 
 export type PendingLoadingPlanProjection = {
@@ -96,6 +98,11 @@ function isTruthyMarker(value: unknown) {
   return ["yes", "true", "1", "posted", "tallied", "completed", "closed"].includes(normalizeKey(value));
 }
 
+function isCancelledJob(production: Production) {
+  const status = normalizeKey(production.status);
+  return ["cancelled", "canceled"].includes(status) || Boolean(normalizeText(production.cancelTimestamp));
+}
+
 function isClosedOrTallied(production: Production) {
   const status = normalizeKey(production.status);
   return (
@@ -125,6 +132,24 @@ export function loadedQtyByJobId(slips: LoadingSlip[]) {
   });
   return loaded;
 }
+
+/** Loading wastage per FG job across active loading slips (keyed by lower-case job id). */
+export function loadingWastageByJobId(slips: LoadingSlip[]) {
+  const wastage = new Map<string, number>();
+  slips.forEach((slip) => {
+    if (["cancelled", "canceled"].includes(normalizeKey(slip.status))) return;
+    (slip.jobWastage || []).forEach((row) => {
+      const jobId = normalizeKey(row?.jobId);
+      const quantity = Number(row?.qty || 0);
+      if (!jobId || !Number.isFinite(quantity) || quantity <= 0) return;
+      wastage.set(jobId, (wastage.get(jobId) || 0) + quantity);
+    });
+  });
+  return wastage;
+}
+
+/** Closed jobs stay loadable while they have a balance, but only from this job date on. */
+export const LOADING_CLOSED_JOB_FIRST_DATE = "2026-11-17";
 
 export function getDispatchPlanPendingQty(plan: DispatchPlan) {
   const pending = Number(plan.plannedQty || 0) - Number(plan.loadedQty || 0) - Number(plan.canceledQty || 0);
@@ -167,6 +192,8 @@ export function eligibleLoadingJobs(
   corrugationQtyByJobId?: Map<string, number>,
   /** Qty of each job still at a job worker (open Job Work gate passes): not loadable. */
   atJobWorkerByJobId?: Map<string, number>,
+  /** Loading wastage already recorded per job (keyed by lower-case job id). */
+  wastageByJobId?: Map<string, number>,
 ) {
   // FG jobs: loadable qty = boxes made on Corrugation Liner (jobs without a
   // Corrugation Liner entry are not listed). PHP / Plate keep their output qty.
@@ -195,7 +222,10 @@ export function eligibleLoadingJobs(
       const jobFirm = normalizeKey(getJobFirmId(production));
       if (targetFirm && jobFirm && targetFirm !== jobFirm) return false;
       if (!targetFirm && jobFirm) return false;
-      if (isClosedOrTallied(production)) return false;
+      // Cancelled jobs never load. Closed jobs keep loading their balance
+      // (newest first) when dated on/after the cut-off.
+      if (isCancelledJob(production)) return false;
+      if (isClosedOrTallied(production) && String(production.date || "").slice(0, 10) < LOADING_CLOSED_JOB_FIRST_DATE) return false;
 
       const productionQty = jobQty(production);
       return Number.isFinite(productionQty) && productionQty > 0;
@@ -204,20 +234,22 @@ export function eligibleLoadingJobs(
       const productionQty = jobQty(production);
       const loaded = alreadyLoaded.get(normalizeKey(production.id)) || 0;
       const atJobWorker = atJobWorkerByJobId?.get(String(production.id || "").trim()) || 0;
+      const loadingWastage = wastageByJobId?.get(normalizeKey(production.id)) || 0;
       return {
         jobId: production.id,
         jobNo: getLoadingJobNumber(production),
         productionQty,
         alreadyLoaded: loaded,
+        loadingWastage,
         atJobWorker,
-        yetToLoad: Math.max(0, productionQty - loaded - atJobWorker),
+        yetToLoad: Math.max(0, productionQty - loaded - loadingWastage - atJobWorker),
       };
     })
     .filter((job) => Boolean(job.jobNo) && job.yetToLoad > 0)
+    // Every job with a balance, newest first.
     .sort((a, b) =>
       b.jobNo.localeCompare(a.jobNo, undefined, { numeric: true, sensitivity: "base" }),
-    )
-    .slice(0, 3);
+    );
 }
 
 function resolveFirmId(
@@ -254,6 +286,7 @@ export function getPendingLoadingPlanProjections(args: {
   const scheduleById = new Map(args.schedules.map((schedule) => [normalizeKey(schedule.id), schedule]));
   const companyById = new Map((args.companies || []).map((company) => [normalizeKey(company.id), company]));
   const loaded = loadedQtyByJobId(args.loadingSlips);
+  const wastage = loadingWastageByJobId(args.loadingSlips);
 
   return args.plans.flatMap<PendingLoadingPlanProjection>((plan) => {
     const pendingQty = getDispatchPlanPendingQty(plan);
@@ -280,6 +313,7 @@ export function getPendingLoadingPlanProjections(args: {
       Array.from(itemKeys(item, order)),
       args.corrugationQtyByJobId,
       args.atJobWorkerByJobId,
+      wastage,
     );
 
 

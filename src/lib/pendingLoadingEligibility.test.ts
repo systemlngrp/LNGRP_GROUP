@@ -117,14 +117,14 @@ test("excludes closed, cancelled, tallied, and fully loaded jobs", () => {
   assert.deepEqual(rows[0].eligibleJobs.map((job) => job.jobId), ["open"]);
 });
 
-test("returns only the newest three jobs and falls back to Job Card No.", () => {
+test("returns every job with balance, newest first, and falls back to Job Card No.", () => {
   const jobs = [1, 2, 3, 4].map((number) => production({
     id: `job-${number}`,
     transactionNo: number === 1 ? "" : `JOB/26/00${number}`,
     jobCardNo: number === 1 ? "JC-001" : undefined,
   }));
   const rows = getPendingLoadingPlanProjections(args({ productions: jobs }));
-  assert.deepEqual(rows[0].eligibleJobs.map((job) => job.jobNo), ["JOB/26/004", "JOB/26/003", "JOB/26/002"]);
+  assert.deepEqual(rows[0].eligibleJobs.map((job) => job.jobNo), ["JOB/26/004", "JOB/26/003", "JOB/26/002", "JC-001"]);
   assert.equal(getLoadingJobNumber(jobs[0]), "JC-001");
 });
 
@@ -147,4 +147,19 @@ test("FG jobs load against Corrugation Liner qty and jobs without it are hidden"
   }));
   assert.deepEqual(rows[0].eligibleJobs.map((job) => job.jobId), ["corr"]);
   assert.equal(rows[0].eligibleJobs[0].productionQty, 450);
+});
+
+test("closed jobs from the cut-off date stay loadable; loading wastage reduces the balance", () => {
+  const rows = getPendingLoadingPlanProjections(args({
+    productions: [
+      production({ id: "old-closed", status: "Completed", date: "2026-11-10", transactionNo: "JOB/26/031" }),
+      production({ id: "new-closed", status: "Completed", date: "2026-11-18", transactionNo: "JOB/26/032" }),
+      production({ id: "cancelled-new", status: "Cancelled", date: "2026-11-18", transactionNo: "JOB/26/033" }),
+    ],
+    loadingSlips: [{ id: "s1", slipNo: "LS-1", date: "2026-11-20", truckId: "", lines: [], jobWastage: [{ jobId: "new-closed", jobNo: "JOB/26/032", qty: 7 }] } as any],
+  }));
+  const jobs = rows[0].eligibleJobs;
+  assert.deepEqual(jobs.map((job) => job.jobNo), ["JOB/26/032"]);
+  assert.equal(jobs[0].loadingWastage, 7);
+  assert.equal(jobs[0].yetToLoad, jobs[0].productionQty - 7);
 });

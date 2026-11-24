@@ -240,6 +240,11 @@ export function LoadingMaster() {
         npdItems,
         companies
       });
+      // An edited slip reaches Pending Invoicing only after its PDF is downloaded again.
+      const stored = loadingSlips.find((row) => row.id === slip.id);
+      if (stored?.pdfRedownloadRequired === "Yes") {
+        await setLoadingSlips((prev) => prev.map((row) => row.id === slip.id ? { ...row, pdfRedownloadRequired: "No" } : row));
+      }
     } catch (err) {
       console.error("Failed to download PDF:", err);
       alert("Failed to generate PDF. Please check console for details.");
@@ -323,6 +328,9 @@ export function LoadingMaster() {
         errors.push(`Job ${jobNo}: ${atWorker.toLocaleString()} pcs are at the job worker (Job Work gate pass). Loaded qty for this job cannot be increased until they return.`);
       }
     });
+    (draft.jobWastage || []).forEach((row) => {
+      if (Number(row.qty || 0) < 0) errors.push(`Job ${row.jobNo}: Loading wastage cannot be negative.`);
+    });
     lines.forEach((line, index) => {
       const loadedQty = Number(line.loadedQty || 0);
       if (loadedQty < 0) errors.push(`Line ${index + 1}: Loaded qty cannot be negative.`);
@@ -389,6 +397,9 @@ export function LoadingMaster() {
       ...draft,
       phpDetails,
       plateDetails,
+      jobWastage: (draft.jobWastage || []).filter((row) => Number(row.qty || 0) > 0),
+      // Not invoiced yet: the corrected PDF must be downloaded before invoicing.
+      ...(!original.invoiceId && !direct ? { pdfRedownloadRequired: "Yes" } : {}),
     };
     const shortages = getPhpPlateStockShortages({
       phpDetails,
@@ -563,6 +574,9 @@ export function LoadingMaster() {
       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 px-4 py-3 border-b border-black">
         <div className="text-sm font-bold text-black">
           Slip {slip.slipNo} - Date {formatDate(slip.date)}
+          {slip.pdfRedownloadRequired === "Yes" && !slip.invoiceId ? (
+            <span className="ml-2 rounded bg-amber-200 px-2 py-0.5 text-[11px] font-black text-amber-900" title="The slip was edited. Download the PDF again; until then it does not appear in Pending Invoicing.">Edited: download PDF again before invoicing</span>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           {canManage && slip.status !== "Cancelled" ? (
@@ -696,6 +710,53 @@ export function LoadingMaster() {
           </tbody>
         </table>
       </div>
+
+      {(() => {
+        // Loading wastage per FG job on this slip.
+        const jobsOnSlip = new Map<string, string>();
+        lines.forEach((line) => (line.allocations || []).forEach((a: any) => {
+          if (a.sourceType === "job" && a.jobId) jobsOnSlip.set(String(a.jobId), String(a.jobNo || a.jobId));
+        }));
+        (draft.jobWastage || []).forEach((row) => jobsOnSlip.set(row.jobId, row.jobNo));
+        if (!jobsOnSlip.size) return null;
+        const wastageFor = (jobId: string) => Number((draft.jobWastage || []).find((row) => row.jobId === jobId)?.qty || 0);
+        const totalWastage = Array.from(jobsOnSlip.keys()).reduce((sum, jobId) => sum + wastageFor(jobId), 0);
+        if (!isEditing && totalWastage <= 0) return null;
+        return (
+          <div className="border-t border-black bg-rose-50/40 px-4 py-3">
+            <div className="mb-2 text-xs font-black uppercase tracking-wide text-rose-800">Loading Wastage</div>
+            <div className="flex flex-wrap gap-4">
+              {Array.from(jobsOnSlip.entries()).map(([jobId, jobNo]) => (
+                <label key={jobId} className="flex items-center gap-2 text-xs font-bold text-black">
+                  Job No: {jobNo}
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      min={0}
+                      value={wastageFor(jobId) || ""}
+                      onChange={(e) => {
+                        const nextQty = e.target.value === "" ? 0 : Math.max(0, Number(e.target.value) || 0);
+                        setDraftBySlipId((prev) => {
+                          const draftSlip = prev[slip.id];
+                          if (!draftSlip) return prev;
+                          const nextSlip: LoadingSlip = JSON.parse(JSON.stringify(draftSlip));
+                          const rows = (nextSlip.jobWastage || []).filter((row) => row.jobId !== jobId);
+                          if (nextQty > 0) rows.push({ jobId, jobNo, qty: nextQty });
+                          nextSlip.jobWastage = rows;
+                          return { ...prev, [slip.id]: nextSlip };
+                        });
+                      }}
+                      className="w-20 rounded border border-rose-400 bg-white px-2 py-1 text-right text-xs font-bold"
+                    />
+                  ) : (
+                    <span className="text-rose-800">{wastageFor(jobId).toLocaleString()}</span>
+                  )}
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {slip.status !== "Cancelled" && isEditing ? (
         <div className="flex justify-end gap-3 border-t border-black bg-slate-50 px-4 py-3">

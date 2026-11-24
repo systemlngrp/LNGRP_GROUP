@@ -150,8 +150,7 @@ export function computeProcessedOutputs(input) {
     const productionById = indexBy(input.productions, "id");
     const out = [];
     for (const entry of input.processing) {
-        if (ck(coalesce(entry.completionStatus, "")) !== "full")
-            continue;
+        // Every machine entry (In Progress and Complete) is real output.
         for (const p of lookup(productionById, entry.productionId)) {
             if (!(p.status === null || p.status === undefined || ck(p.status) !== "cancelled"))
                 continue;

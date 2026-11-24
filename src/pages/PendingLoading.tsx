@@ -58,6 +58,7 @@ import {
   getLoadingJobNumber,
   getPendingLoadingPlanProjections,
   loadedQtyByJobId,
+  loadingWastageByJobId,
 } from "../lib/pendingLoadingEligibility";
 
 // "DP/26-27/04512" -> "26-27/04512": the prefix is the same on every row.
@@ -170,6 +171,7 @@ export function PendingLoading() {
   const [loadingModal, setLoadingModal] = useState<LoadingModalState | null>(null);
   const [loadedQuantities, setLoadedQuantities] = useState<Record<string, number>>({});
   const [jobSplitQtys, setJobSplitQtys] = useState<Record<string, Record<string, number | "">>>({});
+  const [jobWastageQtys, setJobWastageQtys] = useState<Record<string, Record<string, number | "">>>({});
   const [openingStockQtys, setOpeningStockQtys] = useState<Record<string, number | "">>({});
   const [cancelingPlanId, setCancelingPlanId] = useState<string | null>(null);
   const [cancelQty, setCancelQty] = useState<number | "">("");
@@ -211,6 +213,7 @@ export function PendingLoading() {
   }, [phpLoadingSlips, plateLoadingSlips]);
 
   const existingLoadedByJobId = useMemo(() => loadedQtyByJobId(loadingSlips), [loadingSlips]);
+  const existingWastageByJobId = useMemo(() => loadingWastageByJobId(loadingSlips), [loadingSlips]);
 
   const planProjections = useMemo(
     () => getPendingLoadingPlanProjections({
@@ -395,8 +398,25 @@ export function PendingLoading() {
         .some((key) => key && lookupKeys.includes(key))
     );
     const firmStock = (item as any)?.firmStocks?.[firmId];
-    if (firmStock && Number.isFinite(Number(firmStock.balance))) return Math.max(0, Number(firmStock.balance));
-    return 0;
+    if (!firmStock) return 0;
+    // FG Stock row = stock with no job behind it: Opening + FG receipts (not
+    // the auto inter-firm MRRs) − what was already loaded from FG Stock.
+    // Job boxes are shown on their own job rows, so they are not counted here.
+    const itemKeys = new Set([...lookupKeys, ...[item?.id, (item as any)?.npdId, (item as any)?.itemId, item?.erp].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)]);
+    const usedFromStock = loadingSlips.reduce((sum, slip) => {
+      if (["cancelled", "canceled"].includes(String(slip.status || "").trim().toLowerCase())) return sum;
+      return sum + (slip.lines || []).reduce((lineSum, line) => {
+        if (String(line.itemSource || "FG").trim().toUpperCase() !== "FG") return lineSum;
+        if (!itemKeys.has(String(line.itemId || "").trim().toLowerCase())) return lineSum;
+        return lineSum + (line.allocations || []).reduce((allocSum, allocation: any) => {
+          if (String(allocation?.sourceType || "").trim().toLowerCase() !== "opening_stock") return allocSum;
+          const allocationFirm = String(allocation?.sourceFirmId || slip.firmId || "").trim();
+          return allocationFirm === firmId ? allocSum + (Number(allocation?.qty) || 0) : allocSum;
+        }, 0);
+      }, 0);
+    }, 0);
+    const nonJobIn = Number(firmStock.opening || 0) + Number(firmStock.receiptNonJob ?? firmStock.receipt ?? 0);
+    return Math.max(0, nonJobIn - usedFromStock);
   };
 
   const isTruckAvailableForLoading = (truckId: string) => {
@@ -445,18 +465,28 @@ export function PendingLoading() {
     // Corrugation (Liner) balance, so loading no longer waits for Prod (FG).
 
     // A job may be loaded beyond its Available (Corrugation Liner) balance; the row shows how much over.
-    // Once Printing is Complete, a job cannot be loaded beyond what was printed.
+    // Loading wastage: never negative. Once Printing is Complete, Load Now +
+    // Loading Wastage cannot go beyond what is left of the printed quantity.
     if (modal.itemSource === "FG") {
-      Object.entries(byJobId).forEach(([jobId, qty]) => {
+      const wastageByJob = jobWastageQtys[modalKey] || {};
+      const jobIds = new Set([...Object.keys(byJobId), ...Object.keys(wastageByJob)]);
+      jobIds.forEach((jobId) => {
         const key = String(jobId || "").trim();
-        if (!(Number(qty || 0) > 0) || !printingCompleteJobIds.has(key)) return;
+        const job = modal.eligibleJobs?.find((row: any) => String(row.jobId) === key);
+        const jobNo = job?.jobNo || key;
+        const loadNow = Number(byJobId[jobId] || 0);
+        const wastageNow = Number(wastageByJob[jobId] || 0);
+        if (wastageNow < 0) errors.push(`${jobNo}: Loading wastage cannot be negative.`);
+        if (!(loadNow > 0) && !(wastageNow > 0)) return;
+        if (!printingCompleteJobIds.has(key)) return;
         const printed = printedQtyByJobId.get(key) || 0;
         const loaded = getAlreadyLoadedForJob(key);
+        const earlierWastage = existingWastageByJobId.get(key.toLowerCase()) || 0;
         const atJobWorker = atJobWorkerByJobId.get(key) || 0;
-        const enteredNow = currentAdjustmentByJobId.get(key) || 0;
-        if (loaded + atJobWorker + enteredNow > printed + 0.0001) {
-          const jobNo = modal.eligibleJobs?.find((job: any) => String(job.jobId) === key)?.jobNo || key;
-          errors.push(`${jobNo}: Printing is Complete. Printed ${printed.toLocaleString()}, already loaded ${loaded.toLocaleString()}${atJobWorker ? `, at job worker ${atJobWorker.toLocaleString()}` : ""}, so at most ${Math.max(0, printed - loaded - atJobWorker).toLocaleString()} can be loaded. You entered ${enteredNow.toLocaleString()}.`);
+        const enteredNow = currentAdjustmentByJobId.get(key) || loadNow;
+        const left = printed - loaded - earlierWastage - atJobWorker;
+        if (enteredNow + wastageNow > left + 0.0001) {
+          errors.push(`${jobNo}: Printing is Complete. Printed ${printed.toLocaleString()}, already loaded ${loaded.toLocaleString()}${earlierWastage ? `, loading wastage so far ${earlierWastage.toLocaleString()}` : ""}${atJobWorker ? `, at job worker ${atJobWorker.toLocaleString()}` : ""}, so at most ${Math.max(0, left).toLocaleString()} can be loaded or wasted. You entered ${enteredNow.toLocaleString()} load + ${wastageNow.toLocaleString()} wastage.`);
         }
       });
     }
@@ -482,7 +512,7 @@ export function PendingLoading() {
   const modalHasErrors = useMemo(() => {
     if (!loadingModal) return false;
     return !getModalValidation(loadingModal).isValid;
-  }, [atJobWorkerByJobId, jobSplitQtys, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, corrugationQtyByJobId, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, npdStockLoading, itemsBySource.FG, firms]);
+  }, [atJobWorkerByJobId, jobSplitQtys, jobWastageQtys, existingWastageByJobId, printedQtyByJobId, printingCompleteJobIds, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, corrugationQtyByJobId, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, npdStockLoading, itemsBySource.FG, firms]);
 
   const handleOpenLoad = (firmId: string, companyId: string, itemSource: OrderItemSource, itemId: string, itemName: string, itemPlans: PendingPlan[]) => {
     const firm = firms.find((row) => row.id === firmId);
@@ -501,6 +531,7 @@ export function PendingLoading() {
     setJobSplitQtys({
       [modalKey]: Object.fromEntries(eligibleJobs.map((j) => [j.jobId, ""])),
     });
+    setJobWastageQtys({ [modalKey]: {} });
     setModalTruckId("");
     setModalManualTruckNo("");
     setPackingDetails(createEmptyPackingRows());
@@ -513,6 +544,7 @@ export function PendingLoading() {
     setLoadingModal(null);
     setLoadedQuantities({});
     setJobSplitQtys({});
+    setJobWastageQtys({});
     setOpeningStockQtys({});
     setModalTruckId("");
     setModalManualTruckNo("");
@@ -729,6 +761,14 @@ export function PendingLoading() {
         orderFirmId: loadingModal.firmId,
         packingDetails: packingDetails.filter(d => d.bundles > 0 && d.packSize > 0),
         extraItemsQty: Number(extraItemsQty || 0) || undefined,
+        jobWastage: loadingModal.itemSource === "FG"
+          ? Object.entries(jobWastageQtys[modalKey] || {})
+              .map(([jobId, qty]) => {
+                const production = productionMap.get(jobId);
+                return { jobId, jobNo: production ? getLoadingJobNumber(production) : "", qty: Number(qty || 0) };
+              })
+              .filter((row) => row.qty > 0 && row.jobNo)
+          : undefined,
       };
       const phpDetails = buildLinkedLoadingDetailsFromSlip({
         slip: baseSlip,
@@ -1123,7 +1163,7 @@ export function PendingLoading() {
                         </div>
 
                         <div className="table-frozen-scroll overflow-x-auto">
-                          <table className="w-full min-w-[680px] divide-y divide-slate-300 border-collapse">
+                          <table className="w-full min-w-[880px] divide-y divide-slate-300 border-collapse">
                             <thead className="sticky top-0 z-30 bg-slate-50">
                               <tr className="divide-x divide-slate-300 bg-slate-100">
                                 <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider">Job No</th>
@@ -1132,23 +1172,27 @@ export function PendingLoading() {
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider">Already Loaded</th>
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider text-emerald-700">Available</th>
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider bg-indigo-50">Load Now</th>
+                                {loadingModal.itemSource === "FG" ? <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider bg-rose-50" title="Boxes damaged or lost while loading this job">Loading Wastage</th> : null}
+                                {loadingModal.itemSource === "FG" ? <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider" title="Printing Complete: job balance left for the next slip (Available − Load Now − Loading Wastage)">FG Left</th> : null}
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200 bg-white">
                               {jobs.map((job) => {
                                 const currentValue = jobSplitQtys[modalKey]?.[job.jobId] ?? "";
+                                const wastageValue = jobWastageQtys[modalKey]?.[job.jobId] ?? "";
                                 const printingDone = loadingModal.itemSource === "FG" && printingCompleteJobIds.has(String(job.jobId || "").trim());
                                 const rowAvailable = printingDone
-                                  ? Math.max(0, (printedQtyByJobId.get(String(job.jobId || "").trim()) || 0) - job.alreadyLoaded - (job.atJobWorker || 0))
+                                  ? Math.max(0, (printedQtyByJobId.get(String(job.jobId || "").trim()) || 0) - job.alreadyLoaded - (job.loadingWastage || 0) - (job.atJobWorker || 0))
                                   : job.yetToLoad;
-                                const overAvailable = Math.max(0, Number(currentValue || 0) - rowAvailable);
+                                const overAvailable = Math.max(0, Number(currentValue || 0) + Number(wastageValue || 0) - rowAvailable);
+                                const fgLeft = rowAvailable - Number(currentValue || 0) - Number(wastageValue || 0);
                                 return (
                                   <tr key={job.jobId} className="divide-x divide-slate-200 transition-colors hover:bg-indigo-50/40">
                                     <td className="px-4 py-3 text-xs font-black text-black">{job.jobNo}</td>
                                     <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.productionQty.toLocaleString()}</td>
                                     {loadingModal.itemSource === "FG" ? <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{(printedQtyByJobId.get(String(job.jobId || "").trim()) || 0).toLocaleString()}</td> : null}
-                                    <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.alreadyLoaded.toLocaleString()}</td>
-                                    <td className="px-4 py-3 text-right text-xs font-black text-emerald-700">{rowAvailable.toLocaleString()}{printingDone ? <div className="mt-0.5 text-[10px] font-black text-indigo-700" title="Printing is Complete: Available = Printed − Already Loaded">Printing Complete</div> : null}{job.atJobWorker ? <div className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-black text-amber-900" title="Sent on a Job Work gate pass and not yet returned">At Job Worker: {job.atJobWorker.toLocaleString()}</div> : null}</td>
+                                    <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.alreadyLoaded.toLocaleString()}{job.loadingWastage ? <div className="mt-0.5 text-[10px] font-black text-rose-700" title="Loading wastage on earlier slips">+ {job.loadingWastage.toLocaleString()} wastage</div> : null}</td>
+                                    <td className="px-4 py-3 text-right text-xs font-black text-emerald-700">{rowAvailable.toLocaleString()}{printingDone ? <div className="mt-0.5 text-[10px] font-black text-indigo-700" title="Printing is Complete: Available = Printed − Already Loaded − Loading Wastage">Printing Complete</div> : null}{job.atJobWorker ? <div className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-black text-amber-900" title="Sent on a Job Work gate pass and not yet returned">At Job Worker: {job.atJobWorker.toLocaleString()}</div> : null}</td>
                                     <td className="px-4 py-2 text-right bg-indigo-50/30">
                                       <input
                                         type="number"
@@ -1169,6 +1213,31 @@ export function PendingLoading() {
                                       />
                                       {overAvailable > 0 ? <div className="mt-1 text-[10px] font-black text-red-700">{overAvailable.toLocaleString()} more than Available{printingDone ? " (blocked: Printing Complete)" : ""}</div> : null}
                                     </td>
+                                    {loadingModal.itemSource === "FG" ? (
+                                      <td className="px-4 py-2 text-right bg-rose-50/40">
+                                        <input
+                                          type="number"
+                                          value={wastageValue}
+                                          min={0}
+                                          onChange={(e) => {
+                                            const rawValue = e.target.value;
+                                            setJobWastageQtys((prev) => {
+                                              const currentRows = prev[modalKey] || {};
+                                              if (rawValue === "") return { ...prev, [modalKey]: { ...currentRows, [job.jobId]: "" } };
+                                              const parsedValue = Number(rawValue);
+                                              if (!Number.isFinite(parsedValue)) return prev;
+                                              return { ...prev, [modalKey]: { ...currentRows, [job.jobId]: Math.max(0, parsedValue) } };
+                                            });
+                                          }}
+                                          className="h-9 w-24 rounded border-2 border-rose-300 bg-white px-2 py-1.5 text-right text-xs font-black text-black focus:border-rose-500 focus:outline-none"
+                                        />
+                                      </td>
+                                    ) : null}
+                                    {loadingModal.itemSource === "FG" ? (
+                                      <td className={`px-4 py-3 text-right text-xs font-black ${printingDone ? (fgLeft < 0 ? "text-red-700" : "text-slate-800") : "text-slate-400"}`}>
+                                        {printingDone ? fgLeft.toLocaleString() : "-"}
+                                      </td>
+                                    ) : null}
                                   </tr>
                                 );
                               })}
@@ -1177,14 +1246,18 @@ export function PendingLoading() {
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-500">-</td> : null}
-                                <td className="px-4 py-4 text-right text-xs font-black text-emerald-700">{loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId).toLocaleString() : "-"}</td>
+                                <td className="px-4 py-4 text-right text-xs font-black text-emerald-700" title={loadingModal.itemSource === "FG" ? "Stock with no job behind it: Opening + FG receipts − loaded from FG Stock" : undefined}>{loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId).toLocaleString() : "-"}</td>
                                 <td className="px-4 py-4 text-right text-xs font-black text-slate-400">-</td>
+                                {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-400">-</td> : null}
+                                {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-400">-</td> : null}
                               </tr>
                             </tbody>
                             <tfoot className="bg-slate-900 text-white font-black border-t-2 border-black">
                                 <tr className="divide-x divide-white/20">
                                     <td colSpan={loadingModal.itemSource === "FG" ? 5 : 4} className="px-4 py-3 text-right text-xs uppercase tracking-widest">Total Allocated</td>
                                     <td className="px-4 py-3 text-right text-sm">{validation.allocatedTotal.toLocaleString()}</td>
+                                    {loadingModal.itemSource === "FG" ? <td className="px-4 py-3 text-right text-sm text-rose-200" title="Total loading wastage on this slip">{Object.values(jobWastageQtys[modalKey] || {}).reduce<number>((sum, value) => sum + Number(value || 0), 0).toLocaleString()}</td> : null}
+                                    {loadingModal.itemSource === "FG" ? <td className="px-4 py-3" /> : null}
                                 </tr>
                             </tfoot>
                           </table>

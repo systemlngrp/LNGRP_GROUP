@@ -1399,6 +1399,90 @@ function readNpdSort(query) {
     const key = sort.key;
     return { sort, getValue: (row) => row[key] };
 }
+// FG Stock Report: what an item's closing stock is made of — opening, each
+// FG receipt (MRR), each job's production less what was invoiced from that job,
+// and loading slips not yet invoiced. The client adds the "invoiced, not linked
+// to a job" line from the report's own Invoiced figure, so the rows always sum
+// to the Balance shown.
+app.get("/api/fg-stock-breakup/:id", requireAuth, async (req, res) => {
+    const db = await getPool();
+    if (!db)
+        return res.status(500).json({ error: "DB connection not available" });
+    try {
+        const id = String(req.params.id || "").trim();
+        const [npdRows] = await db.query("SELECT * FROM `npd` WHERE id = ? OR npdId = ? OR erp = ? LIMIT 1", [id, id, id]);
+        const npd = npdRows[0];
+        if (!npd)
+            return res.status(404).json({ error: "Item not found." });
+        const keys = Array.from(new Set([npd.id, npd.npdId, npd.erp].map((value) => String(value ?? "").trim()).filter(Boolean)));
+        const keySet = new Set(keys.map((key) => key.toLowerCase()));
+        const matches = (...values) => values.some((value) => keySet.has(String(value ?? "").trim().toLowerCase()));
+        const [firmOpeningRows] = await db.query("SELECT firmId, openingQty FROM `npd_firm_openings` WHERE npdId IN (?)", [keys]).catch(() => [[]]);
+        const opening = Number(npd.opening || 0) + firmOpeningRows.reduce((sum, row) => sum + Number(row.openingQty || 0), 0);
+        const [mrrRows] = await db.query("SELECT id, transactionNo, date, mrrType, `lines` FROM `material_in` WHERE status = 'Completed' AND mrrType IN ('Rejection In', 'FG Purchase')");
+        const receipts = [];
+        for (const row of mrrRows) {
+            let lines = [];
+            try {
+                lines = typeof row.lines === "string" ? JSON.parse(row.lines) : (row.lines || []);
+            }
+            catch {
+                lines = [];
+            }
+            const qty = (Array.isArray(lines) ? lines : []).reduce((sum, line) => {
+                if (String(line?.itemSource || "FG").trim().toUpperCase() !== "FG")
+                    return sum;
+                const masterId = String(line?.npdId || "").trim() || String(line?.itemId || "").trim();
+                return matches(masterId) ? sum + (Number(line?.invoiceQty ?? line?.qty ?? 0) || 0) : sum;
+            }, 0);
+            if (qty)
+                receipts.push({ mrrNo: String(row.transactionNo || row.id), date: String(row.date || "").slice(0, 10), mrrType: String(row.mrrType || ""), qty });
+        }
+        const [jobRows] = await db.query("SELECT id, transactionNo, jobCardNo, date, status, npdId, itemId, prodFromFFG FROM `productions` WHERE (status <> 'Cancelled' OR status IS NULL) AND (npdId IN (?) OR itemId IN (?))", [keys, keys]);
+        const jobs = jobRows
+            .filter((job) => matches(String(job.npdId || "").trim() || String(job.itemId || "").trim()))
+            .map((job) => ({ jobId: String(job.id), jobNo: String(job.transactionNo || job.jobCardNo || job.id), date: String(job.date || "").slice(0, 10), status: String(job.status || ""), produced: Number(job.prodFromFFG || 0), invoiced: 0, loadedNotInvoiced: 0 }));
+        const jobById = new Map(jobs.map((job) => [job.jobId, job]));
+        const likeArgs = keys.map((key) => `%${key}%`);
+        const [slipRows] = await db.query(`SELECT id, slipNo, invoiceId, status, \`lines\` FROM \`loading_slips\` WHERE COALESCE(status, 'Active') <> 'Cancelled' AND (${keys.map(() => "CAST(`lines` AS CHAR) LIKE ?").join(" OR ")})`, likeArgs);
+        let loadedNotInvoiced = 0;
+        for (const slip of slipRows) {
+            let lines = [];
+            try {
+                lines = typeof slip.lines === "string" ? JSON.parse(slip.lines) : (slip.lines || []);
+            }
+            catch {
+                lines = [];
+            }
+            const invoiced = Boolean(String(slip.invoiceId || "").trim());
+            for (const line of Array.isArray(lines) ? lines : []) {
+                if (String(line?.itemSource || "FG").trim().toUpperCase() !== "FG")
+                    continue;
+                if (!matches(line?.npdId, line?.itemId))
+                    continue;
+                if (!invoiced)
+                    loadedNotInvoiced += Number(line?.loadedQty || 0) || 0;
+                for (const allocation of Array.isArray(line?.allocations) ? line.allocations : []) {
+                    if (String(allocation?.sourceType || "").trim().toLowerCase() !== "job")
+                        continue;
+                    const job = jobById.get(String(allocation?.jobId || "").trim());
+                    if (!job)
+                        continue;
+                    if (invoiced)
+                        job.invoiced += Number(allocation?.qty) || 0;
+                    else
+                        job.loadedNotInvoiced += Number(allocation?.qty) || 0;
+                }
+            }
+        }
+        jobs.sort((a, b) => b.jobNo.localeCompare(a.jobNo, undefined, { numeric: true, sensitivity: "base" }));
+        res.json({ itemId: npd.id, erp: npd.erp, itemName: npd.itemName || npd.name, opening, receipts, jobs, loadedNotInvoiced });
+    }
+    catch (error) {
+        console.error("FG stock breakup failed:", error);
+        res.status(500).json({ error: "Failed to build the stock breakup." });
+    }
+});
 app.get("/api/npd-firm-wise", async (req, res) => {
     if (!isNpdFirmWiseRequestAllowed(req))
         return res.status(401).json({ error: "Unauthorized" });
@@ -2772,7 +2856,7 @@ function normalizeNpdRowForItemConsumers(row) {
 }
 function normalizeFetchedRow(tableName, row) {
     const newRow = normalizeWorkflowStatus(tableName, row);
-    const jsonColumns = new Set(["lines", "packingDetails", "phpDetails", "plateDetails", "capaData", "filledFields", "layout", "templateSnapshot", "headerData", "cellValues"]);
+    const jsonColumns = new Set(["lines", "jobWastage", "packingDetails", "phpDetails", "plateDetails", "capaData", "filledFields", "layout", "templateSnapshot", "headerData", "cellValues"]);
     Object.keys(newRow).forEach((key) => {
         if (jsonColumns.has(key) && typeof newRow[key] === "string") {
             try {
@@ -3244,7 +3328,7 @@ async function buildFirmWiseStockIndex(rawDb, mode = npdStockMode) {
             stocks.set(resolvedItemId, new Map());
         const byFirm = stocks.get(resolvedItemId);
         if (!byFirm.has(firmId))
-            byFirm.set(firmId, { opening: 0, receipt: 0, production: 0, invoiced: 0, tallyStock: null, tallyTimestamp: null, corrugation: 0 });
+            byFirm.set(firmId, { opening: 0, receipt: 0, receiptNonJob: 0, production: 0, invoiced: 0, tallyStock: null, tallyTimestamp: null, corrugation: 0 });
         return byFirm.get(firmId);
     };
     {
@@ -3271,6 +3355,10 @@ async function buildFirmWiseStockIndex(rawDb, mode = npdStockMode) {
                 const stock = ensure(resolveStockItemId(row.npdId, row.itemId), firm);
                 if (stock)
                     stock.receipt += Number(row.qty || 0);
+                // Auto inter-firm MRRs carry job boxes (shown on their jobs), so they
+                // are not part of the stock that has no job behind it.
+                if (stock && String(row.autoGenerated || "").trim().toLowerCase() !== "yes")
+                    stock.receiptNonJob += Number(row.qty || 0);
             }
             aggregationStage = "machine processing outputs";
             timingLabel = "stock index: machine processing outputs";
@@ -3289,8 +3377,8 @@ async function buildFirmWiseStockIndex(rawDb, mode = npdStockMode) {
         FROM production_processing pp
         JOIN productions p ON p.id = pp.productionId
         LEFT JOIN npd pn ON pn.id = p.npdId OR pn.npdId = p.npdId OR pn.erp = p.npdId OR pn.id = p.itemId OR pn.npdId = p.itemId OR pn.erp = p.itemId OR pn.erp = p.erpCode
-        WHERE LOWER(COALESCE(pp.completionStatus, '')) = 'full'
-          AND (p.status <> 'Cancelled' OR p.status IS NULL)
+        -- Every machine entry (In Progress and Complete) is real output.
+        WHERE (p.status <> 'Cancelled' OR p.status IS NULL)
       `);
             for (const row of processedOutputs) {
                 const machineName = String(row.machineName || "").trim().toLowerCase();
@@ -3408,6 +3496,7 @@ async function fetchFirmWiseNpdItems(db, options) {
             const source = rowKeys.reduce((found, key) => found || stocks.get(key)?.get(firm.id), null);
             const opening = Number(source?.opening || 0);
             const receipt = Number(source?.receipt || 0);
+            const receiptNonJob = Number(source?.receiptNonJob || 0);
             const production = Number(source?.production || 0);
             const corrugation = Number(source?.corrugation || 0);
             const invoiced = Number(source?.invoiced || 0);
@@ -3417,7 +3506,7 @@ async function fetchFirmWiseNpdItems(db, options) {
             const stockIn = firm.id === unit1FirmId ? corrugation : firm.id === unit2FirmId ? production : 0;
             const balance = opening + receipt + stockIn - invoiced;
             const rate = Number(row.rate || 0);
-            firmStocks[firm.id] = { opening, receipt, production, invoiced, balance, tallyStock: source?.tallyStock ?? null, tallyTimestamp: source?.tallyTimestamp ?? null, rate, value: balance * rate, corrugation };
+            firmStocks[firm.id] = { opening, receipt, receiptNonJob, production, invoiced, balance, tallyStock: source?.tallyStock ?? null, tallyTimestamp: source?.tallyTimestamp ?? null, rate, value: balance * rate, corrugation };
         }
         return { ...row, firmStocks };
     });
@@ -4351,13 +4440,13 @@ async function backfillIndentRequisitionNumbers(db) {
     console.log(`[DB] Indent requisition backfill complete: updated=${updated}, unchanged=${unchanged}, invalid=${invalid}, duplicates=${duplicates}`);
 }
 /** Synchronize the source PHP/Plate output from a completed Corrugation Liner report. */
-/** FG job quantity on active loading slips: total loaded, and the part already invoiced. */
+/** FG job quantity on active loading slips: total loaded, the part already invoiced, and loading wastage. */
 async function getJobLoadedAndInvoicedQty(db, jobId) {
     const key = String(jobId || "").trim();
     if (!key)
         return { loaded: 0, invoiced: 0 };
-    const [slipRows] = await db.query("SELECT `lines`, invoiceId, status FROM `loading_slips` WHERE CAST(`lines` AS CHAR) LIKE ?", [`%${key}%`]);
-    let loaded = 0, invoiced = 0;
+    const [slipRows] = await db.query("SELECT `lines`, jobWastage, invoiceId, status FROM `loading_slips` WHERE CAST(`lines` AS CHAR) LIKE ? OR CAST(COALESCE(jobWastage, '') AS CHAR) LIKE ?", [`%${key}%`, `%${key}%`]).catch(async () => db.query("SELECT `lines`, NULL AS jobWastage, invoiceId, status FROM `loading_slips` WHERE CAST(`lines` AS CHAR) LIKE ?", [`%${key}%`]));
+    let loaded = 0, invoiced = 0, wastage = 0;
     for (const slip of slipRows) {
         if (["cancelled", "canceled"].includes(String(slip.status || "").trim().toLowerCase()))
             continue;
@@ -4383,8 +4472,19 @@ async function getJobLoadedAndInvoicedQty(db, jobId) {
         loaded += qty;
         if (String(slip.invoiceId || "").trim())
             invoiced += qty;
+        let slipWastage = [];
+        try {
+            slipWastage = typeof slip.jobWastage === "string" ? JSON.parse(slip.jobWastage) : (slip.jobWastage || []);
+        }
+        catch {
+            slipWastage = [];
+        }
+        for (const row of Array.isArray(slipWastage) ? slipWastage : []) {
+            if (String(row?.jobId || "").trim() === key)
+                wastage += Number(row?.qty) || 0;
+        }
     }
-    return { loaded, invoiced };
+    return { loaded, invoiced, wastage };
 }
 async function syncCorrugationLinerOutput(db, processingId) {
     const [processingRows] = await db.query(`SELECT pp.*, p.status AS productionStatus, p.phpScheduledJobId, p.plateScheduledJobId
@@ -10506,6 +10606,8 @@ async function initDb(retries = 5) {
                 { table: "loading_slips", column: "updateTimestamp", type: "VARCHAR(255)" },
                 { table: "loading_slips", column: "invoiceId", type: "VARCHAR(36)" },
                 { table: "loading_slips", column: "packingDetails", type: "JSON" },
+                { table: "loading_slips", column: "jobWastage", type: "JSON" },
+                { table: "loading_slips", column: "pdfRedownloadRequired", type: "VARCHAR(10)" },
                 { table: "loading_slips", column: "phpDetails", type: "JSON" },
                 { table: "loading_slips", column: "plateDetails", type: "JSON" },
                 { table: "loading_slips", column: "extraItemsQty", type: "DECIMAL(15,2)" },
@@ -14194,7 +14296,7 @@ const createHandlers = (tableName) => {
                         // Printed vs loading slips on this job.
                         if (isPrintingEntry) {
                             const finalPrintedTotal = printedQty + qtyNumber;
-                            const { loaded, invoiced } = await getJobLoadedAndInvoicedQty(db, String(data.productionId || ""));
+                            const { loaded, invoiced, wastage: loadingWastage } = await getJobLoadedAndInvoicedQty(db, String(data.productionId || ""));
                             const jobLabel = String(data.jobNo || "");
                             // Invoiced boxes are final: printing can never be reduced below them.
                             const previousPrintedTotal = printedQty + (previousProcessing && String(previousProcessing.productionId || "") === String(data.productionId || "") &&
@@ -14204,10 +14306,11 @@ const createHandlers = (tableName) => {
                                     error: `Printed quantity cannot be less than the quantity already invoiced. Job ${jobLabel}: already invoiced ${fmt(invoiced)}, printed would become ${fmt(finalPrintedTotal)}. Printed must be at least ${fmt(invoiced)}.`,
                                 });
                             }
-                            // At Complete, every loaded box must have been printed.
-                            if (printingComplete && loaded > 0 && finalPrintedTotal + 0.0001 < loaded) {
+                            // At Complete, every loaded (and loading-wasted) box must have been printed.
+                            const loadedAndWasted = loaded + loadingWastage;
+                            if (printingComplete && loadedAndWasted > 0 && finalPrintedTotal + 0.0001 < loadedAndWasted) {
                                 return res.status(400).json({
-                                    error: `Printed quantity cannot be less than the quantity already loaded when Printing is Complete. Job ${jobLabel}: already loaded ${fmt(loaded)}, printed would be ${fmt(finalPrintedTotal)} (short by ${fmt(loaded - finalPrintedTotal)}). Correct the printing entry, or correct the loading slip first.`,
+                                    error: `Printed quantity cannot be less than the quantity already loaded when Printing is Complete. Job ${jobLabel}: already loaded ${fmt(loaded)}${loadingWastage ? ` + loading wastage ${fmt(loadingWastage)} = ${fmt(loadedAndWasted)}` : ""}, printed would be ${fmt(finalPrintedTotal)} (short by ${fmt(loadedAndWasted - finalPrintedTotal)}). Correct the printing entry, or correct the loading slip first.`,
                                 });
                             }
                         }
