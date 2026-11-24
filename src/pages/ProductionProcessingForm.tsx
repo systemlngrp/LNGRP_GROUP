@@ -16,7 +16,7 @@ import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
 import { CorrugationWastageFields } from "../components/CorrugationWastageFields";
 import { buildCorrugationWastageValues, EMPTY_CORRUGATION_WASTAGE_DRAFT, getAutomaticNoHisabKg, type CorrugationWastageDraft } from "../lib/corrugationWastage";
 import { PrintingWastageFields } from "../components/PrintingWastageFields";
-import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, type PrintingWastageDraft } from "../lib/printingWastage";
+import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, PRINTING_WASTAGE_FIELDS, type PrintingWastageDraft } from "../lib/printingWastage";
 import { PRINTING_MACHINES } from "../lib/printingMachines";
 
 // Printing and Corrugation Liner can be reported only after material / reels are issued to the job.
@@ -35,27 +35,38 @@ function confirmCompleteBelowPlan(plannedQty: number, alreadyCompletedQty: numbe
   );
 }
 
-/** Printing may not exceed the boxes corrugated on the same FG job (server enforces this too). */
-function printingOverCorrugationMessage(processing: ProductionProcessing[], production: Production | undefined, productionId: string, qtyNow: number) {
-  if (!production || production.itemSource === "PHP" || production.itemSource === "PLATE") return "";
-  const totalFor = (machine: string) => processing
-    .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === machine)
-    .reduce((sum, entry) => sum + Number(entry.qty || 0), 0);
-  const corrugated = totalFor("Corrugation Liner");
-  const printed = totalFor("Printing");
-  if (printed + qtyNow <= corrugated + 0.0001) return "";
-  if (corrugated <= 0) return "Printing cannot be reported: no Corrugation Liner quantity is reported for this job yet.";
-  return `Printing quantity is more than corrugated.\n\nCorrugated: ${corrugated.toLocaleString()}\nAlready printed: ${printed.toLocaleString()}\nBalance: ${Math.max(0, corrugated - printed).toLocaleString()}\nYou entered: ${qtyNow.toLocaleString()}`;
+const printingWastageBoxes = (entry: Partial<Record<string, unknown>>) =>
+  PRINTING_WASTAGE_FIELDS.reduce((sum, key) => sum + (Number(entry[key] || 0) || 0), 0);
+
+/** Corrugated, printed and printing-wastage totals of an FG job; null when the limit does not apply. */
+function printingLimitTotals(processing: ProductionProcessing[], production: Production | undefined, productionId: string) {
+  if (!production || production.itemSource === "PHP" || production.itemSource === "PLATE") return null;
+  let corrugated = 0, printed = 0, wastage = 0;
+  processing.forEach((entry) => {
+    if (entry.productionId !== productionId) return;
+    const machine = normalizeMachineName(entry.machineName);
+    if (machine === "Corrugation Liner") corrugated += Number(entry.qty || 0);
+    if (machine === "Printing") { printed += Number(entry.qty || 0); wastage += printingWastageBoxes(entry as any); }
+  });
+  return { corrugated, printed, wastage };
 }
 
-/** Total Corrugation Liner qty of an FG job; undefined when not a Printing entry on an FG job. */
-function corrugatedQtyForPrinting(isPrinting: boolean, processing: ProductionProcessing[], production: Production | undefined, productionId: string) {
+/** Printed + printing wastage may not exceed the boxes corrugated on the same FG job (server enforces this too). */
+function printingOverCorrugationMessage(processing: ProductionProcessing[], production: Production | undefined, productionId: string, qtyNow: number, wastageNow: number) {
+  const totals = printingLimitTotals(processing, production, productionId);
+  if (!totals) return "";
+  const { corrugated, printed, wastage } = totals;
+  const used = printed + wastage;
+  if (used + qtyNow + wastageNow <= corrugated + 0.0001) return "";
+  if (corrugated <= 0) return "Printing cannot be reported: no Corrugation Liner quantity is reported for this job yet.";
+  return `Printed + printing wastage is more than corrugated.\n\nCorrugated: ${corrugated.toLocaleString()}\nAlready printed: ${printed.toLocaleString()}\nPrinting wastage so far: ${wastage.toLocaleString()}\nBalance: ${Math.max(0, corrugated - used).toLocaleString()}\n\nYou entered: ${qtyNow.toLocaleString()} printed + ${wastageNow.toLocaleString()} wastage`;
+}
+
+/** Limit figures shown on the Printing form; undefined when not a Printing entry on an FG job. */
+function printingLimitForForm(isPrinting: boolean, processing: ProductionProcessing[], production: Production | undefined, productionId: string) {
   if (!isPrinting) return undefined;
   if (!production) return null;
-  if (production.itemSource === "PHP" || production.itemSource === "PLATE") return undefined;
-  return processing
-    .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner")
-    .reduce((sum, entry) => sum + Number(entry.qty || 0), 0);
+  return printingLimitTotals(processing, production, productionId) ?? undefined;
 }
 
 function getAuditUser(user: { id?: string; name?: string } | null | undefined) {
@@ -168,7 +179,7 @@ function LockedReportForm() {
       return;
     }
     if (isPrinting) {
-      const overMessage = printingOverCorrugationMessage(processing, selectedProduction, productionId, qtyNumber);
+      const overMessage = printingOverCorrugationMessage(processing, selectedProduction, productionId, qtyNumber, showPrintingWastage ? printingWastageBoxes(buildPrintingWastageValues(printingWastageDraft)) : 0);
       if (overMessage) { alert(overMessage); return; }
     }
     if (requiresCompletionStatus && completionStatus === "Full" && selectedProduction &&
@@ -312,7 +323,8 @@ function LockedReportForm() {
             <ProcessingQtyFields
               plannedQty={selectedProduction ? plannedQty : null}
               alreadyCompletedQty={selectedProduction ? alreadyCompletedQty : null}
-              corrugatedQty={corrugatedQtyForPrinting(isPrinting, processing, selectedProduction, productionId)}
+              printingLimit={printingLimitForForm(isPrinting, processing, selectedProduction, productionId)}
+              wastageNow={showPrintingWastage ? printingWastageBoxes(buildPrintingWastageValues(printingWastageDraft)) : 0}
               qty={qty}
               onQtyChange={setQty}
             />
@@ -518,7 +530,7 @@ function FullReportForm() {
       return;
     }
     if (isPrinting) {
-      const overMessage = printingOverCorrugationMessage(processing, selectedProduction, productionId, qtyNumber);
+      const overMessage = printingOverCorrugationMessage(processing, selectedProduction, productionId, qtyNumber, showPrintingWastage ? printingWastageBoxes(buildPrintingWastageValues(printingWastageDraft)) : 0);
       if (overMessage) { alert(overMessage); return; }
     }
     if (requiresCompletionStatus && completionStatus === "Full" && qtyContext &&
@@ -655,7 +667,8 @@ function FullReportForm() {
             <ProcessingQtyFields
               plannedQty={qtyContext ? qtyContext.plannedQty : null}
               alreadyCompletedQty={qtyContext ? qtyContext.alreadyProcessedQty : null}
-              corrugatedQty={corrugatedQtyForPrinting(isPrinting, processing, selectedProduction, productionId)}
+              printingLimit={printingLimitForForm(isPrinting, processing, selectedProduction, productionId)}
+              wastageNow={showPrintingWastage ? printingWastageBoxes(buildPrintingWastageValues(printingWastageDraft)) : 0}
               qty={qty}
               onQtyChange={setQty}
             />
