@@ -397,6 +397,18 @@ export function ProductionForm() {
     0
   );
 
+  // Shown in red under Maximum Allowed Production: how the figure is reached.
+  const maximumAllowedWorking = (() => {
+    const fmt = (value: number) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+    const balance = Number(selectedItem?.balance || 0);
+    const raw = pendingOrderQtyForItem - balance - productionInProgress;
+    const uom = selectedItem?.uom ? ` ${selectedItem.uom}` : "";
+    const line = `Pending Order ${fmt(pendingOrderQtyForItem)} − Current Balance ${fmt(balance)} − Production In Progress ${fmt(productionInProgress)} = ${fmt(raw)}${uom}${raw < 0 ? " → shown as 0" : ""}`;
+    return selectedItem
+      ? line
+      : `${line}. Item not found in NPD Master${selectedErp ? ` for ERP ${selectedErp}` : ""}, so all three are 0.`;
+  })();
+
   const currentQty = Number(formData.qty || 0);
   const isSelectedPlateItem = isPlateItemForProductionForm(selectedOrder, selectedItem);
   const mandatoryLayerFields = getMandatoryLayerFields(Number(formData.ply)).filter((label) => showField(label));
@@ -839,6 +851,7 @@ export function ProductionForm() {
               label="Maximum Allowed Production"
               value={maximumAllowedProduction}
               suffix={selectedItem?.uom || ""}
+              note={selectedSchedule ? maximumAllowedWorking : undefined}
               helpText={`Maximum allowed production is calculated as Pending Order Quantity (${pendingOrderQtyForItem.toLocaleString()} ${selectedItem?.uom || "units"}) - Current Balance (${Number(selectedItem?.balance || 0).toLocaleString()} ${selectedItem?.uom || "units"}) - Production In Progress (${productionInProgress.toLocaleString()} ${selectedItem?.uom || "units"}) = ${maximumAllowedProduction.toLocaleString()} ${selectedItem?.uom || "units"}. The result is never shown below zero.`}
             />}
 
@@ -1097,11 +1110,13 @@ function ReadOnlyNumberField({
   value,
   suffix,
   helpText,
+  note,
 }: {
   label: string;
   value: number;
   suffix?: string;
   helpText: string;
+  note?: string;
 }) {
   return (
     <ProductionFieldRow label={label} helpText={helpText}>
@@ -1115,6 +1130,7 @@ function ReadOnlyNumberField({
         />
         {suffix ? <span className="absolute right-3 top-2.5 text-black font-bold opacity-60">{suffix}</span> : null}
       </div>
+      {note ? <p className="mt-1 text-xs font-bold text-red-600">{note}</p> : null}
     </ProductionFieldRow>
   );
 }
