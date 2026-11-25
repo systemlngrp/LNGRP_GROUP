@@ -21656,13 +21656,16 @@ app.get("/api/summary-sheet-dates", async (req, res) => {
         if (!db)
             return res.status(500).json({ error: "DB connection not available" });
         const [rows] = await db.query("SELECT summarySheetDateRange FROM `settings` LIMIT 1");
-        let saved = {};
+        let stored = {};
         try {
-            saved = JSON.parse(String(rows[0]?.summarySheetDateRange || "{}")) || {};
+            stored = JSON.parse(String(rows[0]?.summarySheetDateRange || "{}")) || {};
         }
         catch {
-            saved = {};
+            stored = {};
         }
+        // Each user keeps their own range; a user who has not set one yet starts
+        // from the last shared range.
+        const saved = stored?.byUser?.[String(user.id)] || stored || {};
         const from = SUMMARY_SHEET_DATE.test(String(saved.from || "")) ? String(saved.from) : "";
         const to = SUMMARY_SHEET_DATE.test(String(saved.to || "")) ? String(saved.to) : "";
         return res.json({ from, to, updatedBy: String(saved.updatedBy || ""), updatedAt: String(saved.updatedAt || "") });
@@ -21687,9 +21690,19 @@ app.put("/api/summary-sheet-dates", async (req, res) => {
         const db = await getPool();
         if (!db)
             return res.status(500).json({ error: "DB connection not available" });
-        const [rows] = await db.query("SELECT id FROM `settings` LIMIT 1");
+        const [rows] = await db.query("SELECT id, summarySheetDateRange FROM `settings` LIMIT 1");
         const id = String(rows[0]?.id || "");
-        const value = JSON.stringify({ from, to, updatedBy: String(user.name || user.username || user.id || ""), updatedAt: new Date().toISOString() });
+        let stored = {};
+        try {
+            stored = JSON.parse(String(rows[0]?.summarySheetDateRange || "{}")) || {};
+        }
+        catch {
+            stored = {};
+        }
+        // Saved for this user only; other users' ranges are kept as they are.
+        const byUser = stored && typeof stored.byUser === "object" && stored.byUser ? stored.byUser : {};
+        byUser[String(user.id)] = { from, to, updatedBy: String(user.name || user.username || user.id || ""), updatedAt: new Date().toISOString() };
+        const value = JSON.stringify({ ...stored, byUser });
         if (id) {
             await db.query("UPDATE `settings` SET `summarySheetDateRange` = ? WHERE id = ?", [value, id]);
         }

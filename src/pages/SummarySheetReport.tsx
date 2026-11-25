@@ -234,7 +234,7 @@ export function SummarySheetReport() {
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  // From/To dates are shared and kept on the server, so they stay after a refresh.
+  // From/To dates are kept on the server per user, so they stay after a refresh and on any device.
   const datesLoaded = useRef(false);
   useEffect(() => {
     let cancelled = false;
