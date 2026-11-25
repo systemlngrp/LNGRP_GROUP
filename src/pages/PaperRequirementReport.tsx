@@ -3,9 +3,10 @@ import { FILTER_DATE_INPUT, FILTER_LABEL, ReportFilterBox, SelectFilter } from "
 import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 
 import jsPDF from "jspdf";
+import * as XLSX from "xlsx";
 import autoTable from "jspdf-autotable";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { FileText, RotateCcw, X } from "lucide-react";
+import { FileSpreadsheet, FileText, RotateCcw, X } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { useServerReport } from "../hooks/useServerReport";
@@ -178,10 +179,22 @@ export function PaperRequirementReport() {
     setChartLimit("Top 30");
   };
 
+  const handleExportExcel = () => {
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ["RAPC Range", "GSM", "Total Paper Requirement", "Total Closing Stock", "Total Pending PO", "MIL", "Net Paper to Order"],
+      ...filteredRows.map((row) => [row.rapcRange, row.gsm, row.totalPaperRequirement, row.totalClosingStock, row.totalPendingPo, row.mil, row.netPaperToOrder]),
+      ["Grand Total", "", summary.totalPaperRequirement, summary.totalClosingStock, summary.totalPendingPo, summary.mil, summary.netPaperToOrder],
+    ]);
+    sheet["!cols"] = [{ wch: 12 }, { wch: 8 }, { wch: 24 }, { wch: 20 }, { wch: 18 }, { wch: 10 }, { wch: 20 }];
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, "Reel to Order");
+    XLSX.writeFile(book, `Reel_to_Order_${uptoDate}.xlsx`);
+  };
+
   const handleExportPdf = () => {
     const doc = new jsPDF("l", "mm", "a4");
     doc.setFontSize(16);
-    doc.text("Paper to Order Report", 14, 16);
+    doc.text("Reel to Order", 14, 16);
     doc.setFontSize(9);
     doc.text(`Upto Date: ${formatDate(uptoDate)} | Range + GSM: ${selectedRangeGsm?.label || "All"} | Net Filter: ${netFilter} | Group Type: ${groupType} | Graph: ${chartLimit}`, 14, 24);
 
@@ -235,8 +248,11 @@ export function PaperRequirementReport() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 border-b border-black pb-3">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Paper Requirement</h2>
-        <button type="button" onClick={handleExportPdf} className="inline-flex items-center gap-2 rounded border border-rose-700 bg-rose-50 px-3 py-1.5 text-sm font-bold text-rose-800 hover:bg-rose-100"><FileText size={14} />PDF</button>
+        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Reel to Order</h2>
+        <div className="flex gap-2">
+          <button type="button" onClick={handleExportExcel} className="inline-flex items-center gap-2 rounded border border-emerald-700 bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-800 hover:bg-emerald-100"><FileSpreadsheet size={14} />Excel</button>
+          <button type="button" onClick={handleExportPdf} className="inline-flex items-center gap-2 rounded border border-rose-700 bg-rose-50 px-3 py-1.5 text-sm font-bold text-rose-800 hover:bg-rose-100"><FileText size={14} />PDF</button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">

@@ -399,7 +399,7 @@ export const NAVIGATION: NavGroup[] = [
       { section: "Gate Pass", items: storeGatePassItems },
       { section: "Gate Entry", items: storeGateEntryItems },
       { section: "Report", items: storeReportItems },
-      { section: "Reel to Order", items: [{ name: "Reel to Order", href: "/store/reel-to-order", icon: BarChart3 }] },
+      { section: "Reel to Order", items: [{ name: "Reel to Order", href: "/reports/paper-requirement", icon: BarChart3 }] },
       { section: "RAPC Range", items: [{ name: "RAPC Range Master", href: "/store/rapc-ranges", icon: Database }] },
     ],
   },
@@ -465,7 +465,6 @@ export const NAVIGATION: NavGroup[] = [
     items: [
       { section: "Stock", items: reportStockItems },
       { section: "Production", items: [{ name: "Itemwise Least Cost", href: "/production/least-cost", icon: BarChart3 }, ...reportProductionItems] },
-      { section: "Purchase", items: [{ name: "Paper Requirement", href: "/reports/paper-requirement", icon: BarChart3 }] },
       { section: "Sales", items: reportSalesItems },
     ],
   },
