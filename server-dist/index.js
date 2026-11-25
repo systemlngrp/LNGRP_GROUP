@@ -1590,6 +1590,106 @@ app.post("/api/job-corrections/processing", requireAuth, async (req, res) => {
         res.status(500).json({ error: error.message || "Failed to save the correction." });
     }
 });
+// Admin: move quantity between the jobs of one loading slip line. The line
+// total never changes, so the slip's loaded qty and its invoice stay as they are.
+app.post("/api/job-corrections/resplit", requireAuth, async (req, res) => {
+    const db = await getPool();
+    if (!db)
+        return res.status(500).json({ error: "DB connection not available" });
+    const user = await getRequestUser(req);
+    if (user?.role !== "Admin")
+        return res.status(403).json({ error: "Only an Admin can re-split jobs." });
+    const body = req.body || {};
+    const slipId = String(body.slipId || "").trim();
+    const reason = String(body.reason || "").trim();
+    const lineChanges = Array.isArray(body.lines) ? body.lines : [];
+    if (reason.length < 5)
+        return res.status(400).json({ error: "A reason of at least 5 characters is required." });
+    try {
+        const [slipRows] = await db.query("SELECT id, slipNo, status, `lines` FROM `loading_slips` WHERE id = ? LIMIT 1", [slipId]);
+        const slip = slipRows[0];
+        if (!slip)
+            return res.status(404).json({ error: "Loading slip not found." });
+        if (String(slip.status || "").trim().toLowerCase() === "cancelled")
+            return res.status(400).json({ error: "Cancelled slip cannot be changed." });
+        let lines = [];
+        try {
+            lines = typeof slip.lines === "string" ? JSON.parse(slip.lines) : (slip.lines || []);
+        }
+        catch {
+            lines = [];
+        }
+        const fmt = (value) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+        const moves = [];
+        for (const change of lineChanges) {
+            const line = lines[Number(change?.lineIndex)];
+            if (!line)
+                return res.status(400).json({ error: "Slip line not found." });
+            const allocations = Array.isArray(line.allocations) ? line.allocations : [];
+            const jobAllocations = allocations.filter((allocation) => String(allocation?.sourceType || "").toLowerCase() === "job");
+            const incoming = new Map((Array.isArray(change?.allocations) ? change.allocations : []).map((row) => [String(row?.jobId || ""), Number(row?.qty)]));
+            if (incoming.size !== jobAllocations.length || jobAllocations.some((allocation) => !incoming.has(String(allocation.jobId)))) {
+                return res.status(400).json({ error: "Only the jobs already on the slip line can be re-split." });
+            }
+            const oldTotal = jobAllocations.reduce((sum, allocation) => sum + (Number(allocation.qty) || 0), 0);
+            const newTotal = Array.from(incoming.values()).reduce((sum, qty) => sum + (Number.isFinite(qty) ? qty : NaN), 0);
+            if (!Number.isFinite(newTotal) || Array.from(incoming.values()).some((qty) => qty < 0))
+                return res.status(400).json({ error: "Quantities cannot be negative." });
+            if (Math.abs(newTotal - oldTotal) > 0.0001) {
+                return res.status(400).json({ error: `The line total must stay ${fmt(oldTotal)} (you entered ${fmt(newTotal)}). Only the split between jobs can change.` });
+            }
+            for (const allocation of jobAllocations) {
+                const newQty = incoming.get(String(allocation.jobId));
+                const oldQty = Number(allocation.qty) || 0;
+                if (Math.abs(newQty - oldQty) > 0.0001)
+                    moves.push({ jobId: String(allocation.jobId), jobNo: String(allocation.jobNo || allocation.jobId), oldQty, newQty });
+                allocation.qty = newQty;
+            }
+            line.allocations = allocations.filter((allocation) => String(allocation?.sourceType || "").toLowerCase() !== "job" || Number(allocation.qty) > 0);
+        }
+        if (!moves.length)
+            return res.status(400).json({ error: "Nothing was changed." });
+        // A job that receives more may not go above its printed qty (loaded and invoiced).
+        for (const move of moves.filter((row) => row.newQty > row.oldQty)) {
+            const [printedRows] = await db.query("SELECT COALESCE(SUM(qty), 0) AS printed FROM production_processing WHERE productionId = ? AND LOWER(TRIM(machineName)) = 'printing'", [move.jobId]);
+            const printed = Number(printedRows[0]?.printed || 0);
+            const { loaded, wastage } = await getJobLoadedAndInvoicedQty(db, move.jobId);
+            const loadedAfter = loaded - move.oldQty + move.newQty;
+            if (loadedAfter + wastage > printed + 0.0001) {
+                return res.status(400).json({ error: `${move.jobNo}: printed ${fmt(printed)}, it would then have ${fmt(loadedAfter)} loaded + ${fmt(wastage)} loading wastage. A job cannot take more than it printed.` });
+            }
+        }
+        const userName = String(user?.name || user?.email || "Admin");
+        const timestamp = new Date().toISOString();
+        const conn = await db.getConnection();
+        try {
+            await conn.beginTransaction();
+            await conn.query("UPDATE `loading_slips` SET `lines` = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [JSON.stringify(lines), userName, timestamp, slipId]);
+            for (const move of moves) {
+                await conn.query("INSERT INTO `job_corrections` SET ?", [{
+                        id: crypto.randomUUID(), jobId: move.jobId, jobNo: move.jobNo, field: "Loaded", entryRef: `Slip ${slip.slipNo} (re-split)`, entryId: slipId,
+                        oldValue: move.oldQty, newValue: move.newQty, reason, correctedBy: userName, correctedAt: timestamp,
+                    }]);
+            }
+            await conn.commit();
+        }
+        catch (error) {
+            try {
+                await conn.rollback();
+            }
+            catch { }
+            throw error;
+        }
+        finally {
+            conn.release();
+        }
+        res.json({ success: true, moves });
+    }
+    catch (error) {
+        console.error("Job re-split failed:", error);
+        res.status(500).json({ error: error.message || "Failed to re-split the slip." });
+    }
+});
 app.get("/api/fg-stock-breakup/:id", requireAuth, async (req, res) => {
     const db = await getPool();
     if (!db)

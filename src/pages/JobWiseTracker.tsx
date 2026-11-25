@@ -358,6 +358,44 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
   const [message, setMessage] = useState("");
   const [savingId, setSavingId] = useState("");
   const [editSlipId, setEditSlipId] = useState("");
+  // Re-split (invoiced slips): per line, new qty per job; line total must not change.
+  const [resplit, setResplit] = useState<{ slip: LoadingSlip; lines: Array<{ lineIndex: number; label: string; jobs: Array<{ jobId: string; jobNo: string; oldQty: number; qty: string }> }> } | null>(null);
+  const openResplit = (slip: LoadingSlip) => {
+    const lines = (slip.lines || []).map((line: any, lineIndex) => ({
+      lineIndex,
+      label: `Line ${lineIndex + 1}: loaded ${(Number(line.loadedQty) || 0).toLocaleString()}`,
+      jobs: (line.allocations || []).filter((allocation: any) => String(allocation?.sourceType || "").toLowerCase() === "job")
+        .map((allocation: any) => ({ jobId: String(allocation.jobId), jobNo: String(allocation.jobNo || allocation.jobId), oldQty: Number(allocation.qty) || 0, qty: String(Number(allocation.qty) || 0) })),
+    })).filter((line) => line.jobs.length > 1);
+    if (!lines.length) { setMessage(`Slip ${slip.slipNo} has only one job per line, so there is nothing to re-split.`); return; }
+    setResplit({ slip, lines });
+  };
+  const saveResplit = async () => {
+    if (!resplit || !requireReason()) return;
+    for (const line of resplit.lines) {
+      const oldTotal = line.jobs.reduce((sum, job) => sum + job.oldQty, 0);
+      const newTotal = line.jobs.reduce((sum, job) => sum + (Number(job.qty) || 0), 0);
+      if (Math.abs(oldTotal - newTotal) > 0.0001) return setMessage(`${line.label}: jobs must add up to ${oldTotal.toLocaleString()} (now ${newTotal.toLocaleString()}).`);
+    }
+    setSavingId("resplit");
+    setMessage("");
+    try {
+      const response = await fetch("/api/job-corrections/resplit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getDataAuthHeaders(false) },
+        body: JSON.stringify({ slipId: resplit.slip.id, reason: reason.trim(), lines: resplit.lines.map((line) => ({ lineIndex: line.lineIndex, allocations: line.jobs.map((job) => ({ jobId: job.jobId, qty: Number(job.qty) || 0 })) })) }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(body?.error || "Save failed."));
+      window.dispatchEvent(new CustomEvent("sync-data-loading_slips"));
+      alert(`Re-split saved on slip ${resplit.slip.slipNo}. The slip total and the invoice are unchanged. It is in the Job Correction Log.`);
+      onClose();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Save failed.");
+    } finally {
+      setSavingId("");
+    }
+  };
   const isProcessing = field === "Corrugation" || field === "Printed";
   const machine = field === "Corrugation" ? "Corrugation Liner" : "Printing";
 
@@ -530,14 +568,14 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
       <div className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded border-2 border-black bg-white p-4 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
         <div className="mb-3 flex items-start justify-between border-b-2 border-black pb-2">
           <div>
-            <div className="text-sm font-black uppercase">{field === "Loaded" ? "Loading slips (view only)" : isProcessing ? "Correct Corrugation & Printing" : `Correct ${field}`}</div>
+            <div className="text-sm font-black uppercase">{field === "Loaded" ? "Loading slips" : isProcessing ? "Correct Corrugation & Printing" : `Correct ${field}`}</div>
             <div className="text-xs text-slate-600">Job {row.jobNo} · {row.companyName} · {row.itemName}</div>
           </div>
           <button type="button" onClick={onClose} className="rounded border border-black px-3 py-1 text-xs font-bold hover:bg-slate-100">Close</button>
         </div>
 
-        {field === "Loaded" ? <div className="mb-3 rounded border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700">Loaded quantity cannot be edited here. Use Loading Wastage to record boxes damaged or lost at loading.</div> : null}
-        <label className={`mb-3 block text-xs font-bold ${field === "Loaded" ? "hidden" : ""}`}>
+        {field === "Loaded" ? <div className="mb-3 rounded border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700">Not invoiced: Edit slip (loaded qty, job split, wastage). Invoiced: Re-split jobs only — the slip total and the invoice do not change.</div> : null}
+        <label className="mb-3 block text-xs font-bold">
           Reason for correction *
           <input type="text" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Why is this figure being corrected?" className="mt-1 h-9 w-full rounded border-2 border-black px-3 text-sm" />
         </label>
@@ -610,7 +648,9 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
                     <td className={cell}>
                       {field === "Loading Wastage"
                         ? <button type="button" disabled={savingId === slip.id || drafts[slip.id] === undefined || drafts[slip.id] === ""} onClick={() => void saveWastage(slip, wastageQty)} className="rounded bg-indigo-600 px-3 py-1 text-xs font-bold text-white disabled:bg-slate-400">{savingId === slip.id ? "Saving…" : "Save"}</button>
-                        : <span className="text-[11px] font-bold text-slate-500">View only</span>}
+                        : invoiced
+                          ? <button type="button" onClick={() => { if (requireReason()) openResplit(slip); }} className="rounded bg-amber-600 px-3 py-1 text-xs font-bold text-white">Re-split jobs</button>
+                          : <button type="button" onClick={() => { if (requireReason()) setEditSlipId(slip.id); }} className="rounded bg-indigo-600 px-3 py-1 text-xs font-bold text-white">Edit slip</button>}
                     </td>
                   </tr>
                 );
@@ -618,6 +658,41 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
             </tbody>
           </table>
         )}
+
+        {resplit ? (
+          <div className="mt-4 rounded border-2 border-amber-500 bg-amber-50/40 p-3">
+            <div className="mb-2 text-xs font-black uppercase">Re-split jobs on slip {resplit.slip.slipNo}</div>
+            {resplit.lines.map((line, lineNo) => {
+              const oldTotal = line.jobs.reduce((sum, job) => sum + job.oldQty, 0);
+              const newTotal = line.jobs.reduce((sum, job) => sum + (Number(job.qty) || 0), 0);
+              return (
+                <div key={line.lineIndex} className="mb-2">
+                  <div className={`text-[11px] font-bold ${Math.abs(oldTotal - newTotal) > 0.0001 ? "text-red-700" : "text-slate-700"}`}>{line.label} — jobs total {newTotal.toLocaleString()} / must be {oldTotal.toLocaleString()}</div>
+                  <div className="mt-1 flex flex-wrap gap-3">
+                    {line.jobs.map((job, jobNo) => (
+                      <label key={job.jobId} className="flex items-center gap-2 text-xs font-bold">
+                        {job.jobNo} <span className="font-normal text-slate-500">(now {job.oldQty.toLocaleString()})</span>
+                        <input type="number" min={0} value={job.qty} onChange={(event) => setResplit((prev) => prev ? { ...prev, lines: prev.lines.map((row, index) => index !== lineNo ? row : { ...row, jobs: row.jobs.map((item, itemIndex) => itemIndex === jobNo ? { ...item, qty: event.target.value } : item) }) } : prev)} className="h-8 w-24 rounded border-2 border-black px-2 text-right text-xs" />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setResplit(null)} className="rounded border border-black px-3 py-1 text-xs font-bold">Cancel</button>
+              <button type="button" disabled={savingId === "resplit"} onClick={() => void saveResplit()} className="rounded bg-amber-600 px-4 py-1 text-xs font-black text-white disabled:bg-slate-400">{savingId === "resplit" ? "Saving…" : "Save re-split"}</button>
+            </div>
+          </div>
+        ) : null}
+
+        {editSlipId ? (
+          <div className="mt-4 rounded border-2 border-indigo-600 p-3">
+            <React.Suspense fallback={<div className="p-4 text-sm text-slate-600">Loading slip…</div>}>
+              <LoadingMasterFocus focusSlipId={editSlipId} onFocusDone={() => setEditSlipId("")} onFocusSaved={(before, after) => void onSlipSaved(before, after)} />
+            </React.Suspense>
+          </div>
+        ) : null}
 
 
       </div>
