@@ -281,6 +281,19 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
     }
   }, [firms]);
 
+  // Totals of every slip matching the current filters (all pages); cancelled slips are not counted in the qty.
+  const filterTotals = useMemo(() => {
+    const totals = { slips: 0, qty: 0, invoicedQty: 0, notInvoicedQty: 0, cancelled: 0 };
+    sortedSlips.forEach((slip) => {
+      if (slip.status === "Cancelled") { totals.cancelled += 1; return; }
+      const qty = Number(slip.totalQty || 0);
+      totals.slips += 1;
+      totals.qty += qty;
+      if (slip.invoiceId) totals.invoicedQty += qty; else totals.notInvoicedQty += qty;
+    });
+    return totals;
+  }, [sortedSlips]);
+
   const {
     page,
     setPage,
@@ -980,6 +993,16 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
           <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
+
+      {!focusSlipId ? (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded border-2 border-black bg-indigo-50 px-4 py-2 text-xs font-bold text-slate-700">
+          <span>Slips: <span className="text-sm font-black text-black">{filterTotals.slips.toLocaleString()}</span></span>
+          <span>Total Qty: <span className="text-sm font-black text-indigo-700">{filterTotals.qty.toLocaleString()}</span></span>
+          <span>Invoiced: <span className="text-sm font-black text-emerald-700">{filterTotals.invoicedQty.toLocaleString()}</span></span>
+          <span>Not Invoiced: <span className="text-sm font-black text-amber-700">{filterTotals.notInvoicedQty.toLocaleString()}</span></span>
+          {filterTotals.cancelled ? <span className="text-slate-500">Cancelled slips (not counted): {filterTotals.cancelled}</span> : null}
+        </div>
+      ) : null}
 
       {/* Phones: one card per slip; Details opens the lines with Job No / Load Qty. */}
       <div className="space-y-2 md:hidden">
