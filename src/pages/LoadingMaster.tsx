@@ -771,7 +771,7 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
                   <td className="px-4 py-3 text-xs border border-black">{line.orderNo}</td>
                   <td className="px-4 py-3 text-xs border border-black">{line.itemName}</td>
                   <td className="px-4 py-3 text-xs text-right border border-black">{line.isDirect ? "-" : Number(line.plannedQty || 0).toLocaleString()}</td>
-                  <td className="px-4 py-3 text-xs text-right border border-black">
+                  <td className="px-4 py-3 text-xs text-right border border-black" style={{ minWidth: "8.5rem" }}>
                     {isEditing ? (
                       <input
                         type="number"
@@ -800,10 +800,10 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
                     {line.isDirect ? (
                       <span className="font-bold text-sky-700">Direct Loading</span>
                     ) : Array.isArray(line.allocations) && line.allocations.length > 0 ? (
-                      <div style={{ display: "grid", gridTemplateColumns: "max-content 6.5rem", columnGap: "0.75rem", rowGap: "0.35rem", alignItems: "center", minWidth: "16rem" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "max-content 6.5rem", columnGap: "0.75rem", rowGap: "0.35rem", alignItems: "center", minWidth: "17rem", textAlign: "left", justifyItems: "stretch" }}>
                         {line.allocations.map((a, aidx) => (
                           <React.Fragment key={aidx}>
-                            <span style={{ whiteSpace: "nowrap" }} className={a.sourceType === "job" ? "font-bold" : "font-bold text-emerald-800"}>{a.sourceType === "job" ? `Job No: ${a.jobNo}` : (a as any).sourceRef}</span>
+                            <span style={{ whiteSpace: "nowrap", textAlign: "left", justifySelf: "start" }} className={a.sourceType === "job" ? "font-bold" : "font-bold text-emerald-800"}>{a.sourceType === "job" ? `Job No: ${a.jobNo}` : (a as any).sourceRef}</span>
                             {isEditing ? (
                               <input
                                 type="number"
@@ -831,8 +831,8 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
                         ))}
                         {isEditing ? (
                           <>
-                            <span className={`border-t border-black pt-1 font-black ${balanced ? "text-slate-700" : "text-red-700"}`}>Total (Loaded {loadedValue.toLocaleString()})</span>
-                            <span className={`border-t border-black pt-1 text-right font-black ${balanced ? "text-slate-700" : "text-red-700"}`}>{allocTotal.toLocaleString()}</span>
+                            <span style={{ textAlign: "left" }} className={`border-t border-black pt-1 font-black ${balanced ? "text-slate-700" : "text-red-700"}`}>Total (Loaded {loadedValue.toLocaleString()})</span>
+                            <span style={{ textAlign: "right" }} className={`border-t border-black pt-1 text-right font-black ${balanced ? "text-slate-700" : "text-red-700"}`}>{allocTotal.toLocaleString()}</span>
                           </>
                         ) : null}
                       </div>
