@@ -4487,8 +4487,9 @@ REPORT_DEFINITIONS["wa-dispatch-plan"] = {
     const filters = params.filters || {};
     const fromDate = String(params.date || "");
     const toDate = /^\d{4}-\d{2}-\d{2}$/.test(String(filters.toDate || "")) ? String(filters.toDate) : fromDate;
+    const companyList = (Array.isArray(filters.company) ? filters.company : filters.company ? [filters.company] : []).map((name) => String(name));
     const rows2 = sortDispatchPlanDayRows(computeDispatchPlanDayRows(lists, resolveOrderItem, fromDate, toDate).filter(
-      (row) => (!filters.firm || row.firmId === String(filters.firm)) && (!filters.company || row.companyName === String(filters.company)) && (!filters.item || row.itemKey === String(filters.item))
+      (row) => (!filters.firm || row.firmId === String(filters.firm)) && (!companyList.length || companyList.includes(String(row.companyName))) && (!filters.item || row.itemKey === String(filters.item))
     ));
     return dispatchPlanPdfSpec(rows2, fromDate, toDate);
   }
