@@ -18181,8 +18181,11 @@ app.post("/api/orders/:id/po", async (req, res) => {
     const [orderRows] = await db.query("SELECT id, orderDate, poType, poNumber FROM `orders` WHERE id = ? LIMIT 1", [orderId]);
     const order = (orderRows as any[])[0];
     if (!order) return res.status(404).json({ error: "Order not found." });
-    // PO Type only: Ref No. keeps the order's PO Number as it is.
-    if (poType === "Ref No.") poNumber = String(order.poNumber || "").trim();
+    // Ref No.: the PO Number typed in the form (the customer's PO / reference number).
+    if (poType === "Ref No.") {
+      if (!poNumber) return res.status(400).json({ error: "Enter the PO Number for a Ref No. order." });
+      if (poNumber.length > 100) return res.status(400).json({ error: "PO Number is too long (max 100 characters)." });
+    }
     if (poType === "Verbal") {
       // Keep the order's own Verbal number; otherwise the next Verbal number of its financial year.
       if (order.poType === "Verbal" && String(order.poNumber || "").trim()) poNumber = String(order.poNumber).trim();
