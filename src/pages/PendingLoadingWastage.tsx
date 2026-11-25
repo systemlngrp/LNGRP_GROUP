@@ -1,23 +1,17 @@
 import React, { useMemo, useState } from "react";
-import { useData } from "../hooks/useData";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
+import { useServerReport } from "../hooks/useServerReport";
 import { useAuth } from "../auth/AuthContext";
 import { useQtyAtJobWorker } from "../hooks/useQtyAtJobWorker";
-import type { Company, DispatchPlan, Firm, LoadingSlip, LoadingSlipJobConfirmation, Order, ProductionProcessing } from "../types";
-import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import type { Firm } from "../types";
 import { orderedFirmTabs } from "../components/FirmTabs";
-import { normalizeMachineName } from "../lib/productionMachineNames";
 import { formatDate } from "../lib/serial";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import {
   LOADING_WASTAGE_CONFIRMATION_FIRST_DATE,
-  loadedAndWastageByJob,
-  parseJobConfirmations,
   pendingFgTickText,
-  printingByJob,
-  slipAwaitsWastageConfirmation,
-  slipJobWastage,
-  unconfirmedSlipJobs,
   wastageTickText,
+  type PendingLoadingWastageRow,
 } from "../lib/loadingWastageConfirmation";
 
 /**
@@ -28,38 +22,25 @@ import {
  * when all its jobs are confirmed.
  */
 
-type Row = {
-  key: string;
-  slip: LoadingSlip;
-  jobId: string;
-  jobNo: string;
-  loadedOnSlip: number;
-  companyName: string;
-  firmId: string;
-  firmName: string;
+type Row = PendingLoadingWastageRow & {
   daysWaiting: number;
-  printed: number;
-  printingComplete: boolean;
-  loadedAll: number;
-  otherWastage: number;
-  savedWastage: number;
   atJobWorker: number;
   /** Pending FG before this slip's wastage: printed − loaded − other wastage − at job worker. */
   baseFg: number;
 };
 
-const lower = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const todayKey = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const daysBetween = (from: string, to: string) => Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 864e5));
 
 export function PendingLoadingWastage() {
   const { user } = useAuth();
   const userName = String(user?.name || "User").trim();
-  const [loadingSlips, setLoadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
-  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", storageKey: "production-processing-all-firms", fields: ["id", "productionId", "machineName", "qty", "completionStatus"] });
-  const [plans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
-  const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
-  const [companies] = useData<Company>("companies", [], { firmScope: "all", storageKey: "companies-all-firms" });
+  // Worked out on the server from its cached tables: only the waiting jobs come to the browser.
+  const { result, loading, failed } = useServerReport<PendingLoadingWastageRow[]>(
+    "pending-loading-wastage",
+    {},
+    ["loading_slips", "production_processing", "dispatch_plans", "orders", "companies", "firms"],
+  );
   const [firms] = useData<Firm>("firms", [], { firmScope: "all", storageKey: "firms-all" });
   const atJobWorkerByJobId = useQtyAtJobWorker();
 
@@ -71,53 +52,24 @@ export function PendingLoadingWastage() {
   const [savingKey, setSavingKey] = useState("");
   const [message, setMessage] = useState("");
   const [dialogKey, setDialogKey] = useState("");
-
-  const printing = useMemo(() => printingByJob(processing, normalizeMachineName), [processing]);
-  const totals = useMemo(() => loadedAndWastageByJob(loadingSlips), [loadingSlips]);
+  // Confirmed in this session: hidden at once, before the server list refreshes.
+  const [doneKeys, setDoneKeys] = useState<Set<string>>(new Set());
 
   const rows = useMemo<Row[]>(() => {
-    const planById = new Map(plans.map((plan) => [String(plan.id), plan]));
-    const orderById = new Map(orders.map((order) => [String(order.id), order]));
-    const companyById = new Map(companies.map((company) => [String(company.id), company]));
     const today = todayKey();
-    return loadingSlips
-      .filter((slip) => slipAwaitsWastageConfirmation(slip))
-      .flatMap((slip) => {
-        const firstLine: any = slip.lines?.[0];
-        const plan = planById.get(String(firstLine?.dispatchPlanId || ""));
-        const order = orderById.get(String(plan?.orderId || ""));
-        const companyName = companyById.get(String(order?.companyId || slip.companyId || firstLine?.companyId || ""))?.name || slip.companyName || firstLine?.companyName || "";
-        const firmId = String(order?.firmId || slip.orderFirmId || slip.firmId || "");
-        const firmName = getFirmDisplayNameById(firmId, firms);
-        return unconfirmedSlipJobs(slip).map((job) => {
-          const jobKey = lower(job.jobId);
-          const savedWastage = slipJobWastage(slip, job.jobId);
-          const printed = printing.printed.get(String(job.jobId).trim()) || 0;
-          const loadedAll = totals.loaded.get(jobKey) || 0;
-          const otherWastage = (totals.wastage.get(jobKey) || 0) - savedWastage;
-          const atJobWorker = atJobWorkerByJobId.get(String(job.jobId).trim()) || 0;
-          return {
-            key: `${slip.id}::${job.jobId}`,
-            slip,
-            jobId: job.jobId,
-            jobNo: job.jobNo,
-            loadedOnSlip: job.loadedQty,
-            companyName,
-            firmId,
-            firmName,
-            daysWaiting: daysBetween(String(slip.date || today).slice(0, 10), today),
-            printed,
-            printingComplete: printing.complete.has(String(job.jobId).trim()),
-            loadedAll,
-            otherWastage,
-            savedWastage,
-            atJobWorker,
-            baseFg: printed - loadedAll - otherWastage - atJobWorker,
-          };
-        });
+    return (result || [])
+      .filter((row) => !doneKeys.has(row.key))
+      .map((row) => {
+        const atJobWorker = atJobWorkerByJobId.get(String(row.jobId).trim()) || 0;
+        return {
+          ...row,
+          atJobWorker,
+          daysWaiting: daysBetween(row.date || today, today),
+          baseFg: row.printed - row.loadedAll - row.otherWastage - atJobWorker,
+        };
       })
-      .sort((a, b) => b.daysWaiting - a.daysWaiting || String(a.slip.slipNo).localeCompare(String(b.slip.slipNo), undefined, { numeric: true }));
-  }, [atJobWorkerByJobId, companies, firms, loadingSlips, orders, plans, printing, totals]);
+      .sort((a, b) => b.daysWaiting - a.daysWaiting || a.slipNo.localeCompare(b.slipNo, undefined, { numeric: true }));
+  }, [atJobWorkerByJobId, doneKeys, result]);
 
   // One tab per firm that has slips under the rule (Unit-II, LNKI), Unit-II first.
   const firmTabs = useMemo(() => {
@@ -135,7 +87,7 @@ export function PendingLoadingWastage() {
       if (activeFirmId && row.firmId !== activeFirmId) return false;
       if (statusFilter === "ready" && !row.printingComplete) return false;
       if (statusFilter === "waiting" && row.printingComplete) return false;
-      return matchesTableSearch([row.slip.slipNo, formatDate(row.slip.date), row.companyName, row.firmName, row.jobNo], words);
+      return matchesTableSearch([row.slipNo, formatDate(row.date), row.companyName, row.firmName, row.jobNo], words);
     });
   }, [activeFirmId, rows, searchTerm, statusFilter]);
 
@@ -157,24 +109,17 @@ export function PendingLoadingWastage() {
     setSavingKey(row.key);
     setMessage("");
     try {
-      const now = new Date().toISOString();
-      await setLoadingSlips((prev) => prev.map((slip) => {
-        if (slip.id !== row.slip.id) return slip;
-        const otherRows = (slip.jobWastage || []).filter((entry) => lower(entry.jobId) !== lower(row.jobId));
-        const jobWastage = wastage > 0 ? [...otherRows, { jobId: row.jobId, jobNo: row.jobNo, qty: wastage }] : otherRows;
-        const confirmations = parseJobConfirmations(slip).filter((entry) => lower(entry.jobId) !== lower(row.jobId));
-        const existing = parseJobConfirmations(slip).find((entry) => lower(entry.jobId) === lower(row.jobId));
-        const next: LoadingSlipJobConfirmation = {
-          jobId: row.jobId,
-          jobNo: row.jobNo,
-          printingCompleteAtLoading: existing?.printingCompleteAtLoading ?? false,
-          ...(confirm ? { wastage, pendingFg, confirmedBy: userName, confirmedById: String(user?.id || ""), confirmedAt: now } : {}),
-        };
-        return { ...slip, jobWastage, jobConfirmations: [...confirmations, next] };
-      }));
+      const response = await fetch(`/api/loading-slips/${encodeURIComponent(row.slipId)}/wastage-confirmation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getDataAuthHeaders(true) },
+        body: JSON.stringify({ jobId: row.jobId, jobNo: row.jobNo, wastage, confirm, pendingFg }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Save failed (${response.status})`);
+      if (confirm) setDoneKeys((prev) => new Set(prev).add(row.key));
       setWastageDraft((prev) => { const copy = { ...prev }; delete copy[row.key]; return copy; });
       setTicks((prev) => { const copy = { ...prev }; delete copy[row.key]; return copy; });
-      setMessage(confirm ? `${row.slip.slipNo} · ${row.jobNo} confirmed.` : `${row.slip.slipNo} · ${row.jobNo}: wastage saved.`);
+      setMessage(confirm ? `${row.slipNo} · ${row.jobNo} confirmed.` : `${row.slipNo} · ${row.jobNo}: wastage saved.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to save.");
     } finally {
@@ -240,7 +185,7 @@ export function PendingLoadingWastage() {
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
-              <tr><td colSpan={12} className="p-8 text-center text-sm font-semibold text-slate-500">Nothing pending.</td></tr>
+              <tr><td colSpan={12} className="p-8 text-center text-sm font-semibold text-slate-500">{failed ? "Could not load the list from the server. Refresh the page to try again." : loading && !result ? "Loading…" : "Nothing pending."}</td></tr>
             ) : filteredRows.map((row) => {
               const raw = draftOf(row);
               const wastage = raw.trim() === "" ? 0 : Number(raw) || 0;
@@ -249,7 +194,7 @@ export function PendingLoadingWastage() {
               const changed = raw.trim() !== (row.savedWastage > 0 ? String(row.savedWastage) : "");
               return (
                 <tr key={row.key} className={flagged ? "bg-red-50" : row.printingComplete ? "bg-white" : "bg-slate-50"}>
-                  <td className={`${TD} whitespace-nowrap`}><div className="font-black">{row.slip.slipNo}</div><div className="text-[11px] text-slate-600">{formatDate(row.slip.date)}</div></td>
+                  <td className={`${TD} whitespace-nowrap`}><div className="font-black">{row.slipNo}</div><div className="text-[11px] text-slate-600">{formatDate(row.date)}</div></td>
                   <td className={`${TD} text-right font-bold ${row.daysWaiting > 3 ? "text-red-700" : ""}`}>{row.daysWaiting}</td>
                   <td className={`${TD} max-w-[220px]`}><div className="font-semibold leading-tight">{row.companyName || "-"}</div><div className="text-[11px] text-slate-600">{row.firmName}</div></td>
                   <td className={`${TD} whitespace-nowrap font-bold`}>{row.jobNo}</td>
@@ -294,7 +239,7 @@ export function PendingLoadingWastage() {
             <div className="w-full max-w-lg rounded border-2 border-black bg-white p-5 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
               <div className="mb-3 border-b-2 border-black pb-2 text-sm font-black uppercase">Confirm loading wastage</div>
               <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                <span className="text-slate-600">Slip</span><span className="font-bold">{dialogRow.slip.slipNo}</span>
+                <span className="text-slate-600">Slip</span><span className="font-bold">{dialogRow.slipNo}</span>
                 <span className="text-slate-600">Job</span><span className="font-bold">{dialogRow.jobNo}</span>
                 <span className="text-slate-600">Company</span><span className="font-bold">{dialogRow.companyName || "-"}</span>
                 <span className="text-slate-600">Loading wastage</span><span className="font-bold">{num(wastage)}</span>

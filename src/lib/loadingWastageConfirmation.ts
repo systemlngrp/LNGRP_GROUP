@@ -114,3 +114,68 @@ export function wastageTickText(userName: string, jobNo: string, wastage: number
 export function pendingFgTickText(userName: string, jobNo: string, pendingFg: number) {
   return `I, ${userName}, confirm that the Pending FG figure for ${jobNo} (${pendingFg.toLocaleString()}) is correct.`;
 }
+
+/** One job of one slip waiting for confirmation (computed on the server). */
+export type PendingLoadingWastageRow = {
+  key: string;
+  slipId: string;
+  slipNo: string;
+  date: string;
+  jobId: string;
+  jobNo: string;
+  loadedOnSlip: number;
+  companyName: string;
+  firmId: string;
+  firmName: string;
+  printed: number;
+  printingComplete: boolean;
+  /** Loaded from this job on all slips that are not cancelled (this one included). */
+  loadedAll: number;
+  /** Loading wastage of this job on the other slips. */
+  otherWastage: number;
+  /** Loading wastage of this job on this slip, as saved. */
+  savedWastage: number;
+};
+
+/** Rows for Pending Loading Wastage, from the full lists (run on the server). */
+export function computePendingLoadingWastageRows(
+  lists: { loadingSlips: LoadingSlip[]; processing: ProductionProcessing[]; plans: any[]; orders: any[]; companies: any[]; firms: any[] },
+  normalizeMachineName: (name?: string) => string,
+  firmName: (firmId: string) => string,
+): PendingLoadingWastageRow[] {
+  const printing = printingByJob(lists.processing, normalizeMachineName);
+  const totals = loadedAndWastageByJob(lists.loadingSlips);
+  const planById = new Map(lists.plans.map((plan) => [String(plan.id), plan]));
+  const orderById = new Map(lists.orders.map((order) => [String(order.id), order]));
+  const companyById = new Map(lists.companies.map((company) => [String(company.id), company]));
+  return lists.loadingSlips
+    .filter((slip) => slipAwaitsWastageConfirmation(slip))
+    .flatMap((slip) => {
+      const firstLine: any = slip.lines?.[0];
+      const plan = planById.get(String(firstLine?.dispatchPlanId || ""));
+      const order = orderById.get(String(plan?.orderId || ""));
+      const companyName = companyById.get(String(order?.companyId || (slip as any).companyId || firstLine?.companyId || ""))?.name || (slip as any).companyName || firstLine?.companyName || "";
+      const firmId = String(order?.firmId || (slip as any).orderFirmId || (slip as any).firmId || "");
+      return unconfirmedSlipJobs(slip).map((job) => {
+        const jobKey = key(job.jobId);
+        const savedWastage = slipJobWastage(slip, job.jobId);
+        return {
+          key: `${slip.id}::${job.jobId}`,
+          slipId: String(slip.id),
+          slipNo: String(slip.slipNo || ""),
+          date: String(slip.date || "").slice(0, 10),
+          jobId: job.jobId,
+          jobNo: job.jobNo,
+          loadedOnSlip: job.loadedQty,
+          companyName,
+          firmId,
+          firmName: firmName(firmId),
+          printed: printing.printed.get(String(job.jobId).trim()) || 0,
+          printingComplete: printing.complete.has(String(job.jobId).trim()),
+          loadedAll: totals.loaded.get(jobKey) || 0,
+          otherWastage: (totals.wastage.get(jobKey) || 0) - savedWastage,
+          savedWastage,
+        };
+      });
+    });
+}

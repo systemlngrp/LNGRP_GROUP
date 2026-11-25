@@ -20,6 +20,8 @@ import { computePendingLinkedPlanningRows, planningRowFirmId, planningRowItemKey
 import { planningPdfSpec, phpPlatePlanPdfSpec } from "./whatsappReports";
 import { buildPhpPlateWorkflowJobs, computePhpPlatePlanRows } from "../phpPlatePlan";
 import { getFirmDisplayNameById } from "../firmDisplay";
+import { computePendingLoadingWastageRows } from "../loadingWastageConfirmation";
+import { normalizeMachineName as normalizeProcessingMachineName } from "../productionMachineNames";
 
 // WhatsApp report PDFs (timed sends): the server builds the PDF from these specs.
 export { buildReportPdf, renderWhatsappReportMessage, DEFAULT_WHATSAPP_REPORT_MESSAGES, WHATSAPP_REPORT_MENUS, whatsappReportKeyForMenu } from "./whatsappReports";
@@ -53,6 +55,23 @@ function catalogFrom(helpers: ReportHelpers) {
 }
 
 export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
+  // Pending Loading Wastage (Loading and Billing menus): only the waiting jobs go to the browser.
+  "pending-loading-wastage": {
+    permission: "/billing/pending-loading-wastage|/loading/pending-loading-wastage",
+    lists: [
+      { key: "loadingSlips", entity: "loading_slips", scope: "all" },
+      { key: "processing", entity: "production_processing", scope: "all" },
+      { key: "plans", entity: "dispatch_plans", scope: "all" },
+      { key: "orders", entity: "orders", scope: "all" },
+      { key: "companies", entity: "companies", scope: "all" },
+      { key: "firms", entity: "firms", scope: "all" },
+    ],
+    compute: (lists) => computePendingLoadingWastageRows(
+      { loadingSlips: lists.loadingSlips, processing: lists.processing, plans: lists.plans, orders: lists.orders, companies: lists.companies, firms: lists.firms },
+      normalizeProcessingMachineName,
+      (firmId) => getFirmDisplayNameById(firmId, lists.firms),
+    ),
+  },
   "paper-requirement": {
     permission: "/reports/paper-requirement",
     catalog: true,

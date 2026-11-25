@@ -20483,7 +20483,8 @@ app.post("/api/reports/:name", requireAuth, async (req, res) => {
                 return res.status(403).json({ error: "Dashboard is not set up for this user." });
             shapeResult = (value) => limitSummarySheetRows(value, userColumns);
         }
-        else if (!hasPermission(user, definition.permission)) {
+        else if (!String(definition.permission || "").split("|").some((menu) => hasPermission(user, menu))) {
+            // A report may be reachable from several menus ("a|b").
             return res.status(403).json({ error: "Forbidden" });
         }
         const authUserId = String(req.authUserId || "");
@@ -20519,6 +20520,90 @@ app.post("/api/reports/:name", requireAuth, async (req, res) => {
     }
 });
 const REPORT_WAIT_MS = 25_000;
+// Pending Loading Wastage: save one job's loading wastage on a slip, and when
+// `confirm` is set, record the two ticks (wastage + Pending FG) with the user.
+// Confirming needs the job's Printing to be Complete.
+app.post("/api/loading-slips/:id/wastage-confirmation", requireAuth, async (req, res) => {
+    const db = await getPool();
+    if (!db)
+        return res.status(503).json({ error: "Database unavailable" });
+    let user = null;
+    try {
+        user = await getRequestUser(req);
+    }
+    catch {
+        return res.status(503).json({ error: "Unable to verify user authorization. Please try again." });
+    }
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (!["/billing/pending-loading-wastage", "/loading/pending-loading-wastage"].some((menu) => hasPermission(user, menu))) {
+        return res.status(403).json({ error: "Forbidden" });
+    }
+    try {
+        const slipId = String(req.params.id || "").trim();
+        const jobId = String(req.body?.jobId || "").trim();
+        const wastage = Number(req.body?.wastage ?? 0);
+        const confirm = req.body?.confirm === true;
+        const pendingFg = Number(req.body?.pendingFg ?? 0);
+        if (!slipId || !jobId)
+            return res.status(400).json({ error: "Slip and job are required." });
+        if (!Number.isFinite(wastage) || wastage < 0)
+            return res.status(400).json({ error: "Loading wastage must be 0 or more." });
+        if (confirm && (!Number.isFinite(pendingFg) || pendingFg < 0))
+            return res.status(400).json({ error: "Pending FG cannot be below 0." });
+        const [slipRows] = await db.query("SELECT id, slipNo, invoiceId, status, `lines`, jobWastage, jobConfirmations FROM `loading_slips` WHERE id = ? LIMIT 1", [slipId]);
+        const slip = slipRows[0];
+        if (!slip)
+            return res.status(404).json({ error: "Loading slip not found." });
+        if (String(slip.invoiceId || "").trim())
+            return res.status(409).json({ error: `${slip.slipNo} is already invoiced.` });
+        if (["cancelled", "canceled"].includes(String(slip.status || "").toLowerCase()))
+            return res.status(409).json({ error: `${slip.slipNo} is cancelled.` });
+        const parse = (value) => {
+            if (Array.isArray(value))
+                return value;
+            try {
+                const parsed = JSON.parse(String(value || "[]"));
+                return Array.isArray(parsed) ? parsed : [];
+            }
+            catch {
+                return [];
+            }
+        };
+        const lines = parse(slip.lines);
+        const allocation = lines.flatMap((line) => line?.allocations || []).find((row) => String(row?.sourceType || "").toLowerCase() === "job" && String(row?.jobId || "").trim() === jobId);
+        if (!allocation)
+            return res.status(400).json({ error: "This job is not on the slip." });
+        const jobNo = String(req.body?.jobNo || allocation.jobNo || "");
+        if (confirm) {
+            const [printRows] = await db.query("SELECT machineName, completionStatus FROM `production_processing` WHERE productionId = ?", [jobId]);
+            const printingComplete = printRows.some((row) => /print/i.test(String(row.machineName || "")) && ["", "full"].includes(String(row.completionStatus || "").trim().toLowerCase()));
+            if (!printingComplete)
+                return res.status(409).json({ error: `${jobNo || "Job"}: confirm after Printing is Complete.` });
+        }
+        const now = new Date().toISOString();
+        const who = String(user.name || user.id || "");
+        const jobWastage = parse(slip.jobWastage).filter((row) => String(row?.jobId || "").trim() !== jobId);
+        if (wastage > 0)
+            jobWastage.push({ jobId, jobNo, qty: wastage });
+        const confirmations = parse(slip.jobConfirmations);
+        const existing = confirmations.find((row) => String(row?.jobId || "").trim() === jobId) || {};
+        const next = {
+            jobId,
+            jobNo,
+            printingCompleteAtLoading: Boolean(existing.printingCompleteAtLoading),
+            ...(confirm ? { wastage, pendingFg, confirmedBy: who, confirmedById: String(user.id || ""), confirmedAt: now } : {}),
+        };
+        const jobConfirmations = [...confirmations.filter((row) => String(row?.jobId || "").trim() !== jobId), next];
+        await db.query("UPDATE `loading_slips` SET jobWastage = ?, jobConfirmations = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [JSON.stringify(jobWastage), JSON.stringify(jobConfirmations), who, now, slipId]);
+        publishRealtimeDataChange(["loading_slips"]);
+        return res.json({ ok: true, slipNo: slip.slipNo, jobNo, confirmed: confirm });
+    }
+    catch (error) {
+        console.error("[LOADING WASTAGE] save failed:", error);
+        return res.status(500).json({ error: error.message || "Failed to save." });
+    }
+});
 // Last build time per report and per step (ms, rows), for tuning.
 const reportBuildTimings = new Map();
 app.get("/api/reports-timings", requireAuth, async (req, res) => {
