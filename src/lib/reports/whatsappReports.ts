@@ -181,6 +181,8 @@ export function computeProductionPlanRows(lists: ProductionPlanLists, date: stri
   const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
   const orderById = new Map(orders.map((order) => [order.id, order]));
   const rows = productions
+    // Cancelled jobs are not part of the plan (screen, PDF, Excel, WhatsApp).
+    .filter((p) => p.status !== "Cancelled" && !p.cancelTimestamp)
     .filter((p) => (s(p.date) ? (localDay(p.date) || s(p.date)) : "") === date)
     .map((production) => {
       const schedule = scheduleById.get(production.scheduleId);

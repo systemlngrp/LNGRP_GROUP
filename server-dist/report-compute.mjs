@@ -3378,7 +3378,7 @@ function computeProductionPlanRows(lists, date, filters = {}) {
   const itemById = new Map(npdItems.map((item) => [s4(item.id), item]));
   const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
   const orderById = new Map(orders.map((order) => [order.id, order]));
-  const rows2 = productions.filter((p) => (s4(p.date) ? localDay(p.date) || s4(p.date) : "") === date).map((production) => {
+  const rows2 = productions.filter((p) => p.status !== "Cancelled" && !p.cancelTimestamp).filter((p) => (s4(p.date) ? localDay(p.date) || s4(p.date) : "") === date).map((production) => {
     const schedule = scheduleById.get(production.scheduleId);
     const order = schedule ? orderById.get(schedule.orderId) : void 0;
     const company = resolveProductionPlanCompany(production, schedule, order, companies);
