@@ -287,7 +287,7 @@ export function JobWiseTracker() {
                   {num(row.printed)}{isAdmin ? <button type="button" onClick={() => setCorrection({ row, field: "Printed" })} className="ml-1 inline-flex text-slate-400 hover:text-indigo-700" title="Correct (Admin)"><Pencil size={12} /></button> : null}
                   <div className={`text-[10px] font-black ${row.printingComplete ? "text-indigo-700" : "text-slate-400"}`}>{row.printingComplete ? "Complete" : row.printed ? "In Progress" : "Not started"}</div>
                 </td>
-                <td className={`${TD} text-right whitespace-nowrap`}>{num(row.loaded)}{isAdmin ? <button type="button" onClick={() => setCorrection({ row, field: "Loaded" })} className="ml-1 inline-flex text-slate-400 hover:text-indigo-700" title="Correct (Admin)"><Pencil size={12} /></button> : null}</td>
+                <td className={`${TD} text-right whitespace-nowrap`}>{num(row.loaded)}{isAdmin ? <button type="button" onClick={() => setCorrection({ row, field: "Loaded" })} className="ml-1 inline-flex text-slate-400 hover:text-indigo-700" title="View slips (loaded qty cannot be edited here)"><Pencil size={12} /></button> : null}</td>
                 <td className={`${TD} text-right`}>{num(row.invoiced)}</td>
                 <td className={`${TD} text-right whitespace-nowrap`}>{num(row.loadingWastage)}{isAdmin ? <button type="button" onClick={() => setCorrection({ row, field: "Loading Wastage" })} className="ml-1 inline-flex text-slate-400 hover:text-indigo-700" title="Correct (Admin)"><Pencil size={12} /></button> : null}</td>
                 <td className={`${TD} text-right text-sm font-black ${row.balance < 0 ? "text-red-700" : ""}`}>{row.balance.toLocaleString()}</td>
@@ -442,13 +442,15 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
       const response = await fetch("/api/loading-slips", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getDataAuthHeaders(false) },
-        body: JSON.stringify({ ...slip, jobWastage, pdfRedownloadRequired: "Yes", updatedBy: userName, updateTimestamp: new Date().toISOString() }),
+        // Only the wastage changes; the loaded qty is never touched. An invoiced
+        // slip keeps its invoice, so no PDF re-download is needed for it.
+        body: JSON.stringify({ ...slip, jobWastage, ...(String(slip.invoiceId || "").trim() ? {} : { pdfRedownloadRequired: "Yes" }), updatedBy: userName, updateTimestamp: new Date().toISOString() }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(body?.error || "Save failed."));
       await logCorrection({ entryRef: `Slip ${slip.slipNo}`, entryId: slip.id, oldValue, newValue });
       window.dispatchEvent(new CustomEvent("sync-data-loading_slips"));
-      setMessage(`Saved: ${oldValue.toLocaleString()} → ${newValue.toLocaleString()}. Download the slip PDF again before invoicing.`);
+      setMessage(`Saved: ${oldValue.toLocaleString()} → ${newValue.toLocaleString()}.${String(slip.invoiceId || "").trim() ? "" : " Download the slip PDF again before invoicing."}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Save failed.");
     } finally {
@@ -481,13 +483,14 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
       <div className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded border-2 border-black bg-white p-4 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
         <div className="mb-3 flex items-start justify-between border-b-2 border-black pb-2">
           <div>
-            <div className="text-sm font-black uppercase">Correct {field}</div>
+            <div className="text-sm font-black uppercase">{field === "Loaded" ? "Loading slips (view only)" : `Correct ${field}`}</div>
             <div className="text-xs text-slate-600">Job {row.jobNo} · {row.companyName} · {row.itemName}</div>
           </div>
           <button type="button" onClick={onClose} className="rounded border border-black px-3 py-1 text-xs font-bold hover:bg-slate-100">Close</button>
         </div>
 
-        <label className="mb-3 block text-xs font-bold">
+        {field === "Loaded" ? <div className="mb-3 rounded border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700">Loaded quantity cannot be edited here. Use Loading Wastage to record boxes damaged or lost at loading.</div> : null}
+        <label className={`mb-3 block text-xs font-bold ${field === "Loaded" ? "hidden" : ""}`}>
           Reason for correction *
           <input type="text" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Why is this figure being corrected?" className="mt-1 h-9 w-full rounded border-2 border-black px-3 text-sm" />
         </label>
@@ -527,13 +530,12 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
                     <td className={`${cell} text-right`}>{loadedQty.toLocaleString()}</td>
                     <td className={`${cell} text-right`}>{wastageQty.toLocaleString()}</td>
                     <td className={cell}>
-                      {field === "Loading Wastage" && !invoiced ? <input type="number" min={0} value={drafts[slip.id] ?? ""} onChange={(event) => setDrafts((prev) => ({ ...prev, [slip.id]: event.target.value }))} className="h-8 w-24 rounded border-2 border-black px-2 text-right text-xs" /> : null}
+                      {field === "Loading Wastage" ? <input type="number" min={0} value={drafts[slip.id] ?? ""} onChange={(event) => setDrafts((prev) => ({ ...prev, [slip.id]: event.target.value }))} className="h-8 w-24 rounded border-2 border-black px-2 text-right text-xs" /> : null}
                     </td>
                     <td className={cell}>
-                      {invoiced ? <span className="text-[11px] font-bold text-slate-500">Invoiced: cannot change</span>
-                        : field === "Loading Wastage"
-                          ? <button type="button" disabled={savingId === slip.id || drafts[slip.id] === undefined || drafts[slip.id] === ""} onClick={() => void saveWastage(slip, wastageQty)} className="rounded bg-indigo-600 px-3 py-1 text-xs font-bold text-white disabled:bg-slate-400">{savingId === slip.id ? "Saving…" : "Save"}</button>
-                          : <button type="button" onClick={() => { if (requireReason()) setEditSlipId(slip.id); }} className="rounded bg-indigo-600 px-3 py-1 text-xs font-bold text-white">Edit slip</button>}
+                      {field === "Loading Wastage"
+                        ? <button type="button" disabled={savingId === slip.id || drafts[slip.id] === undefined || drafts[slip.id] === ""} onClick={() => void saveWastage(slip, wastageQty)} className="rounded bg-indigo-600 px-3 py-1 text-xs font-bold text-white disabled:bg-slate-400">{savingId === slip.id ? "Saving…" : "Save"}</button>
+                        : <span className="text-[11px] font-bold text-slate-500">View only</span>}
                     </td>
                   </tr>
                 );
@@ -542,13 +544,7 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
           </table>
         )}
 
-        {editSlipId ? (
-          <div className="mt-4 rounded border-2 border-indigo-600 p-3">
-            <React.Suspense fallback={<div className="p-4 text-sm text-slate-600">Loading slip…</div>}>
-              <LoadingMasterFocus focusSlipId={editSlipId} onFocusDone={() => setEditSlipId("")} onFocusSaved={(before, after) => void onSlipSaved(before, after)} />
-            </React.Suspense>
-          </div>
-        ) : null}
+
       </div>
     </div>
   );
