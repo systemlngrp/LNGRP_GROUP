@@ -20920,8 +20920,6 @@ app.post("/api/loading-slips/:id/wastage-confirmation", requireAuth, async (req,
         const slip = slipRows[0];
         if (!slip)
             return res.status(404).json({ error: "Loading slip not found." });
-        if (String(slip.invoiceId || "").trim())
-            return res.status(409).json({ error: `${slip.slipNo} is already invoiced.` });
         if (["cancelled", "canceled"].includes(String(slip.status || "").toLowerCase()))
             return res.status(409).json({ error: `${slip.slipNo} is cancelled.` });
         const parse = (value) => {

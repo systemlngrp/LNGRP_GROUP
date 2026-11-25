@@ -4129,7 +4129,7 @@ function unconfirmedSlipJobs(slip) {
   return slipFgJobs(slip).filter((job) => !isJobConfirmed(confirmations.find((row) => key5(row.jobId) === key5(job.jobId))));
 }
 function slipAwaitsWastageConfirmation(slip) {
-  if (String(slip.invoiceId || "").trim()) return false;
+  if (["cancelled", "canceled"].includes(String(slip.status || "").toLowerCase())) return false;
   return unconfirmedSlipJobs(slip).length > 0;
 }
 function slipJobWastage(slip, jobId) {
@@ -4137,16 +4137,19 @@ function slipJobWastage(slip, jobId) {
 }
 function printingByJob(processing, normalizeMachineName3) {
   const printed = /* @__PURE__ */ new Map();
+  const corrugated = /* @__PURE__ */ new Map();
   const complete = /* @__PURE__ */ new Set();
   processing.forEach((entry) => {
-    if (normalizeMachineName3(entry.machineName) !== "Printing") return;
     const jobId = String(entry.productionId || "").trim();
     if (!jobId) return;
+    const machine = normalizeMachineName3(entry.machineName);
+    if (machine === "Corrugation Liner") corrugated.set(jobId, (corrugated.get(jobId) || 0) + (Number(entry.qty) || 0));
+    if (machine !== "Printing") return;
     printed.set(jobId, (printed.get(jobId) || 0) + (Number(entry.qty) || 0));
     const status = key5(entry.completionStatus);
     if (!status || status === "full") complete.add(jobId);
   });
-  return { printed, complete };
+  return { printed, complete, corrugated };
 }
 function loadedAndWastageByJob(slips) {
   const loaded = /* @__PURE__ */ new Map();
@@ -4190,6 +4193,7 @@ function computePendingLoadingWastageRows(lists, normalizeMachineName3, firmName
         companyName,
         firmId,
         firmName: firmName(firmId),
+        corrugated: printing.corrugated.get(String(job.jobId).trim()) || 0,
         printed: printing.printed.get(String(job.jobId).trim()) || 0,
         printingComplete: printing.complete.has(String(job.jobId).trim()),
         loadedAll: totals.loaded.get(jobKey) || 0,

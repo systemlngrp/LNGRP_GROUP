@@ -1763,7 +1763,7 @@ function unconfirmedSlipJobs(slip) {
   return slipFgJobs(slip).filter((job) => !isJobConfirmed(confirmations.find((row) => key(row.jobId) === key(job.jobId))));
 }
 function slipAwaitsWastageConfirmation(slip) {
-  if (String(slip.invoiceId || "").trim()) return false;
+  if (["cancelled", "canceled"].includes(String(slip.status || "").toLowerCase())) return false;
   return unconfirmedSlipJobs(slip).length > 0;
 }
 
@@ -2091,7 +2091,6 @@ function buildPendingTaskCounts(args) {
         if (!companyById.has(company.id)) companyById.set(company.id, company);
       });
       return args.loadingSlips.filter((slip) => {
-        if (slipAwaitsWastageConfirmation(slip)) return false;
         const pending = getPendingInvoicingSlip(ctx, slip);
         const firstLine = pending?.lines?.[0];
         if (!pending || !firstLine) return false;
