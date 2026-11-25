@@ -532,10 +532,7 @@ export function PendingLoading() {
     if (modal.itemSource === "FG" && npdStockLoading) errors.unshift("FG stock is still loading. Please wait a moment.");
     const stockLabel = modal.itemSource === "FG" ? "FG Stock" : `${modal.itemSource} Stock`;
     if (openingStockQty < 0) errors.push(`${stockLabel} quantity cannot be negative.`);
-    if (modal.itemSource === "FG") {
-      const firmBalance = getFirmStockBalance(modal.itemId, modal.firmId, modal.eligibleJobs || []);
-      if (openingStockQty > firmBalance + 0.0001) errors.push(`${stockLabel} cannot exceed ${firmBalance.toLocaleString()} available for ${getFirmDisplayNameById(modal.firmId, firms)}.`);
-    }
+    // FG Stock quantity is not checked against the available FG stock for now.
     if (allocatedTotal <= 0) errors.push("At least one positive adjustment is required.");
     if (Math.abs(allocatedTotal - rowLoadedQty) > 0.0001) errors.push(`Job/${stockLabel} total must exactly match Loaded qty.`);
 
@@ -1334,7 +1331,24 @@ export function PendingLoading() {
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-500">-</td> : null}
                                 <td className="px-4 py-4 text-right text-xs font-black text-emerald-700" title={loadingModal.itemSource === "FG" ? "Stock with no job behind it: Opening + FG receipts − loaded from FG Stock, never more than the firm's book stock left after the job rows" : undefined}>{loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId, loadingModal.eligibleJobs || []).toLocaleString() : "-"}</td>
-                                <td className="px-4 py-4 text-right text-xs font-black text-slate-400">-</td>
+                                <td className="px-4 py-2 text-right bg-indigo-50/30">
+                                  <input
+                                    type="number"
+                                    value={openingStockQtys[modalKey] ?? ""}
+                                    min={0}
+                                    placeholder="0"
+                                    onChange={(e) => {
+                                      const rawValue = e.target.value;
+                                      setOpeningStockQtys((prev) => {
+                                        if (rawValue === "") return { ...prev, [modalKey]: "" };
+                                        const parsedValue = Number(rawValue);
+                                        if (!Number.isFinite(parsedValue)) return prev;
+                                        return { ...prev, [modalKey]: Math.max(0, parsedValue) }; // no Available limit for now
+                                      });
+                                    }}
+                                    className="h-9 w-28 rounded border-2 border-emerald-500 bg-emerald-50 px-2 py-1.5 text-right text-xs font-black text-black focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                                  />
+                                </td>
                                 {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-400">-</td> : null}
                                 {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-400">-</td> : null}
                               </tr>
