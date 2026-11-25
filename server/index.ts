@@ -1504,7 +1504,7 @@ app.post("/api/job-corrections/processing", requireAuth, async (req, res) => {
   if (reason.length < 5) return res.status(400).json({ error: "A reason of at least 5 characters is required." });
   if (!changes.length) return res.status(400).json({ error: "Nothing to save." });
   try {
-    const [jobRows] = await db.query("SELECT id, transactionNo, source FROM `productions` WHERE id = ? LIMIT 1", [jobId]);
+    const [jobRows] = await db.query("SELECT * FROM `productions` WHERE id = ? LIMIT 1", [jobId]);
     const job = (jobRows as any[])[0];
     if (!job) return res.status(404).json({ error: "Job not found." });
     const jobNo = String(job.transactionNo || jobId);
@@ -1550,7 +1550,7 @@ app.post("/api/job-corrections/processing", requireAuth, async (req, res) => {
     if (!changedRows.length) return res.status(400).json({ error: "Nothing was changed." });
 
     // Rules on the final figures (FG jobs).
-    if (String(job.source || "FG") === "FG") {
+    if (!["PHP", "PLATE"].includes(String(job.itemSource || "FG").trim().toUpperCase())) {
       let corrugated = 0, printed = 0, wastage = 0, printingComplete = false, corrugationComplete = false;
       for (const row of entries) {
         const machine = normalizeMachineName(String(row.machineName || ""));
