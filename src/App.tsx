@@ -496,6 +496,7 @@ export default function App() {
           <Route path="reports/fg-stock" element={<FGStockReport />} />
           <Route path="reports/job-wise-tracker" element={<JobWiseTracker />} />
           <Route path="store/reel-to-order" element={<ReelToOrder />} />
+          <Route path="store/rapc-ranges" element={<RapcRangeMaster />} />
           <Route path="reports/job-correction-log" element={<JobCorrectionLog />} />
           <Route path="loading/job-wise-tracker" element={<JobWiseTracker />} />
           <Route path="reports/reelwise-stock" element={<ReelwiseStockReport />} />

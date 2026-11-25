@@ -400,6 +400,7 @@ export const NAVIGATION: NavGroup[] = [
       { section: "Gate Entry", items: storeGateEntryItems },
       { section: "Report", items: storeReportItems },
       { section: "Reel to Order", items: [{ name: "Reel to Order", href: "/store/reel-to-order", icon: BarChart3 }] },
+      { section: "RAPC Range", items: [{ name: "RAPC Range Master", href: "/store/rapc-ranges", icon: Database }] },
     ],
   },
   {

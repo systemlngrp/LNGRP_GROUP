@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Edit, Plus, Search, Trash2 } from "lucide-react";
+import { Check, Edit, Trash2, X } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
@@ -27,6 +27,43 @@ export function RapcRangeMaster() {
   const [rapcRangeValue, setRapcRangeValue] = useState<number | "">("");
   const [searchTerm, setSearchTerm] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [inlineId, setInlineId] = useState<string | null>(null);
+  const [inlineDraft, setInlineDraft] = useState<{ from: number | ""; to: number | ""; rapcRange: number | "" }>({ from: "", to: "", rapcRange: "" });
+  const who = String((user as any)?.name || user?.id || "User");
+
+  /** Error text when a From–To range is invalid or overlaps another row (excluding ignoreId). */
+  const rangeError = (from: number, to: number, rapcRange: number, ignoreId?: string | null) => {
+    if (![from, to, rapcRange].every((value) => Number.isFinite(value))) return "From, To and RAPC Range are required.";
+    if (from < 0 || to < 0 || rapcRange < 0) return "Values cannot be negative.";
+    if (from > to) return `From (${from}) cannot be more than To (${to}).`;
+    const clash = ranges.find((row) => row.id !== ignoreId && from <= Number(row.to) && Number(row.from) <= to);
+    if (clash) return `${from}–${to} overlaps the existing range ${clash.from}–${clash.to} (RAPC ${clash.rapcRange}). From/To cannot repeat.`;
+    return "";
+  };
+
+  const startInline = (row: RapcRange) => {
+    setInlineId(row.id);
+    setInlineDraft({ from: row.from, to: row.to, rapcRange: row.rapcRange });
+  };
+
+  const saveInline = (row: RapcRange) => {
+    const from = inlineDraft.from === "" ? NaN : Number(inlineDraft.from);
+    const to = inlineDraft.to === "" ? NaN : Number(inlineDraft.to);
+    const rapcRange = inlineDraft.rapcRange === "" ? NaN : Number(inlineDraft.rapcRange);
+    const error = rangeError(from, to, rapcRange, row.id);
+    if (error) { alert(error); return; }
+    setRanges((prev) => prev.map((item) => (item.id === row.id ? { ...item, from, to, rapcRange, updatedBy: who, updateTimestamp: new Date().toISOString() } : item)));
+    setInlineId(null);
+  };
+
+  // Rows that already overlap another row (shown in red so they can be corrected).
+  const overlappingIds = useMemo(() => {
+    const ids = new Set<string>();
+    ranges.forEach((a) => ranges.forEach((b) => {
+      if (a.id !== b.id && Number(a.from) <= Number(b.to) && Number(b.from) <= Number(a.to)) ids.add(a.id);
+    }));
+    return ids;
+  }, [ranges]);
 
   // Seed the default ranges once per visit when the table is empty. A failed
   // save must not trigger another seed attempt in a loop.
@@ -48,11 +85,13 @@ export function RapcRangeMaster() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (fromValue === "" || toValue === "" || rapcRangeValue === "") return;
+    const error = rangeError(Number(fromValue), Number(toValue), Number(rapcRangeValue), editingId);
+    if (error) { alert(error); return; }
 
     setIsSubmitting(true);
     setTimeout(() => {
       const audit = {
-        updatedBy: "System User",
+        updatedBy: who,
         updateTimestamp: new Date().toISOString(),
       };
       const payload: RapcRange = {
@@ -167,7 +206,7 @@ export function RapcRangeMaster() {
         <label className="min-w-0"><span className={FILTER_LABEL}>To (max)</span><input type="number" inputMode="numeric" value={filterTo} onChange={(e) => setFilterTo(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Any" className={FILTER_DATE_INPUT} /></label>
       </ReportFilterBox>
 
-      <div className="text-xs font-bold text-slate-700">{filteredRanges.length.toLocaleString()} {filteredRanges.length === 1 ? "range" : "ranges"}</div>
+      <div className="text-xs font-bold text-slate-700">{filteredRanges.length.toLocaleString()} {filteredRanges.length === 1 ? "range" : "ranges"}{overlappingIds.size ? <span className="ml-3 text-red-700">{overlappingIds.size} rows overlap another row (shown in red): correct them so From/To do not repeat.</span> : null}</div>
 
       <div className="bg-white rounded shadow-sm overflow-x-auto border border-black">
         <div className="table-sticky-scroll">
@@ -198,20 +237,38 @@ export function RapcRangeMaster() {
                 </tr>
               ) : (
                 paginatedRanges.map((row, index) => (
-                  <tr key={row.id} className="divide-x divide-black hover:bg-slate-50">
+                  <tr key={row.id} className={`divide-x divide-black ${overlappingIds.has(row.id) ? "bg-red-50" : "hover:bg-slate-50"}`}>
                     <td className="border border-black px-3 py-2 whitespace-nowrap text-sm font-bold text-black text-right">{(page - 1) * pageSize + index + 1}</td>
-                    <td className="border border-black px-3 py-2 whitespace-nowrap text-sm font-bold text-black">{row.from}</td>
-                    <td className="border border-black px-3 py-2 whitespace-nowrap text-sm text-black">{row.to}</td>
-                    <td className="border border-black px-3 py-2 whitespace-nowrap text-sm text-black">{row.rapcRange}</td>
+                    {inlineId === row.id ? (
+                      (["from", "to", "rapcRange"] as const).map((field) => (
+                        <td key={field} className="border border-black px-2 py-1">
+                          <input
+                            type="number"
+                            autoFocus={field === "from"}
+                            value={inlineDraft[field]}
+                            onChange={(e) => setInlineDraft((prev) => ({ ...prev, [field]: e.target.value === "" ? "" : Number(e.target.value) }))}
+                            onKeyDown={(e) => { if (e.key === "Enter") saveInline(row); if (e.key === "Escape") setInlineId(null); }}
+                            className="w-28 rounded border-2 border-indigo-600 bg-yellow-50 px-2 py-1 text-sm font-bold text-black focus:outline-none"
+                          />
+                        </td>
+                      ))
+                    ) : (
+                      <>
+                        <td className={`border border-black px-3 py-2 whitespace-nowrap text-sm font-bold ${overlappingIds.has(row.id) ? "text-red-700" : "text-black"}`}>{row.from}</td>
+                        <td className={`border border-black px-3 py-2 whitespace-nowrap text-sm ${overlappingIds.has(row.id) ? "font-bold text-red-700" : "text-black"}`}>{row.to}</td>
+                        <td className="border border-black px-3 py-2 whitespace-nowrap text-sm text-black">{row.rapcRange}</td>
+                      </>
+                    )}
                     <td className="border border-black px-3 py-2 whitespace-nowrap text-right text-sm font-medium">
-                      {canManage ? <button
-                        onClick={() => {
-                          setFromValue(row.from);
-                          setToValue(row.to);
-                          setRapcRangeValue(row.rapcRange);
-                          setEditingId(row.id);
-                          setIsFormOpen(true);
-                        }}
+                      {canManage && inlineId === row.id ? (
+                        <>
+                          <button type="button" onClick={() => saveInline(row)} title="Save" className="mr-3 inline-flex items-center font-bold text-emerald-700 hover:text-emerald-900"><Check size={16} className="mr-1" /> Save</button>
+                          <button type="button" onClick={() => setInlineId(null)} title="Cancel" className="mr-4 inline-flex items-center font-bold text-slate-600 hover:text-black"><X size={16} className="mr-1" /> Cancel</button>
+                        </>
+                      ) : canManage ? <button
+                        type="button"
+                        onClick={() => startInline(row)}
+                        title="Edit"
                         className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center"
                       >
                         <Edit size={16} className="mr-1" /> Edit
