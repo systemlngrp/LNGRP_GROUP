@@ -84,7 +84,7 @@ export function JobCorrectionLog() {
         <input type="text" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search job, reason, user…" className="h-9 rounded border-2 border-black px-3 text-sm md:col-span-2" />
         <select value={fieldFilter} onChange={(event) => setFieldFilter(event.target.value)} className="h-9 rounded border-2 border-black px-2 text-sm">
           <option value="">All fields</option>
-          {["Corrugation", "Printed", "Loaded", "Loading Wastage"].map((field) => <option key={field} value={field}>{field}</option>)}
+          {["Corrugation", "Printed", "Printing Wastage", "Loaded", "Loading Wastage"].map((field) => <option key={field} value={field}>{field}</option>)}
         </select>
       </div>
       <div className="overflow-x-auto rounded border-2 border-black bg-white">

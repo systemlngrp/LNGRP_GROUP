@@ -1454,6 +1454,142 @@ app.post("/api/job-corrections", requireAuth, async (req, res) => {
         res.status(500).json({ error: "Failed to save the correction log." });
     }
 });
+// Admin: correct a job's Corrugation and Printing entries together (qty and
+// printing wastage). The job's rules are checked on the final figures, so a
+// job where both were entered too low can be fixed in one save.
+const PRINTING_WASTAGE_COLUMNS = ["slotting", "delaminationPrinting", "misalignmentPrinting", "drySheets", "warp", "misprinting", "jobSetting"];
+app.post("/api/job-corrections/processing", requireAuth, async (req, res) => {
+    const db = await getPool();
+    if (!db)
+        return res.status(500).json({ error: "DB connection not available" });
+    const user = await getRequestUser(req);
+    if (user?.role !== "Admin")
+        return res.status(403).json({ error: "Only an Admin can correct job figures." });
+    const body = req.body || {};
+    const jobId = String(body.jobId || "").trim();
+    const reason = String(body.reason || "").trim();
+    const changes = Array.isArray(body.changes) ? body.changes : [];
+    if (!jobId)
+        return res.status(400).json({ error: "Job is missing." });
+    if (reason.length < 5)
+        return res.status(400).json({ error: "A reason of at least 5 characters is required." });
+    if (!changes.length)
+        return res.status(400).json({ error: "Nothing to save." });
+    try {
+        const [jobRows] = await db.query("SELECT id, transactionNo, source FROM `productions` WHERE id = ? LIMIT 1", [jobId]);
+        const job = jobRows[0];
+        if (!job)
+            return res.status(404).json({ error: "Job not found." });
+        const jobNo = String(job.transactionNo || jobId);
+        const [entryRows] = await db.query("SELECT * FROM `production_processing` WHERE productionId = ?", [jobId]);
+        const entries = entryRows.map((row) => ({ ...row }));
+        const byId = new Map(entries.map((row) => [String(row.id), row]));
+        const fmt = (value) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+        const wastageOf = (row) => PRINTING_WASTAGE_COLUMNS.reduce((sum, key) => sum + (Number(row[key]) || 0), 0);
+        const logs = [];
+        const changedRows = [];
+        for (const change of changes) {
+            const row = byId.get(String(change?.id || ""));
+            if (!row)
+                return res.status(400).json({ error: "An entry does not belong to this job." });
+            const machine = normalizeMachineName(String(row.machineName || ""));
+            if (machine !== "Corrugation Liner" && machine !== "Printing")
+                return res.status(400).json({ error: "Only Corrugation Liner and Printing entries can be corrected here." });
+            const ref = `${String(row.date || "").slice(0, 10)} ${row.shift || ""} ${String(row.completionStatus || "").toLowerCase() === "part" ? "In Progress" : "Complete"}`.trim();
+            let changed = false;
+            if (change.qty !== undefined) {
+                const qty = Number(change.qty);
+                if (!Number.isFinite(qty) || qty <= 0)
+                    return res.status(400).json({ error: "Quantity must be greater than 0." });
+                if (Math.abs(qty - (Number(row.qty) || 0)) > 0.0001) {
+                    logs.push({ field: machine === "Printing" ? "Printed" : "Corrugation", entryRef: ref, entryId: String(row.id), oldValue: Number(row.qty) || 0, newValue: qty });
+                    row.qty = qty;
+                    changed = true;
+                }
+            }
+            if (machine === "Printing" && change.wastage && typeof change.wastage === "object") {
+                const before = wastageOf(row);
+                for (const key of PRINTING_WASTAGE_COLUMNS) {
+                    if (change.wastage[key] === undefined)
+                        continue;
+                    const value = Number(change.wastage[key]);
+                    if (!Number.isFinite(value) || value < 0)
+                        return res.status(400).json({ error: "Wastage cannot be negative." });
+                    row[key] = value;
+                }
+                const after = wastageOf(row);
+                if (Math.abs(after - before) > 0.0001) {
+                    logs.push({ field: "Printing Wastage", entryRef: ref, entryId: String(row.id), oldValue: before, newValue: after });
+                    changed = true;
+                }
+            }
+            if (changed)
+                changedRows.push(row);
+        }
+        if (!changedRows.length)
+            return res.status(400).json({ error: "Nothing was changed." });
+        // Rules on the final figures (FG jobs).
+        if (String(job.source || "FG") === "FG") {
+            let corrugated = 0, printed = 0, wastage = 0, printingComplete = false, corrugationComplete = false;
+            for (const row of entries) {
+                const machine = normalizeMachineName(String(row.machineName || ""));
+                const full = ["full", ""].includes(String(row.completionStatus || "").trim().toLowerCase());
+                if (machine === "Corrugation Liner") {
+                    corrugated += Number(row.qty) || 0;
+                    if (full)
+                        corrugationComplete = true;
+                }
+                if (machine === "Printing") {
+                    printed += Number(row.qty) || 0;
+                    wastage += wastageOf(row);
+                    if (full)
+                        printingComplete = true;
+                }
+            }
+            const { loaded, invoiced, wastage: loadingWastage } = await getJobLoadedAndInvoicedQty(db, jobId);
+            if (printed + wastage > corrugated + 0.0001) {
+                return res.status(400).json({ error: `Printed + printing wastage is more than corrugated. Job ${jobNo}: corrugated ${fmt(corrugated)}, printed ${fmt(printed)} + wastage ${fmt(wastage)} = ${fmt(printed + wastage)}.` });
+            }
+            if (printingComplete && !corrugationComplete) {
+                return res.status(400).json({ error: `Job ${jobNo}: Printing is Complete but Corrugation Liner is not Complete.` });
+            }
+            if (printingComplete && Math.abs(printed + wastage - corrugated) > 0.0001) {
+                return res.status(400).json({ error: `Printed + printing wastage must equal corrugated when Printing is Complete. Job ${jobNo}: corrugated ${fmt(corrugated)}, printed ${fmt(printed)} + wastage ${fmt(wastage)} = ${fmt(printed + wastage)} (${corrugated > printed + wastage ? `${fmt(corrugated - printed - wastage)} boxes not accounted for` : `${fmt(printed + wastage - corrugated)} boxes over`}).` });
+            }
+            if (printed + 0.0001 < invoiced) {
+                return res.status(400).json({ error: `Printed cannot be less than invoiced. Job ${jobNo}: invoiced ${fmt(invoiced)}, printed would be ${fmt(printed)}.` });
+            }
+            if (printingComplete && printed + 0.0001 < loaded + loadingWastage) {
+                return res.status(400).json({ error: `Printed cannot be less than loaded + loading wastage when Printing is Complete. Job ${jobNo}: loaded ${fmt(loaded)} + loading wastage ${fmt(loadingWastage)}, printed would be ${fmt(printed)}.` });
+            }
+        }
+        const userName = String(user?.name || user?.email || "Admin");
+        const timestamp = new Date().toISOString();
+        const printingChanged = changedRows.some((row) => normalizeMachineName(String(row.machineName || "")) === "Printing");
+        await withPrintingOutputTransaction(db, printingChanged ? [jobId] : [], async (conn) => {
+            for (const row of changedRows) {
+                const isPrinting = normalizeMachineName(String(row.machineName || "")) === "Printing";
+                const columns = ["qty", ...(isPrinting ? PRINTING_WASTAGE_COLUMNS : [])];
+                await conn.query(`UPDATE \`production_processing\` SET ${columns.map((column) => `\`${column}\` = ?`).join(", ")}, updatedBy = ?, updateTimestamp = ? WHERE id = ?`, [...columns.map((column) => row[column] ?? null), userName, timestamp, row.id]);
+                await syncCorrugationLinerOutput(conn, String(row.id));
+                await syncProductionSheetPlantOutputForProcessing(conn, row, row);
+                if (isPrinting)
+                    await syncLnkiPrintingMasterOutputs(conn, row);
+            }
+            for (const log of logs) {
+                await conn.query("INSERT INTO `job_corrections` SET ?", [{
+                        id: crypto.randomUUID(), jobId, jobNo, field: log.field, entryRef: log.entryRef, entryId: log.entryId,
+                        oldValue: log.oldValue, newValue: log.newValue, reason, correctedBy: userName, correctedAt: timestamp,
+                    }]);
+            }
+        });
+        res.json({ success: true, changes: logs.length });
+    }
+    catch (error) {
+        console.error("Job processing correction failed:", error);
+        res.status(500).json({ error: error.message || "Failed to save the correction." });
+    }
+});
 app.get("/api/fg-stock-breakup/:id", requireAuth, async (req, res) => {
     const db = await getPool();
     if (!db)

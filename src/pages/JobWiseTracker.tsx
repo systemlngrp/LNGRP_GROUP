@@ -330,6 +330,16 @@ export function JobWiseTracker() {
 
 type ProcessingEntry = ProductionProcessing & Record<string, any>;
 
+const PRINTING_WASTAGE_KEYS: Array<[string, string]> = [
+  ["slotting", "Slotting"],
+  ["delaminationPrinting", "Delam."],
+  ["misalignmentPrinting", "Misalign."],
+  ["drySheets", "Dry Sheets"],
+  ["warp", "Warp"],
+  ["misprinting", "Misprint"],
+  ["jobSetting", "Job Setting"],
+];
+
 /**
  * Admin correction of one figure of a job: lists the entries behind it and lets
  * the Admin change one entry, with a reason. Saves go through the normal save
@@ -358,9 +368,10 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
       .then((response) => response.json())
       .then((data) => {
         if (!active) return;
+        // Both Corrugation Liner and Printing entries: they are corrected together.
         const list = (Array.isArray(data) ? data : []).filter((entry: any) =>
-          String(entry.productionId || "").trim() === row.jobId && normalizeMachineName(entry.machineName) === machine);
-        list.sort((a: any, b: any) => String(a.date || "").localeCompare(String(b.date || "")));
+          String(entry.productionId || "").trim() === row.jobId && ["Corrugation Liner", "Printing"].includes(normalizeMachineName(entry.machineName)));
+        list.sort((a: any, b: any) => normalizeMachineName(a.machineName).localeCompare(normalizeMachineName(b.machineName)) || String(a.date || "").localeCompare(String(b.date || "")));
         setEntries(list);
       })
       .catch(() => active && setMessage("Could not load the entries."));
@@ -398,26 +409,57 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
     return true;
   };
 
-  const saveProcessing = async (entry: ProcessingEntry) => {
+  // Edits per entry: qty and (Printing) the seven wastage boxes.
+  const [qtyEdits, setQtyEdits] = useState<Record<string, string>>({});
+  const [wastageEdits, setWastageEdits] = useState<Record<string, Record<string, string>>>({});
+  const entryQty = (entry: ProcessingEntry) => (qtyEdits[entry.id] !== undefined && qtyEdits[entry.id] !== "" ? Number(qtyEdits[entry.id]) : Number(entry.qty) || 0);
+  const entryWastage = (entry: ProcessingEntry, key: string) => {
+    const edit = wastageEdits[entry.id]?.[key];
+    return edit !== undefined && edit !== "" ? Number(edit) : Number(entry[key]) || 0;
+  };
+  const entryWastageTotal = (entry: ProcessingEntry) => PRINTING_WASTAGE_KEYS.reduce((sum, [key]) => sum + entryWastage(entry, key), 0);
+  const finalTotals = useMemo(() => {
+    let corrugated = 0, printed = 0, wastage = 0;
+    (entries || []).forEach((entry) => {
+      const name = normalizeMachineName(entry.machineName);
+      if (name === "Corrugation Liner") corrugated += entryQty(entry);
+      if (name === "Printing") { printed += entryQty(entry); wastage += entryWastageTotal(entry); }
+    });
+    return { corrugated, printed, wastage, unaccounted: corrugated - printed - wastage };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries, qtyEdits, wastageEdits]);
+
+  const saveAllProcessing = async () => {
     if (!requireReason()) return;
-    const newValue = Number(drafts[entry.id]);
-    const oldValue = Number(entry.qty) || 0;
-    if (!Number.isFinite(newValue) || newValue <= 0) return setMessage("Enter a quantity greater than 0.");
-    if (newValue === oldValue) return setMessage("The quantity is unchanged.");
-    setSavingId(entry.id);
+    const changes = (entries || []).map((entry) => {
+      const change: any = { id: entry.id };
+      if (qtyEdits[entry.id] !== undefined && qtyEdits[entry.id] !== "" && Number(qtyEdits[entry.id]) !== (Number(entry.qty) || 0)) change.qty = Number(qtyEdits[entry.id]);
+      const wastage = wastageEdits[entry.id];
+      if (wastage && Object.values(wastage).some((value) => value !== "")) {
+        change.wastage = Object.fromEntries(Object.entries(wastage).filter(([, value]) => value !== "").map(([key, value]) => [key, Number(value)]));
+      }
+      return change;
+    }).filter((change) => change.qty !== undefined || change.wastage);
+    if (!changes.length) return setMessage("Nothing changed.");
+    setSavingId("all");
     setMessage("");
     try {
-      const response = await fetch("/api/production-processing", {
+      const response = await fetch("/api/job-corrections/processing", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getDataAuthHeaders(false) },
-        body: JSON.stringify({ ...entry, qty: newValue, updatedBy: userName, updateTimestamp: new Date().toISOString() }),
+        body: JSON.stringify({ jobId: row.jobId, reason: reason.trim(), changes }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(body?.error || "Save failed."));
-      await logCorrection({ entryRef: `${formatDate(String(entry.date || ""))} ${entry.shift || ""} ${entry.completionStatus === "Part" ? "In Progress" : "Complete"}`.trim(), entryId: entry.id, oldValue, newValue });
-      setEntries((prev) => (prev || []).map((item) => (item.id === entry.id ? { ...item, qty: newValue } : item)));
+      setEntries((prev) => (prev || []).map((entry) => {
+        const next: ProcessingEntry = { ...entry, qty: entryQty(entry) };
+        PRINTING_WASTAGE_KEYS.forEach(([key]) => { (next as any)[key] = entryWastage(entry, key); });
+        return next;
+      }));
+      setQtyEdits({});
+      setWastageEdits({});
       window.dispatchEvent(new CustomEvent("sync-data-production_processing"));
-      setMessage(`Saved: ${oldValue.toLocaleString()} → ${newValue.toLocaleString()}.`);
+      setMessage(`Saved ${body.changes || changes.length} correction(s). They are in the Job Correction Log.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Save failed.");
     } finally {
@@ -486,7 +528,7 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
       <div className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded border-2 border-black bg-white p-4 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
         <div className="mb-3 flex items-start justify-between border-b-2 border-black pb-2">
           <div>
-            <div className="text-sm font-black uppercase">{field === "Loaded" ? "Loading slips (view only)" : `Correct ${field}`}</div>
+            <div className="text-sm font-black uppercase">{field === "Loaded" ? "Loading slips (view only)" : isProcessing ? "Correct Corrugation & Printing" : `Correct ${field}`}</div>
             <div className="text-xs text-slate-600">Job {row.jobNo} · {row.companyName} · {row.itemName}</div>
           </div>
           <button type="button" onClick={onClose} className="rounded border border-black px-3 py-1 text-xs font-bold hover:bg-slate-100">Close</button>
@@ -501,23 +543,51 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
         {message ? <div className="mb-3 rounded border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">{message}</div> : null}
 
         {isProcessing ? (
-          entries === null ? <div className="text-sm text-slate-600">Loading entries…</div> : entries.length === 0 ? <div className="text-sm text-slate-600">No {machine} entries on this job.</div> : (
-            <table className="w-full border-collapse">
-              <thead className="bg-slate-100"><tr>{["Date", "Shift", "Status", field === "Printed" ? "Printing Machine" : "Machine", "Qty", "New Qty", ""].map((heading) => <th key={heading} className={`${cell} text-left font-black uppercase`}>{heading}</th>)}</tr></thead>
-              <tbody>
-                {entries.map((entry) => (
-                  <tr key={entry.id}>
-                    <td className={cell}>{formatDate(String(entry.date || ""))}</td>
-                    <td className={cell}>{entry.shift || "-"}</td>
-                    <td className={cell}>{entry.completionStatus === "Part" ? "In Progress" : "Complete"}</td>
-                    <td className={cell}>{field === "Printed" ? entry.printingMachine || "-" : entry.machineName}</td>
-                    <td className={`${cell} text-right font-bold`}>{(Number(entry.qty) || 0).toLocaleString()}</td>
-                    <td className={cell}><input type="number" min={1} value={drafts[entry.id] ?? ""} onChange={(event) => setDrafts((prev) => ({ ...prev, [entry.id]: event.target.value }))} className="h-8 w-28 rounded border-2 border-black px-2 text-right text-xs" /></td>
-                    <td className={cell}><button type="button" disabled={savingId === entry.id || !drafts[entry.id]} onClick={() => void saveProcessing(entry)} className="rounded bg-indigo-600 px-3 py-1 text-xs font-bold text-white disabled:bg-slate-400">{savingId === entry.id ? "Saving…" : "Save"}</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          entries === null ? <div className="text-sm text-slate-600">Loading entries…</div> : entries.length === 0 ? <div className="text-sm text-slate-600">No Corrugation or Printing entries on this job.</div> : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-xs font-bold md:grid-cols-4">
+                <div className="rounded border border-black px-3 py-2">Corrugated: {finalTotals.corrugated.toLocaleString()}</div>
+                <div className="rounded border border-black px-3 py-2">Printed: {finalTotals.printed.toLocaleString()}</div>
+                <div className="rounded border border-black px-3 py-2">Printing wastage: {finalTotals.wastage.toLocaleString()}</div>
+                <div className={`rounded border px-3 py-2 ${Math.abs(finalTotals.unaccounted) > 0.0001 ? "border-red-600 bg-red-50 text-red-800" : "border-emerald-600 bg-emerald-50 text-emerald-800"}`}>
+                  {Math.abs(finalTotals.unaccounted) > 0.0001 ? (finalTotals.unaccounted > 0 ? `Not accounted: ${finalTotals.unaccounted.toLocaleString()}` : `Over by ${(-finalTotals.unaccounted).toLocaleString()}`) : "Corrugated = Printed + Wastage"}
+                </div>
+              </div>
+              <table className="w-full border-collapse">
+                <thead className="bg-slate-100"><tr>{["Machine", "Date", "Shift", "Status", "Qty", "New Qty", "Printing Wastage (new values)"].map((heading) => <th key={heading} className={`${cell} text-left font-black uppercase`}>{heading}</th>)}</tr></thead>
+                <tbody>
+                  {entries.map((entry) => {
+                    const isPrintingEntry = normalizeMachineName(entry.machineName) === "Printing";
+                    return (
+                      <tr key={entry.id} className={isPrintingEntry ? "bg-indigo-50/40" : ""}>
+                        <td className={`${cell} font-bold`}>{normalizeMachineName(entry.machineName)}{isPrintingEntry && entry.printingMachine ? <div className="text-[10px] font-normal text-slate-500">{entry.printingMachine}</div> : null}</td>
+                        <td className={cell}>{formatDate(String(entry.date || ""))}</td>
+                        <td className={cell}>{entry.shift || "-"}</td>
+                        <td className={cell}>{entry.completionStatus === "Part" ? "In Progress" : "Complete"}</td>
+                        <td className={`${cell} text-right font-bold`}>{(Number(entry.qty) || 0).toLocaleString()}</td>
+                        <td className={cell}><input type="number" min={1} value={qtyEdits[entry.id] ?? ""} placeholder={String(Number(entry.qty) || 0)} onChange={(event) => setQtyEdits((prev) => ({ ...prev, [entry.id]: event.target.value }))} className="h-8 w-24 rounded border-2 border-black px-2 text-right text-xs" /></td>
+                        <td className={cell}>
+                          {isPrintingEntry ? (
+                            <div className="flex flex-wrap gap-1">
+                              {PRINTING_WASTAGE_KEYS.map(([key, label]) => (
+                                <label key={key} className="flex flex-col text-[9px] font-bold uppercase text-slate-600">
+                                  {label}
+                                  <input type="number" min={0} value={wastageEdits[entry.id]?.[key] ?? ""} placeholder={String(Number(entry[key]) || 0)} onChange={(event) => setWastageEdits((prev) => ({ ...prev, [entry.id]: { ...(prev[entry.id] || {}), [key]: event.target.value } }))} className="h-7 w-16 rounded border border-black px-1 text-right text-xs" />
+                                </label>
+                              ))}
+                              <div className="self-end text-[10px] font-black text-slate-700">= {entryWastageTotal(entry).toLocaleString()}</div>
+                            </div>
+                          ) : <span className="text-[11px] text-slate-400">-</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="flex justify-end">
+                <button type="button" disabled={savingId === "all"} onClick={() => void saveAllProcessing()} className="rounded bg-indigo-600 px-5 py-2 text-xs font-black uppercase text-white disabled:bg-slate-400">{savingId === "all" ? "Saving…" : "Save all corrections"}</button>
+              </div>
+            </div>
           )
         ) : slipRows.length === 0 ? <div className="text-sm text-slate-600">No loading slips for this job.</div> : (
           <table className="w-full border-collapse">
