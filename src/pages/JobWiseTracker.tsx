@@ -459,7 +459,8 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
       setQtyEdits({});
       setWastageEdits({});
       window.dispatchEvent(new CustomEvent("sync-data-production_processing"));
-      setMessage(`Saved ${body.changes || changes.length} correction(s). They are in the Job Correction Log.`);
+      alert(`Saved ${body.changes || changes.length} correction(s) for job ${row.jobNo}. They are in the Job Correction Log.`);
+      onClose();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Save failed.");
     } finally {
@@ -495,7 +496,8 @@ function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
       if (!response.ok) throw new Error(String(body?.error || "Save failed."));
       await logCorrection({ entryRef: `Slip ${slip.slipNo}`, entryId: slip.id, oldValue, newValue });
       window.dispatchEvent(new CustomEvent("sync-data-loading_slips"));
-      setMessage(`Saved: ${oldValue.toLocaleString()} → ${newValue.toLocaleString()}.${String(slip.invoiceId || "").trim() ? "" : " Download the slip PDF again before invoicing."}`);
+      alert(`Saved loading wastage on slip ${slip.slipNo}: ${oldValue.toLocaleString()} → ${newValue.toLocaleString()}.${String(slip.invoiceId || "").trim() ? "" : " Download the slip PDF again before invoicing."}`);
+      onClose();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Save failed.");
     } finally {
