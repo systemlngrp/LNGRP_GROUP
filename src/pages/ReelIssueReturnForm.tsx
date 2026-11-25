@@ -147,6 +147,51 @@ export function ReelIssueReturnForm() {
     );
   };
 
+  // Find Reel: search any available reel by our reel no. or supplier reel no.
+  // and add it straight to the issue (its material line is added if needed).
+  const [reelSearch, setReelSearch] = useState("");
+  const reelMaterialIds = useMemo(() => new Set(reelMaterialOptions.map((option) => option.value)), [reelMaterialOptions]);
+  const reelSearchResults = useMemo(() => {
+    const query = reelSearch.trim().toLowerCase();
+    if (query.length < 2) return [];
+    const selected = new Set(Object.values(selectedIssueReels).flat());
+    const results: Array<{ slip: MaterialInPackingSlip; materialName: string }> = [];
+    reelMaterialIds.forEach((materialId) => {
+      getAvailableReelPackingSlips(materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber).forEach((slip) => {
+        if (selected.has(slip.id)) return;
+        const ours = String(slip.ourReelNo || "").toLowerCase();
+        const supplier = String(slip.supplierReelNo || "").toLowerCase();
+        if (ours.includes(query) || supplier.includes(query)) {
+          results.push({ slip, materialName: reelMaterialOptions.find((option) => option.value === materialId)?.label || "" });
+        }
+      });
+    });
+    return results
+      .sort((a, b) => {
+        const exactA = [a.slip.ourReelNo, a.slip.supplierReelNo].some((value) => String(value || "").toLowerCase() === query) ? 0 : 1;
+        const exactB = [b.slip.ourReelNo, b.slip.supplierReelNo].some((value) => String(value || "").toLowerCase() === query) ? 0 : 1;
+        return exactA - exactB || String(a.slip.ourReelNo).localeCompare(String(b.slip.ourReelNo), undefined, { numeric: true });
+      })
+      .slice(0, 20);
+  }, [reelSearch, reelMaterialIds, reelMaterialOptions, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber, selectedIssueReels]);
+
+  const addReelFromSearch = (slip: MaterialInPackingSlip) => {
+    const existingLine = issueLines.find((line) => line.materialId === slip.materialId);
+    const emptyLine = issueLines.find((line) => !line.materialId);
+    const targetLine = existingLine || emptyLine || createEmptyReelLine();
+    if (!existingLine) {
+      setIssueLines((prev) => (prev.some((line) => line.id === targetLine.id)
+        ? prev.map((line) => (line.id === targetLine.id ? { ...line, materialId: slip.materialId } : line))
+        : [...prev, { ...targetLine, materialId: slip.materialId }]));
+    }
+    setSelectedIssueReels((prev) => {
+      const current = new Set(prev[targetLine.id] || []);
+      current.add(slip.id);
+      return { ...prev, [targetLine.id]: Array.from(current) };
+    });
+    setReelSearch("");
+  };
+
   const addIssueLine = () => setIssueLines((prev) => [...prev, createEmptyReelLine()]);
 
   const removeIssueLine = (lineId: string) => {
@@ -385,6 +430,41 @@ export function ReelIssueReturnForm() {
               </button>
             </div>
 
+            <div className="mt-4 rounded-[22px] border border-indigo-200 bg-indigo-50/40 p-4">
+              <label className="text-sm font-bold text-slate-700">Find Reel</label>
+              <input
+                type="text"
+                value={reelSearch}
+                onChange={(event) => setReelSearch(event.target.value)}
+                placeholder="Type our reel no. or supplier reel no."
+                className="mt-1 h-11 w-full rounded-2xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-100"
+              />
+              {reelSearch.trim().length >= 2 ? (
+                reelSearchResults.length === 0 ? (
+                  <div className="mt-2 text-xs font-semibold text-slate-500">No available reel matches "{reelSearch.trim()}".</div>
+                ) : (
+                  <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                    <table className="min-w-full border-collapse text-sm">
+                      <thead className="bg-slate-800 text-white">
+                        <tr>{["Our Reel No.", "Supplier Reel No.", "Material", "Available KG", ""].map((heading) => <th key={heading} className="px-3 py-2 text-left text-[11px] font-black uppercase">{heading}</th>)}</tr>
+                      </thead>
+                      <tbody>
+                        {reelSearchResults.map(({ slip, materialName }) => (
+                          <tr key={slip.id} className="border-t border-slate-200">
+                            <td className="px-3 py-2 font-bold">{slip.ourReelNo}</td>
+                            <td className="px-3 py-2">{slip.supplierReelNo || "-"}</td>
+                            <td className="px-3 py-2 text-xs">{materialName}</td>
+                            <td className="px-3 py-2 font-semibold text-emerald-700">{Number(slip.weightKg || 0).toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right"><button type="button" onClick={() => addReelFromSearch(slip)} className="rounded-xl bg-indigo-600 px-3 py-1 text-xs font-bold text-white hover:bg-indigo-700">Add</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              ) : null}
+            </div>
+
             {issueLines.map((line) => {
               const availableReels = line.materialId ? getIssueAvailableReels(line.materialId, line.id) : [];
               const selectedIds = selectedIssueReels[line.id] || [];
@@ -430,7 +510,7 @@ export function ReelIssueReturnForm() {
       <table className="min-w-full border-collapse">
                             <thead className="sticky top-0 z-30 bg-slate-800 text-white">
                               <tr>
-                                {["Select", "Our Reel No.", "Available Weight KG"].map((heading) => (
+                                {["Select", "Our Reel No.", "Supplier Reel No.", "Available Weight KG"].map((heading) => (
                                   <th key={heading} className="px-4 py-3 text-left text-[11px] font-black uppercase tracking-[0.16em]">
                                     {heading}
                                   </th>
@@ -440,7 +520,7 @@ export function ReelIssueReturnForm() {
                             <tbody>
                               {availableReels.length === 0 ? (
                                 <tr>
-                                  <td colSpan={3} className="px-4 py-8 text-center text-sm font-medium text-slate-500">
+                                  <td colSpan={4} className="px-4 py-8 text-center text-sm font-medium text-slate-500">
                                     No available reels for this material.
                                   </td>
                                 </tr>
@@ -458,6 +538,7 @@ export function ReelIssueReturnForm() {
                                       />
                                     </td>
                                     <td className="border-t border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 align-top">{slip.ourReelNo}</td>
+                                    <td className="border-t border-slate-200 px-4 py-3 text-sm text-slate-700 align-top">{slip.supplierReelNo || "-"}</td>
                                     <td className="border-t border-slate-200 px-4 py-3 text-sm font-semibold text-emerald-700">{availableQty.toFixed(2)}</td>
                                   </tr>
                                 )})
