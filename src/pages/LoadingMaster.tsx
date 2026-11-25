@@ -800,15 +800,16 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
                     {line.isDirect ? (
                       <span className="font-bold text-sky-700">Direct Loading</span>
                     ) : Array.isArray(line.allocations) && line.allocations.length > 0 ? (
-                      <div className="space-y-1">
+                      <div style={{ display: "grid", gridTemplateColumns: "max-content 6.5rem", columnGap: "0.75rem", rowGap: "0.35rem", alignItems: "center", minWidth: "16rem" }}>
                         {line.allocations.map((a, aidx) => (
-                          <div key={aidx} className="flex items-center gap-2">
-                            <span className={a.sourceType === "job" ? "font-bold" : "font-bold text-emerald-800"}>{a.sourceType === "job" ? `Job No: ${a.jobNo}` : (a as any).sourceRef}</span>
+                          <React.Fragment key={aidx}>
+                            <span style={{ whiteSpace: "nowrap" }} className={a.sourceType === "job" ? "font-bold" : "font-bold text-emerald-800"}>{a.sourceType === "job" ? `Job No: ${a.jobNo}` : (a as any).sourceRef}</span>
                             {isEditing ? (
                               <input
                                 type="number"
                                 min={0}
-                                value={Number(a.qty || 0)}
+                                placeholder="0"
+                                value={a.sourceType === "opening_stock" && !Number(a.qty || 0) ? "" : Number(a.qty || 0)}
                                 onChange={(e) => {
                                   const rawQty = e.target.value === "" ? 0 : Math.max(0, Number(e.target.value));
                                   const nextQty = rawQty;
@@ -821,13 +822,19 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
                                     return { ...prev, [slip.id]: nextSlip };
                                   });
                                 }}
-                                className="w-20 rounded border border-black bg-yellow-200 px-2 py-1 text-xs text-right font-bold"
+                                className={`w-full rounded border px-2 py-1 text-xs text-right font-bold ${a.sourceType === "opening_stock" ? "border-emerald-600 bg-emerald-50" : "border-black bg-yellow-200"}`}
                               />
                             ) : (
                               <span className="text-slate-700">Load Qty: {Number(a.qty || 0).toLocaleString()}</span>
                             )}
-                          </div>
+                          </React.Fragment>
                         ))}
+                        {isEditing ? (
+                          <>
+                            <span className={`border-t border-black pt-1 font-black ${balanced ? "text-slate-700" : "text-red-700"}`}>Total (Loaded {loadedValue.toLocaleString()})</span>
+                            <span className={`border-t border-black pt-1 text-right font-black ${balanced ? "text-slate-700" : "text-red-700"}`}>{allocTotal.toLocaleString()}</span>
+                          </>
+                        ) : null}
                       </div>
                     ) : (
                       <span className="text-slate-500">-</span>
