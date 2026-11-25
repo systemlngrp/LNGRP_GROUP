@@ -359,18 +359,10 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
     if (!isDirectLoadingSlip(draft)) {
       draft.lines = (draft.lines || []).map((line) => {
         if ((line.allocations || []).some((a) => a.sourceType === "opening_stock")) return line;
-        const context = resolveLoadingSlipLineContext({ slip: draft, line, plans, orders, companies, resolveOrderItem });
-        if (context.isDirect) return line;
-        const sourceRef = stockSourceRef(context.itemSource);
-        const firmId = String((context.order as any)?.firmId || "");
-        const firm = firms.find((f) => f.id === firmId);
-        return {
-          ...line,
-          allocations: [
-            ...(line.allocations || []),
-            { sourceType: "opening_stock", sourceRef, qty: 0, ...(sourceRef === "FG Stock" && firmId ? { sourceFirmId: firmId, sourceFirmName: firm?.firmName } : {}) },
-          ],
-        };
+        // Plans may still be loading here, so only the line itself decides; the firm is filled on save.
+        if (!String(line.dispatchPlanId || "").trim()) return line;
+        const sourceRef = stockSourceRef(line.itemSource);
+        return { ...line, allocations: [...(line.allocations || []), { sourceType: "opening_stock", sourceRef, qty: 0 }] };
       });
     }
     setDraftBySlipId((prev) => ({ ...prev, [slip.id]: draft }));
@@ -510,10 +502,21 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
     const syncedDraft: LoadingSlip = {
       ...draft,
       // An FG Stock box left at 0 is not saved as an allocation.
-      lines: draft.lines.map((l) => ({
-        ...l,
-        allocations: (l.allocations || []).filter((a) => a.sourceType !== "opening_stock" || Number(a.qty || 0) > 0),
-      })),
+      lines: draft.lines.map((l) => {
+        const context = resolveLoadingSlipLineContext({ slip: draft, line: l, plans, orders, companies, resolveOrderItem });
+        const sourceRef = stockSourceRef(context.itemSource);
+        const firmId = String((context.order as any)?.firmId || "");
+        const firm = firms.find((f) => f.id === firmId);
+        return {
+          ...l,
+          allocations: (l.allocations || [])
+            .filter((a) => a.sourceType !== "opening_stock" || Number(a.qty || 0) > 0)
+            .map((a) => {
+              if (a.sourceType !== "opening_stock" || a.sourceFirmId) return a;
+              return { ...a, sourceRef, ...(sourceRef === "FG Stock" && firmId ? { sourceFirmId: firmId, sourceFirmName: firm?.firmName } : {}) };
+            }),
+        };
+      }),
       phpDetails,
       plateDetails,
       jobWastage: (draft.jobWastage || []).filter((row) => Number(row.qty || 0) > 0),
