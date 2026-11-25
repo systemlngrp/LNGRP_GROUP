@@ -33,6 +33,7 @@ type Row = {
   firmName: string;
   companyName: string;
   itemName: string;
+  erp: string;
   plannedQty: number;
   corrugation: number;
   printed: number;
@@ -112,11 +113,14 @@ export function JobWiseTracker() {
     const companyById = new Map(companies.map((row) => [String(row.id), row]));
     const firmById = new Map(firms.map((row) => [String(row.id), row]));
     const itemNameByKey = new Map<string, string>();
+    const itemErpByKey = new Map<string, string>();
     npdItems.forEach((item: any) => {
       const name = String(item.itemName || item.name || "").trim();
+      const erp = String(item.erp || "").trim();
       [item.id, item.npdId, item.erp].forEach((value) => {
         const key = String(value ?? "").trim().toLowerCase();
         if (key && name) itemNameByKey.set(key, name);
+        if (key && erp) itemErpByKey.set(key, erp);
       });
     });
 
@@ -141,6 +145,7 @@ export function JobWiseTracker() {
           firmName: String(firmById.get(firmId)?.firmName || job.firmName || ""),
           companyName: String(companyById.get(String(order?.companyId || ""))?.name || ""),
           itemName: itemNameByKey.get(itemKey) || String((job as any).itemName || ""),
+          erp: itemErpByKey.get(itemKey) || String((job as any).erp || (job as any).erpCode || ""),
           plannedQty: Number(job.qty) || 0,
           corrugation: corrugation.get(jobId) || 0,
           printed: printedQty,
@@ -168,7 +173,7 @@ export function JobWiseTracker() {
       .filter((row) => searching || !toDate || row.date <= toDate)
       .filter((row) => !firmFilter || row.firmId === firmFilter)
       .filter((row) => searching || view === "all" || (view === "negative" ? row.balance < 0 : view === "overInvoiced" ? row.printed - row.invoiced < 0 : row.balance !== 0))
-      .filter((row) => matchesTableSearch([row.jobNo, row.date, formatDate(row.date), row.companyName, row.itemName, row.firmName, row.status, row.plannedQty], words))
+      .filter((row) => matchesTableSearch([row.jobNo, row.date, formatDate(row.date), row.companyName, row.itemName, row.erp, row.firmName, row.status, row.plannedQty], words))
       .sort((a, b) => b.jobNo.localeCompare(a.jobNo, undefined, { numeric: true, sensitivity: "base" }));
   }, [rows, searchTerm, fromDate, toDate, firmFilter, view]);
   const loadCounts = useMemo(() => ({
@@ -203,6 +208,7 @@ export function JobWiseTracker() {
       "Job Date": row.date,
       Company: row.companyName,
       Item: row.itemName,
+      ERP: row.erp,
       "Planned Qty": row.plannedQty,
       Status: row.status,
       Firm: row.firmName,
@@ -233,7 +239,7 @@ export function JobWiseTracker() {
       </div>
 
       <div className="grid grid-cols-2 gap-2 rounded border border-black bg-white p-3 md:grid-cols-6">
-        <input type="text" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search job no., company, item… (searches all dates)" className="col-span-2 h-9 rounded border-2 border-black px-3 text-sm" />
+        <input type="text" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search job no., company, item, ERP… (searches all dates)" className="col-span-2 h-9 rounded border-2 border-black px-3 text-sm" />
         <select value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)} className="h-9 rounded border-2 border-black px-2 text-sm">
           <option value="">All firms</option>
           {firmOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
@@ -262,6 +268,7 @@ export function JobWiseTracker() {
               <th className={`${TH} text-left`}>Job Date</th>
               <th className={`${TH} text-left`}>Company</th>
               <th className={`${TH} text-left`}>Item</th>
+              <th className={`${TH} text-left`}>ERP</th>
               <th className={`${TH} text-right`}>Planned Qty</th>
               <th className={`${TH} text-right`}>Corrugation</th>
               <th className={`${TH} text-right`}>Printed</th>
@@ -274,7 +281,7 @@ export function JobWiseTracker() {
           </thead>
           <tbody>
             {visibleRows.length === 0 ? (
-              <tr><td colSpan={12} className="p-6 text-center text-sm italic text-slate-500">No jobs found.</td></tr>
+              <tr><td colSpan={13} className="p-6 text-center text-sm italic text-slate-500">No jobs found.</td></tr>
             ) : visibleRows.map((row) => (
               <tr key={row.jobId} className={row.balance < 0 ? "bg-red-50" : "hover:bg-slate-50"}>
                 <td className={`${TD} font-bold`}>
@@ -284,6 +291,7 @@ export function JobWiseTracker() {
                 <td className={`${TD} whitespace-nowrap`}>{formatDate(row.date)}</td>
                 <td className={TD}>{row.companyName || "-"}</td>
                 <td className={TD}>{row.itemName || "-"}</td>
+                <td className={`${TD} whitespace-nowrap`}>{row.erp || "-"}</td>
                 <td className={`${TD} text-right`}>{num(row.plannedQty)}</td>
                 <td className={`${TD} text-right whitespace-nowrap`}>{num(row.corrugation)}{isAdmin ? <button type="button" onClick={() => setCorrection({ row, field: "Corrugation" })} className="ml-1 inline-flex text-slate-400 hover:text-indigo-700" title="Correct (Admin)"><Pencil size={12} /></button> : null}</td>
                 <td className={`${TD} text-right whitespace-nowrap`}>
@@ -301,7 +309,7 @@ export function JobWiseTracker() {
           {visibleRows.length > 0 ? (
             <tfoot>
               <tr className="bg-slate-100 font-black">
-                <td className={TD} colSpan={4}>Total ({visibleRows.length} jobs)</td>
+                <td className={TD} colSpan={5}>Total ({visibleRows.length} jobs)</td>
                 <td className={`${TD} text-right`}>{num(totals.plannedQty)}</td>
                 <td className={`${TD} text-right`}>{num(totals.corrugation)}</td>
                 <td className={`${TD} text-right`}>{num(totals.printed)}</td>
