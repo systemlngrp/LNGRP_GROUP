@@ -316,6 +316,11 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
     }
   };
 
+  const stockSourceRef = (source?: string): "FG Stock" | "PHP Stock" | "PLATE Stock" | "MATERIAL Stock" => {
+    const value = String(source || "FG").toUpperCase();
+    return value === "PHP" ? "PHP Stock" : value === "PLATE" ? "PLATE Stock" : value === "MATERIAL" ? "MATERIAL Stock" : "FG Stock";
+  };
+
   const getSlipLines = (slip: LoadingSlip) =>
     slip.lines.map((line) => {
       const context = resolveLoadingSlipLineContext({ slip, line, plans, orders, companies, resolveOrderItem });
@@ -349,7 +354,26 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
       return;
     }
     setEditingSlipIds((prev) => new Set(prev).add(slip.id));
-    setDraftBySlipId((prev) => ({ ...prev, [slip.id]: JSON.parse(JSON.stringify(slip)) }));
+    const draft: LoadingSlip = JSON.parse(JSON.stringify(slip));
+    // Give every dispatch-plan line an FG Stock box (0 = not used; dropped on save).
+    if (!isDirectLoadingSlip(draft)) {
+      draft.lines = (draft.lines || []).map((line) => {
+        if ((line.allocations || []).some((a) => a.sourceType === "opening_stock")) return line;
+        const context = resolveLoadingSlipLineContext({ slip: draft, line, plans, orders, companies, resolveOrderItem });
+        if (context.isDirect) return line;
+        const sourceRef = stockSourceRef(context.itemSource);
+        const firmId = String((context.order as any)?.firmId || "");
+        const firm = firms.find((f) => f.id === firmId);
+        return {
+          ...line,
+          allocations: [
+            ...(line.allocations || []),
+            { sourceType: "opening_stock", sourceRef, qty: 0, ...(sourceRef === "FG Stock" && firmId ? { sourceFirmId: firmId, sourceFirmName: firm?.firmName } : {}) },
+          ],
+        };
+      });
+    }
+    setDraftBySlipId((prev) => ({ ...prev, [slip.id]: draft }));
     setExpandedSlipIds((prev) => new Set(prev).add(slip.id));
   };
 
@@ -485,6 +509,11 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
     });
     const syncedDraft: LoadingSlip = {
       ...draft,
+      // An FG Stock box left at 0 is not saved as an allocation.
+      lines: draft.lines.map((l) => ({
+        ...l,
+        allocations: (l.allocations || []).filter((a) => a.sourceType !== "opening_stock" || Number(a.qty || 0) > 0),
+      })),
       phpDetails,
       plateDetails,
       jobWastage: (draft.jobWastage || []).filter((row) => Number(row.qty || 0) > 0),
@@ -771,7 +800,7 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
                       <div className="space-y-1">
                         {line.allocations.map((a, aidx) => (
                           <div key={aidx} className="flex items-center gap-2">
-                            <span className="font-bold">{a.sourceType === "job" ? `Job No: ${a.jobNo}` : (a as any).sourceRef}</span>
+                            <span className={a.sourceType === "job" ? "font-bold" : "font-bold text-emerald-800"}>{a.sourceType === "job" ? `Job No: ${a.jobNo}` : (a as any).sourceRef}</span>
                             {isEditing ? (
                               <input
                                 type="number"
