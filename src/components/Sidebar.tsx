@@ -305,6 +305,7 @@ const physicalStockItems: NavItem[] = [
 const reportStockItems: NavItem[] = [
   { name: "FG Stock", href: "/reports/fg-stock", icon: BarChart3 },
   { name: "Job Wise Tracker", href: "/reports/job-wise-tracker", icon: BarChart3 },
+  { name: "Job Correction Log", href: "/reports/job-correction-log", icon: BarChart3 },
   { name: "ERP Wise Reel Stock", href: "/reports/erp-wise-reel-stock", icon: BarChart3 },
   { name: "Reel Stock", href: "/reports/reelwise-stock", icon: BarChart3 },
   { name: "Jobwise Reel Consumption", href: "/reports/jobwise-reel-consumption", icon: BarChart3 },

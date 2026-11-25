@@ -93,7 +93,7 @@ function jobFiguresSignature(slip: LoadingSlip) {
     .join("|");
 }
 
-export function LoadingMaster({ focusSlipId, onFocusDone }: { focusSlipId?: string; onFocusDone?: () => void } = {}) {
+export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focusSlipId?: string; onFocusDone?: () => void; onFocusSaved?: (before: LoadingSlip, after: LoadingSlip) => void } = {}) {
   // Jobs with qty still at a job worker: their loaded qty may not be raised here.
   const atJobWorkerByJobId = useQtyAtJobWorker();
   const phpPlateReceipts = usePhpPlateReceipts();
@@ -611,6 +611,7 @@ export function LoadingMaster({ focusSlipId, onFocusDone }: { focusSlipId?: stri
 
     cancelEdit(slipId);
     setFocusSaved(true);
+    onFocusSaved?.(original, syncedDraft);
   };
 
   const cancelSlip = async (slip: LoadingSlip) => {

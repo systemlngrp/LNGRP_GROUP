@@ -1404,6 +1404,56 @@ function readNpdSort(query) {
 // and loading slips not yet invoiced. The client adds the "invoiced, not linked
 // to a job" line from the report's own Invoiced figure, so the rows always sum
 // to the Balance shown.
+// Job Wise Tracker corrections: every Admin correction of a job's corrugation,
+// printed, loaded or loading wastage is logged with old/new value and reason.
+app.get("/api/job-corrections", requireAuth, async (_req, res) => {
+    const db = await getPool();
+    if (!db)
+        return res.status(500).json({ error: "DB connection not available" });
+    try {
+        const [rows] = await db.query("SELECT * FROM `job_corrections` ORDER BY correctedAt DESC LIMIT 5000");
+        res.json(rows);
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to load job corrections." });
+    }
+});
+app.post("/api/job-corrections", requireAuth, async (req, res) => {
+    const db = await getPool();
+    if (!db)
+        return res.status(500).json({ error: "DB connection not available" });
+    const user = await getRequestUser(req);
+    if (user?.role !== "Admin")
+        return res.status(403).json({ error: "Only an Admin can correct job figures." });
+    const body = req.body || {};
+    const reason = String(body.reason || "").trim();
+    const field = String(body.field || "").trim();
+    if (reason.length < 5)
+        return res.status(400).json({ error: "A reason of at least 5 characters is required." });
+    if (!["Corrugation", "Printed", "Loaded", "Loading Wastage"].includes(field))
+        return res.status(400).json({ error: "Unknown field." });
+    try {
+        const row = {
+            id: crypto.randomUUID(),
+            jobId: String(body.jobId || ""),
+            jobNo: String(body.jobNo || ""),
+            field,
+            entryRef: String(body.entryRef || "").slice(0, 255),
+            entryId: String(body.entryId || ""),
+            oldValue: Number(body.oldValue) || 0,
+            newValue: Number(body.newValue) || 0,
+            reason,
+            correctedBy: String(user?.name || user?.email || "Admin"),
+            correctedAt: new Date().toISOString(),
+        };
+        await db.query("INSERT INTO `job_corrections` SET ?", [row]);
+        res.json(row);
+    }
+    catch (error) {
+        console.error("Job correction log failed:", error);
+        res.status(500).json({ error: "Failed to save the correction log." });
+    }
+});
 app.get("/api/fg-stock-breakup/:id", requireAuth, async (req, res) => {
     const db = await getPool();
     if (!db)
@@ -11367,6 +11417,26 @@ async function initDb(retries = 5) {
             }
             catch (err) {
                 console.warn("[DB] Could not ensure companies schema columns:", err.message);
+            }
+            try {
+                await db.query(`CREATE TABLE IF NOT EXISTS \`job_corrections\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`jobId\` VARCHAR(64),
+          \`jobNo\` VARCHAR(100),
+          \`field\` VARCHAR(40),
+          \`entryRef\` VARCHAR(255),
+          \`entryId\` VARCHAR(64),
+          \`oldValue\` DECIMAL(14,2),
+          \`newValue\` DECIMAL(14,2),
+          \`reason\` TEXT,
+          \`correctedBy\` VARCHAR(255),
+          \`correctedAt\` VARCHAR(50),
+          INDEX \`idx_job_corrections_jobId\` (\`jobId\`),
+          INDEX \`idx_job_corrections_correctedAt\` (\`correctedAt\`)
+        )`);
+            }
+            catch (err) {
+                console.warn("[DB] Could not ensure job_corrections table:", err.message);
             }
             try {
                 // Own step: a failure above must not leave the truck log table missing.

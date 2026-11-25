@@ -176,6 +176,7 @@ const OtherConsumablesInventoryReport = lazy(() => import("./pages/OtherConsumab
 const ErpWiseReelStockReport = lazy(() => import("./pages/ErpWiseReelStockReport").then((module) => ({ default: module.ErpWiseReelStockReport })));
 const FGStockReport = lazy(() => import("./pages/FGStockReport").then((module) => ({ default: module.FGStockReport })));
 const JobWiseTracker = lazy(() => import("./pages/JobWiseTracker").then((module) => ({ default: module.JobWiseTracker })));
+const JobCorrectionLog = lazy(() => import("./pages/JobCorrectionLog").then((module) => ({ default: module.JobCorrectionLog })));
 const ReelwiseStockReport = lazy(() => import("./pages/ReelwiseStockReport").then((module) => ({ default: module.ReelwiseStockReport })));
 const JobwiseReelConsumptionReport = lazy(() => import("./pages/JobwiseReelConsumptionReport").then((module) => ({ default: module.JobwiseReelConsumptionReport })));
 const JobsInProgressReport = lazy(() => import("./pages/JobsInProgressReport").then((module) => ({ default: module.JobsInProgressReport })));
@@ -493,6 +494,7 @@ export default function App() {
           <Route path="reports/erp-wise-reel-stock" element={<ErpWiseReelStockReport />} />
           <Route path="reports/fg-stock" element={<FGStockReport />} />
           <Route path="reports/job-wise-tracker" element={<JobWiseTracker />} />
+          <Route path="reports/job-correction-log" element={<JobCorrectionLog />} />
           <Route path="loading/job-wise-tracker" element={<JobWiseTracker />} />
           <Route path="reports/reelwise-stock" element={<ReelwiseStockReport />} />
           <Route path="reports/reel-stock-taker" element={<Navigate to="/physical-stock/entry" replace />} />
