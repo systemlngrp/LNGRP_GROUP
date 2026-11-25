@@ -274,6 +274,7 @@ const loadingItems: NavItem[] = [
   { name: "Direct Loading Slip", href: "/loading/direct", icon: FilePlus },
   { name: "Pending Loading", href: "/loading/pending", icon: Truck, countKey: "/loading/pending" },
   { name: "Pending Loading Wastage", href: "/loading/pending-loading-wastage", icon: ClipboardList, countKey: "/loading/pending-loading-wastage" },
+  { name: "Job Wise Tracker", href: "/loading/job-wise-tracker", icon: BarChart3 },
   { name: "Loading Master", href: "/loading/master", icon: FileText },
 ];
 
@@ -303,6 +304,7 @@ const physicalStockItems: NavItem[] = [
 ];
 const reportStockItems: NavItem[] = [
   { name: "FG Stock", href: "/reports/fg-stock", icon: BarChart3 },
+  { name: "Job Wise Tracker", href: "/reports/job-wise-tracker", icon: BarChart3 },
   { name: "ERP Wise Reel Stock", href: "/reports/erp-wise-reel-stock", icon: BarChart3 },
   { name: "Reel Stock", href: "/reports/reelwise-stock", icon: BarChart3 },
   { name: "Jobwise Reel Consumption", href: "/reports/jobwise-reel-consumption", icon: BarChart3 },
