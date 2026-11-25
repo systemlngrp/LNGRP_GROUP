@@ -31,7 +31,7 @@ export function parseJobConfirmations(slip: Pick<LoadingSlip, "jobConfirmations"
 
 /** FG jobs loaded on the slip: job id, job no and qty loaded on this slip. */
 export function slipFgJobs(slip: LoadingSlip) {
-  const byJob = new Map<string, { jobId: string; jobNo: string; loadedQty: number }>();
+  const byJob = new Map<string, { jobId: string; jobNo: string; loadedQty: number; itemName: string; erpCode: string }>();
   (slip.lines || []).forEach((line) => {
     if (String(line.itemSource || "FG").trim().toUpperCase() !== "FG") return;
     (line.allocations || []).forEach((allocation: any) => {
@@ -39,7 +39,13 @@ export function slipFgJobs(slip: LoadingSlip) {
       const jobId = String(allocation.jobId || "").trim();
       if (!jobId) return;
       const qty = Number(allocation.qty || 0);
-      const current = byJob.get(jobId) || { jobId, jobNo: String(allocation.jobNo || ""), loadedQty: 0 };
+      const current = byJob.get(jobId) || {
+        jobId,
+        jobNo: String(allocation.jobNo || ""),
+        loadedQty: 0,
+        itemName: String((line as any).itemName || ""),
+        erpCode: String((line as any).erpCode || (line as any).masterErp || (line as any).erp || ""),
+      };
       current.loadedQty += Number.isFinite(qty) ? qty : 0;
       byJob.set(jobId, current);
     });
@@ -123,6 +129,8 @@ export type PendingLoadingWastageRow = {
   date: string;
   jobId: string;
   jobNo: string;
+  itemName: string;
+  erpCode: string;
   loadedOnSlip: number;
   companyName: string;
   firmId: string;
@@ -166,6 +174,8 @@ export function computePendingLoadingWastageRows(
           date: String(slip.date || "").slice(0, 10),
           jobId: job.jobId,
           jobNo: job.jobNo,
+          itemName: job.itemName,
+          erpCode: job.erpCode || String(order?.erpCode || ""),
           loadedOnSlip: job.loadedQty,
           companyName,
           firmId,

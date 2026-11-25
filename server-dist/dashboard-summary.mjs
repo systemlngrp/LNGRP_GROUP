@@ -1738,7 +1738,13 @@ function slipFgJobs(slip) {
       const jobId = String(allocation.jobId || "").trim();
       if (!jobId) return;
       const qty = Number(allocation.qty || 0);
-      const current = byJob.get(jobId) || { jobId, jobNo: String(allocation.jobNo || ""), loadedQty: 0 };
+      const current = byJob.get(jobId) || {
+        jobId,
+        jobNo: String(allocation.jobNo || ""),
+        loadedQty: 0,
+        itemName: String(line.itemName || ""),
+        erpCode: String(line.erpCode || line.masterErp || line.erp || "")
+      };
       current.loadedQty += Number.isFinite(qty) ? qty : 0;
       byJob.set(jobId, current);
     });

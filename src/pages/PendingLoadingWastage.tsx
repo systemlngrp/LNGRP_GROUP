@@ -87,7 +87,7 @@ export function PendingLoadingWastage() {
       if (activeFirmId && row.firmId !== activeFirmId) return false;
       if (statusFilter === "ready" && !row.printingComplete) return false;
       if (statusFilter === "waiting" && row.printingComplete) return false;
-      return matchesTableSearch([row.slipNo, formatDate(row.date), row.companyName, row.firmName, row.jobNo], words);
+      return matchesTableSearch([row.slipNo, formatDate(row.date), row.companyName, row.firmName, row.jobNo, row.erpCode, row.itemName], words);
     });
   }, [activeFirmId, rows, searchTerm, statusFilter]);
 
@@ -144,7 +144,7 @@ export function PendingLoadingWastage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3 rounded border-2 border-black bg-white p-3">
-        <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search slip, company, job…" className="min-w-[260px] flex-1 rounded border-2 border-black px-3 py-2 text-sm" />
+        <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search slip, company, job, ERP, item…" className="min-w-[260px] flex-1 rounded border-2 border-black px-3 py-2 text-sm" />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className="rounded border-2 border-black px-3 py-2 text-sm">
           <option value="">All ({firmRows.length})</option>
           <option value="ready">Ready to confirm ({readyCount})</option>
@@ -173,6 +173,8 @@ export function PendingLoadingWastage() {
               <th className={`${TH} text-right`}>Days</th>
               <th className={`${TH} text-left`}>Company / Firm</th>
               <th className={`${TH} text-left`}>Job No</th>
+              <th className={`${TH} text-left`}>ERP</th>
+              <th className={`${TH} text-left`}>Item Name</th>
               <th className={`${TH} text-right`}>Loaded (slip)</th>
               <th className={`${TH} text-right`}>Printed</th>
               <th className={`${TH} text-right`}>Loaded so far</th>
@@ -185,7 +187,7 @@ export function PendingLoadingWastage() {
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
-              <tr><td colSpan={12} className="p-8 text-center text-sm font-semibold text-slate-500">{failed ? "Could not load the list from the server. Refresh the page to try again." : loading && !result ? "Loading…" : "Nothing pending."}</td></tr>
+              <tr><td colSpan={14} className="p-8 text-center text-sm font-semibold text-slate-500">{failed ? "Could not load the list from the server. Refresh the page to try again." : loading && !result ? "Loading…" : "Nothing pending."}</td></tr>
             ) : filteredRows.map((row) => {
               const raw = draftOf(row);
               const wastage = raw.trim() === "" ? 0 : Number(raw) || 0;
@@ -198,6 +200,8 @@ export function PendingLoadingWastage() {
                   <td className={`${TD} text-right font-bold ${row.daysWaiting > 3 ? "text-red-700" : ""}`}>{row.daysWaiting}</td>
                   <td className={`${TD} max-w-[220px]`}><div className="font-semibold leading-tight">{row.companyName || "-"}</div><div className="text-[11px] text-slate-600">{row.firmName}</div></td>
                   <td className={`${TD} whitespace-nowrap font-bold`}>{row.jobNo}</td>
+                  <td className={`${TD} whitespace-nowrap`}>{row.erpCode || "-"}</td>
+                  <td className={`${TD} min-w-[200px] max-w-[260px] leading-tight`}>{row.itemName || "-"}</td>
                   <td className={`${TD} text-right`}>{num(row.loadedOnSlip)}</td>
                   <td className={`${TD} text-right whitespace-nowrap`}>{num(row.printed)}<div className={`text-[10px] font-black ${row.printingComplete ? "text-indigo-700" : "text-amber-700"}`}>{row.printingComplete ? "Complete" : "In Progress"}</div></td>
                   <td className={`${TD} text-right`}>{num(row.loadedAll)}</td>
@@ -241,6 +245,7 @@ export function PendingLoadingWastage() {
               <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                 <span className="text-slate-600">Slip</span><span className="font-bold">{dialogRow.slipNo}</span>
                 <span className="text-slate-600">Job</span><span className="font-bold">{dialogRow.jobNo}</span>
+                <span className="text-slate-600">Item</span><span className="font-bold">{dialogRow.erpCode ? `${dialogRow.erpCode} · ` : ""}{dialogRow.itemName || "-"}</span>
                 <span className="text-slate-600">Company</span><span className="font-bold">{dialogRow.companyName || "-"}</span>
                 <span className="text-slate-600">Loading wastage</span><span className="font-bold">{num(wastage)}</span>
                 <span className="text-slate-600">Pending FG</span><span className="font-black">{num(pendingFg)}</span>
