@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { MultiSelect } from "../components/MultiSelect";
 import { Download, FileText, Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
@@ -33,7 +34,7 @@ export function DispatchPlanByDate() {
   const [toDate, setToDate] = useState(todayKey);
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
-  const [companyFilter, setCompanyFilter] = useState("");
+  const [companyFilter, setCompanyFilter] = useState<string[]>([]);
   const [itemFilter, setItemFilter] = useState("");
   const [plans, , plansLoading] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
@@ -66,7 +67,7 @@ export function DispatchPlanByDate() {
     const words = searchWords(searchTerm);
     return dayRows.filter((row: any) =>
       (!firmFilter || row.firmId === firmFilter) &&
-      (!companyFilter || row.companyName === companyFilter) &&
+      (!companyFilter.length || companyFilter.includes(row.companyName)) &&
       (!itemFilter || row.itemKey === itemFilter) &&
       matchesTableSearch(rowSearchText([formatDate(row.planDate), row.plan.planNo, row.firmName, row.companyName, row.orderNo, row.itemName, row.planned, row.invoiced, row.cancelled, row.pending]), words)
     );
@@ -125,7 +126,7 @@ export function DispatchPlanByDate() {
   const LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
   const TH = "border border-black px-3 py-2 text-xs font-bold uppercase text-black";
   const TD = "border border-black px-3 py-2 text-xs text-black";
-  const hasFilters = Boolean(searchTerm.trim() || firmFilter || companyFilter || itemFilter);
+  const hasFilters = Boolean(searchTerm.trim() || firmFilter || companyFilter.length || itemFilter);
 
   return (
     <div className="space-y-3">
@@ -172,12 +173,12 @@ export function DispatchPlanByDate() {
         </div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
           <div className="min-w-0"><span className={LABEL}>Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={options.firms} placeholder="All" /></div>
-          <div className="min-w-0"><span className={LABEL}>Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={options.companies} placeholder="All" /></div>
+          <div className="min-w-0"><span className={LABEL}>Company</span><MultiSelect value={companyFilter} onChange={setCompanyFilter} options={options.companies} placeholder="All" /></div>
           <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={options.items} placeholder="All" /></div>
         </div>
         {hasFilters ? (
           <div className="flex justify-end">
-            <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setCompanyFilter(""); setItemFilter(""); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+            <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setCompanyFilter([]); setItemFilter(""); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
           </div>
         ) : null}
       </div>
