@@ -492,6 +492,12 @@ export const NAVIGATION: NavGroup[] = [
       { name: "Settings", href: "/masters/settings", icon: Database },
     ],
   },
+  {
+    // Placeholder section: screens to be added later.
+    section: "Task Tracker",
+    color: "bg-slate-700",
+    items: [{ name: "Coming soon", href: "/task-tracker", icon: ClipboardList, disabled: true }],
+  },
 ];
 const NAVIGATION_FOR_STANDARD_USERS: NavGroup[] = NAVIGATION;
 
