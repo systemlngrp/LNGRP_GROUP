@@ -160,12 +160,15 @@ export function JobWiseTracker() {
 
   const baseRows = useMemo(() => {
     const words = searchWords(searchTerm);
+    // While searching, every job is searched (the date range and the balance
+    // view do not hide a job you typed); firm and Loaded filters still apply.
+    const searching = words.length > 0;
     return rows
-      .filter((row) => !fromDate || row.date >= fromDate)
-      .filter((row) => !toDate || row.date <= toDate)
+      .filter((row) => searching || !fromDate || row.date >= fromDate)
+      .filter((row) => searching || !toDate || row.date <= toDate)
       .filter((row) => !firmFilter || row.firmId === firmFilter)
-      .filter((row) => view === "all" || (view === "negative" ? row.balance < 0 : view === "overInvoiced" ? row.printed - row.invoiced < 0 : row.balance !== 0))
-      .filter((row) => matchesTableSearch([row.jobNo, row.companyName, row.itemName, row.firmName, row.status].join(" "), words))
+      .filter((row) => searching || view === "all" || (view === "negative" ? row.balance < 0 : view === "overInvoiced" ? row.printed - row.invoiced < 0 : row.balance !== 0))
+      .filter((row) => matchesTableSearch([row.jobNo, row.date, formatDate(row.date), row.companyName, row.itemName, row.firmName, row.status, row.plannedQty], words))
       .sort((a, b) => b.jobNo.localeCompare(a.jobNo, undefined, { numeric: true, sensitivity: "base" }));
   }, [rows, searchTerm, fromDate, toDate, firmFilter, view]);
   const loadCounts = useMemo(() => ({
@@ -230,7 +233,7 @@ export function JobWiseTracker() {
       </div>
 
       <div className="grid grid-cols-2 gap-2 rounded border border-black bg-white p-3 md:grid-cols-6">
-        <input type="text" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search job, company, item…" className="col-span-2 h-9 rounded border-2 border-black px-3 text-sm" />
+        <input type="text" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search job no., company, item… (searches all dates)" className="col-span-2 h-9 rounded border-2 border-black px-3 text-sm" />
         <select value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)} className="h-9 rounded border-2 border-black px-2 text-sm">
           <option value="">All firms</option>
           {firmOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}

@@ -49,7 +49,7 @@ export function JobCorrectionLog() {
     const words = searchWords(searchTerm);
     return rows
       .filter((row) => !fieldFilter || row.field === fieldFilter)
-      .filter((row) => matchesTableSearch([row.jobNo, row.field, row.entryRef, row.reason, row.correctedBy].join(" "), words));
+      .filter((row) => matchesTableSearch([row.jobNo, row.field, row.entryRef, row.reason, row.correctedBy], words));
   }, [rows, searchTerm, fieldFilter]);
 
   const exportExcel = () => {
