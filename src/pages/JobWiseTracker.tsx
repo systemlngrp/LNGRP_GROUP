@@ -64,7 +64,7 @@ export function JobWiseTracker() {
   const [firmFilter, setFirmFilter] = useState("");
   const [fromDate, setFromDate] = useState(FIRST_DATE);
   const [toDate, setToDate] = useState("");
-  const [view, setView] = useState<"open" | "negative" | "all">("open");
+  const [view, setView] = useState<"open" | "negative" | "overInvoiced" | "all">("open");
   const [loadFilter, setLoadFilter] = useState<"" | "loaded" | "notLoaded">("");
   const { user } = useAuth();
   const isAdmin = user?.role === "Admin";
@@ -164,7 +164,7 @@ export function JobWiseTracker() {
       .filter((row) => !fromDate || row.date >= fromDate)
       .filter((row) => !toDate || row.date <= toDate)
       .filter((row) => !firmFilter || row.firmId === firmFilter)
-      .filter((row) => view === "all" || (view === "negative" ? row.balance < 0 : row.balance !== 0))
+      .filter((row) => view === "all" || (view === "negative" ? row.balance < 0 : view === "overInvoiced" ? row.printed - row.invoiced < 0 : row.balance !== 0))
       .filter((row) => matchesTableSearch([row.jobNo, row.companyName, row.itemName, row.firmName, row.status].join(" "), words))
       .sort((a, b) => b.jobNo.localeCompare(a.jobNo, undefined, { numeric: true, sensitivity: "base" }));
   }, [rows, searchTerm, fromDate, toDate, firmFilter, view]);
@@ -210,6 +210,7 @@ export function JobWiseTracker() {
       Invoiced: row.invoiced,
       "Loading Wastage": row.loadingWastage,
       Balance: row.balance,
+      "Printed - Invoiced": row.printed - row.invoiced,
     })));
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, sheet, "Job Wise Tracker");
@@ -221,7 +222,7 @@ export function JobWiseTracker() {
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black pb-3">
         <div>
           <h2 className="text-xl font-bold uppercase tracking-tight text-black">Job Wise Tracker</h2>
-          <p className="text-xs text-slate-600">Balance = Printed − Loaded − Loading Wastage. Red = more loaded than printed.</p>
+          <p className="text-xs text-slate-600">Balance = Printed − Loaded − Loading Wastage (red = more loaded than printed). Printed − Invoiced: red = billed more than printed.</p>
         </div>
         <button type="button" onClick={exportExcel} className="flex items-center gap-2 rounded border-2 border-black bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-100">
           <Download size={14} /> Excel
@@ -237,6 +238,7 @@ export function JobWiseTracker() {
         <select value={view} onChange={(event) => setView(event.target.value as any)} className="h-9 rounded border-2 border-black px-2 text-sm">
           <option value="open">Balance not 0</option>
           <option value="negative">Negative balance only</option>
+          <option value="overInvoiced">Invoiced more than printed</option>
           <option value="all">All jobs</option>
         </select>
         <label className="flex items-center gap-1 text-xs font-bold">From<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="h-9 w-full rounded border-2 border-black px-2 text-sm" /></label>
@@ -264,11 +266,12 @@ export function JobWiseTracker() {
               <th className={`${TH} text-right`}>Invoiced</th>
               <th className={`${TH} text-right`}>Loading Wastage</th>
               <th className={`${TH} text-right`}>Balance</th>
+              <th className={`${TH} text-right`} title="Printed − Invoiced. Negative = billed more than printed.">Printed − Invoiced</th>
             </tr>
           </thead>
           <tbody>
             {visibleRows.length === 0 ? (
-              <tr><td colSpan={11} className="p-6 text-center text-sm italic text-slate-500">No jobs found.</td></tr>
+              <tr><td colSpan={12} className="p-6 text-center text-sm italic text-slate-500">No jobs found.</td></tr>
             ) : visibleRows.map((row) => (
               <tr key={row.jobId} className={row.balance < 0 ? "bg-red-50" : "hover:bg-slate-50"}>
                 <td className={`${TD} font-bold`}>
@@ -288,6 +291,7 @@ export function JobWiseTracker() {
                 <td className={`${TD} text-right`}>{num(row.invoiced)}</td>
                 <td className={`${TD} text-right whitespace-nowrap`}>{num(row.loadingWastage)}{isAdmin ? <button type="button" onClick={() => setCorrection({ row, field: "Loading Wastage" })} className="ml-1 inline-flex text-slate-400 hover:text-indigo-700" title="Correct (Admin)"><Pencil size={12} /></button> : null}</td>
                 <td className={`${TD} text-right text-sm font-black ${row.balance < 0 ? "text-red-700" : ""}`}>{row.balance.toLocaleString()}</td>
+                <td className={`${TD} text-right text-sm font-black ${row.printed - row.invoiced < 0 ? "bg-red-100 text-red-800" : ""}`}>{(row.printed - row.invoiced).toLocaleString()}</td>
               </tr>
             ))}
           </tbody>
@@ -302,6 +306,7 @@ export function JobWiseTracker() {
                 <td className={`${TD} text-right`}>{num(totals.invoiced)}</td>
                 <td className={`${TD} text-right`}>{num(totals.loadingWastage)}</td>
                 <td className={`${TD} text-right ${totals.balance < 0 ? "text-red-700" : ""}`}>{totals.balance.toLocaleString()}</td>
+                <td className={`${TD} text-right ${totals.printed - totals.invoiced < 0 ? "text-red-700" : ""}`}>{(totals.printed - totals.invoiced).toLocaleString()}</td>
               </tr>
             </tfoot>
           ) : null}

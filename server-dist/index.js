@@ -14779,6 +14779,61 @@ const createHandlers = (tableName) => {
                             throw error;
                     }
                 }
+                // Invoiced FG job quantity can never go above the job's printed quantity.
+                // Checked when a slip gets its invoice, or when an invoiced slip's job
+                // quantities change — whichever screen sends the save.
+                if (tableName === "loading_slips" && String(data.invoiceId || "").trim() && String(data.status || "").trim().toLowerCase() !== "cancelled") {
+                    const parseLines = (value) => {
+                        try {
+                            const parsed = typeof value === "string" ? JSON.parse(value) : value;
+                            return Array.isArray(parsed) ? parsed : [];
+                        }
+                        catch {
+                            return [];
+                        }
+                    };
+                    const jobQtyOf = (lines) => {
+                        const totals = new Map();
+                        for (const line of lines) {
+                            if (String(line?.itemSource || "FG").trim().toUpperCase() !== "FG")
+                                continue;
+                            for (const allocation of Array.isArray(line?.allocations) ? line.allocations : []) {
+                                if (String(allocation?.sourceType || "").trim().toLowerCase() !== "job")
+                                    continue;
+                                const jobId = String(allocation?.jobId || "").trim();
+                                const qty = Number(allocation?.qty) || 0;
+                                if (!jobId || !qty)
+                                    continue;
+                                const current = totals.get(jobId) || { qty: 0, jobNo: String(allocation?.jobNo || jobId) };
+                                totals.set(jobId, { qty: current.qty + qty, jobNo: current.jobNo });
+                            }
+                        }
+                        return totals;
+                    };
+                    const [previousRows] = await db.query("SELECT invoiceId, `lines` FROM `loading_slips` WHERE id = ? LIMIT 1", [String(data.id || "")]);
+                    const previous = previousRows[0];
+                    const newJobs = jobQtyOf(parseLines(data.lines !== undefined ? data.lines : previous?.lines));
+                    const previousJobs = jobQtyOf(parseLines(previous?.lines));
+                    const becameInvoiced = !String(previous?.invoiceId || "").trim();
+                    const jobsToCheck = Array.from(newJobs.entries()).filter(([jobId, row]) => becameInvoiced || Math.abs(row.qty - (previousJobs.get(jobId)?.qty || 0)) > 0.0001);
+                    const overJobs = [];
+                    for (const [jobId, row] of jobsToCheck) {
+                        const [printedRows] = await db.query("SELECT COALESCE(SUM(qty), 0) AS printed FROM production_processing WHERE productionId = ? AND LOWER(TRIM(machineName)) = 'printing'", [jobId]);
+                        const printed = Number(printedRows[0]?.printed || 0);
+                        const { invoiced } = await getJobLoadedAndInvoicedQty(db, jobId);
+                        const alreadyOnThisSlip = becameInvoiced ? 0 : (previousJobs.get(jobId)?.qty || 0);
+                        const invoicedAfter = invoiced - alreadyOnThisSlip + row.qty;
+                        if (invoicedAfter > printed + 0.0001) {
+                            const fmtQty = (value) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+                            overJobs.push(`${row.jobNo}: printed ${fmtQty(printed)}, already invoiced ${fmtQty(invoiced - alreadyOnThisSlip)}, this invoice ${fmtQty(row.qty)} (excess ${fmtQty(invoicedAfter - printed)})`);
+                        }
+                    }
+                    if (overJobs.length) {
+                        return res.status(400).json({
+                            error: `Invoice cannot be saved. Invoiced quantity is greater than printed quantity for: ${overJobs.join("; ")}. Update Printing in Production Processing, or reduce the loaded quantity for these jobs.`,
+                        });
+                    }
+                }
                 // Auto-generate slipNo for loading tables when not provided
                 if (['loading_slips', 'php_loading_slips', 'plate_loading_slips'].includes(tableName)) {
                     try {
