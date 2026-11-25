@@ -3,7 +3,7 @@ import { useData } from "../hooks/useData";
 import { EXPORT_GST_OPTION_VALUE, EXPORT_GST_RATE_NAME, isExportGstRateMaster } from "../lib/gstExport";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { 
   LoadingSlip, 
   Company, 
@@ -47,7 +47,6 @@ import { useAuth } from "../auth/AuthContext";
 import { FirmTabs } from "../components/FirmTabs";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { getPendingInvoicingSlip } from "../lib/pendingInvoicing";
-import { slipAwaitsWastageConfirmation } from "../lib/loadingWastageConfirmation";
 const LoadingMasterFocus = React.lazy(() => import("./LoadingMaster").then((module) => ({ default: module.LoadingMaster })));
 const needsPdfRedownload = (slip: { invoiceId?: string; pdfRedownloadRequired?: string }) =>
   !String(slip.invoiceId || "").trim() && String(slip.pdfRedownloadRequired || "").trim() === "Yes";
@@ -515,10 +514,8 @@ export function PendingInvoicing() {
   const groupedData = useMemo(() => {
     const words = searchWords(searchTerm);
     const truckNoById = new Map(trucks.map((truck) => [String(truck.id), truck.truckNo]));
-    // Slips whose jobs still need the loading wastage / Pending FG ticks stay
-    // in Pending Loading Wastage and cannot be invoiced yet.
+    // Billing does not wait for Pending Loading Wastage confirmation.
     const pendingSlips = loadingSlips
-      .filter((slip) => !slipAwaitsWastageConfirmation(slip))
       .map((slip) => getPendingSlip(slip))
       .filter(Boolean) as LoadingSlip[];
     const companyMap = new Map<string, GroupedLoading>();
@@ -612,7 +609,6 @@ export function PendingInvoicing() {
 
   // Firm tabs: pending loading slips per firm (other filters applied), and the
   // groups shown for the selected tab.
-  const awaitingWastageCount = useMemo(() => loadingSlips.filter((slip) => slipAwaitsWastageConfirmation(slip)).length, [loadingSlips]);
   const firmTabCounts = useMemo(() => {
     const counts = new Map<string, number>();
     groupedData.forEach((group) => counts.set(group.firmId, (counts.get(group.firmId) || 0) + group.slips.length));
@@ -1012,14 +1008,6 @@ export function PendingInvoicing() {
       return;
     }
 
-    if (!editInvoiceId) {
-      const awaiting = invoiceModal.slips.filter((slip: any) => slipAwaitsWastageConfirmation(loadingSlips.find((row) => row.id === slip.id) || slip));
-      if (awaiting.length > 0) {
-        alert(`Invoice cannot be saved. Confirm loading wastage and Pending FG first (Pending Loading Wastage) for: ${awaiting.map((slip: any) => slip.slipNo).join(", ")}.`);
-        return;
-      }
-    }
-
     const totalLoaded = invoiceRows.reduce((sum, itemRow) => sum + Number(itemRow.totalQty || 0), 0);
     const totalInvoicedNow = invoiceRows.reduce(
       (sum, itemRow) => sum + itemRow.allocations.reduce((s, a) => s + Number(a.qty || 0), 0),
@@ -1314,12 +1302,6 @@ export function PendingInvoicing() {
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Invoicing</h2>
       </div>
 
-      {awaitingWastageCount > 0 ? (
-        <div className="rounded border-2 border-amber-400 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
-          {awaitingWastageCount} loading slip{awaitingWastageCount === 1 ? " is" : "s are"} waiting in{" "}
-          <Link to="/billing/pending-loading-wastage" className="underline">Pending Loading Wastage</Link>: confirm loading wastage and Pending FG there before invoicing.
-        </div>
-      ) : null}
       <FirmTabs firms={firms} counts={firmTabCounts} value={firmFilter} onChange={setFirmFilter} />
 
       <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">

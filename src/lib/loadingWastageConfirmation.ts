@@ -69,9 +69,9 @@ export function unconfirmedSlipJobs(slip: LoadingSlip) {
   return slipFgJobs(slip).filter((job) => !isJobConfirmed(confirmations.find((row) => key(row.jobId) === key(job.jobId))));
 }
 
-/** Not yet invoiced and at least one job still to confirm: shown in Pending Loading Wastage, kept out of Pending Invoicing. */
+/** At least one job still to confirm: shown in Pending Loading Wastage (invoiced or not). Billing does not wait for it. */
 export function slipAwaitsWastageConfirmation(slip: LoadingSlip) {
-  if (String(slip.invoiceId || "").trim()) return false;
+  if (["cancelled", "canceled"].includes(String((slip as any).status || "").toLowerCase())) return false;
   return unconfirmedSlipJobs(slip).length > 0;
 }
 
@@ -83,16 +83,19 @@ export function slipJobWastage(slip: LoadingSlip, jobId: string) {
 /** Printing totals per job from Production Processing: printed qty and whether a Complete entry exists. */
 export function printingByJob(processing: Array<Pick<ProductionProcessing, "productionId" | "machineName" | "qty" | "completionStatus">>, normalizeMachineName: (name?: string) => string) {
   const printed = new Map<string, number>();
+  const corrugated = new Map<string, number>();
   const complete = new Set<string>();
   processing.forEach((entry) => {
-    if (normalizeMachineName(entry.machineName) !== "Printing") return;
     const jobId = String(entry.productionId || "").trim();
     if (!jobId) return;
+    const machine = normalizeMachineName(entry.machineName);
+    if (machine === "Corrugation Liner") corrugated.set(jobId, (corrugated.get(jobId) || 0) + (Number(entry.qty) || 0));
+    if (machine !== "Printing") return;
     printed.set(jobId, (printed.get(jobId) || 0) + (Number(entry.qty) || 0));
     const status = key(entry.completionStatus);
     if (!status || status === "full") complete.add(jobId);
   });
-  return { printed, complete };
+  return { printed, complete, corrugated };
 }
 
 /** Loaded qty and loading wastage per job across all slips that are not cancelled. */
@@ -135,6 +138,8 @@ export type PendingLoadingWastageRow = {
   companyName: string;
   firmId: string;
   firmName: string;
+  /** Total Corrugation Liner qty of the job. */
+  corrugated?: number;
   printed: number;
   printingComplete: boolean;
   /** Loaded from this job on all slips that are not cancelled (this one included). */
@@ -180,6 +185,7 @@ export function computePendingLoadingWastageRows(
           companyName,
           firmId,
           firmName: firmName(firmId),
+          corrugated: printing.corrugated.get(String(job.jobId).trim()) || 0,
           printed: printing.printed.get(String(job.jobId).trim()) || 0,
           printingComplete: printing.complete.has(String(job.jobId).trim()),
           loadedAll: totals.loaded.get(jobKey) || 0,

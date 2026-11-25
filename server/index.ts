@@ -21664,7 +21664,6 @@ app.post("/api/loading-slips/:id/wastage-confirmation", requireAuth, async (req,
     const [slipRows] = await db.query("SELECT id, slipNo, invoiceId, status, `lines`, jobWastage, jobConfirmations FROM `loading_slips` WHERE id = ? LIMIT 1", [slipId]);
     const slip = (slipRows as any[])[0];
     if (!slip) return res.status(404).json({ error: "Loading slip not found." });
-    if (String(slip.invoiceId || "").trim()) return res.status(409).json({ error: `${slip.slipNo} is already invoiced.` });
     if (["cancelled", "canceled"].includes(String(slip.status || "").toLowerCase())) return res.status(409).json({ error: `${slip.slipNo} is cancelled.` });
     const parse = (value: any) => {
       if (Array.isArray(value)) return value;

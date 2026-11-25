@@ -176,6 +176,7 @@ export function PendingLoadingWastage() {
               <th className={`${TH} text-left`}>ERP</th>
               <th className={`${TH} text-left`}>Item Name</th>
               <th className={`${TH} text-right`}>Loaded (slip)</th>
+              <th className={`${TH} text-right`}>Corrugation</th>
               <th className={`${TH} text-right`}>Printed</th>
               <th className={`${TH} text-right`}>Loaded so far</th>
               <th className={`${TH} text-right`}>Other wastage</th>
@@ -187,7 +188,7 @@ export function PendingLoadingWastage() {
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
-              <tr><td colSpan={14} className="p-8 text-center text-sm font-semibold text-slate-500">{failed ? "Could not load the list from the server. Refresh the page to try again." : loading && !result ? "Loading…" : "Nothing pending."}</td></tr>
+              <tr><td colSpan={15} className="p-8 text-center text-sm font-semibold text-slate-500">{failed ? "Could not load the list from the server. Refresh the page to try again." : loading && !result ? "Loading…" : "Nothing pending."}</td></tr>
             ) : filteredRows.map((row) => {
               const raw = draftOf(row);
               const wastage = raw.trim() === "" ? 0 : Number(raw) || 0;
@@ -203,6 +204,7 @@ export function PendingLoadingWastage() {
                   <td className={`${TD} whitespace-nowrap`}>{row.erpCode || "-"}</td>
                   <td className={`${TD} min-w-[200px] max-w-[260px] leading-tight`}>{row.itemName || "-"}</td>
                   <td className={`${TD} text-right`}>{num(row.loadedOnSlip)}</td>
+                  <td className={`${TD} text-right whitespace-nowrap`}>{num(row.corrugated || 0)}</td>
                   <td className={`${TD} text-right whitespace-nowrap`}>{num(row.printed)}<div className={`text-[10px] font-black ${row.printingComplete ? "text-indigo-700" : "text-amber-700"}`}>{row.printingComplete ? "Complete" : "In Progress"}</div></td>
                   <td className={`${TD} text-right`}>{num(row.loadedAll)}</td>
                   <td className={`${TD} text-right text-slate-600`}>{num(row.otherWastage)}</td>

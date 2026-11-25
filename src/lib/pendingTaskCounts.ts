@@ -587,7 +587,6 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       const companyById = new Map<string, Company>();
       (args.companies || []).forEach((company) => { if (!companyById.has(company.id)) companyById.set(company.id, company); });
       return args.loadingSlips.filter((slip) => {
-        if (slipAwaitsWastageConfirmation(slip)) return false;
         const pending = getPendingInvoicingSlip(ctx, slip);
         const firstLine: any = pending?.lines?.[0];
         if (!pending || !firstLine) return false;
