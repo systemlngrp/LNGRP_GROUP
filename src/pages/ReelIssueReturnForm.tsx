@@ -1,5 +1,5 @@
 import { displayJobNo } from "../lib/jobNumber";
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Plus, Trash2, Package2 } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useSearchParams, useNavigate } from "react-router-dom";
@@ -22,7 +22,7 @@ import { generateTransactionNo } from "../lib/serial";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 
-import { getAvailableReelPackingSlips } from "../lib/materialMovement";
+import { getAllAvailableReelPackingSlips, getAvailableReelPackingSlips } from "../lib/materialMovement";
 import {
   buildProductionCorrugatedSheetUsageMap,
   buildProductionMaterialUsageMap,
@@ -136,36 +136,48 @@ export function ReelIssueReturnForm() {
     [materials, reelGroupIds]
   );
 
+  // Available reels grouped by material, worked out once per data change.
+  const availableReelsByMaterial = useMemo(() => {
+    const map = new Map<string, MaterialInPackingSlip[]>();
+    getAllAvailableReelPackingSlips(packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber).forEach((slip) => {
+      const list = map.get(slip.materialId);
+      if (list) list.push(slip);
+      else map.set(slip.materialId, [slip]);
+    });
+    return map;
+  }, [packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber]);
+
   const getIssueAvailableReels = (materialId: string, currentLineId: string) => {
     const selectedElsewhere = new Set(
       Object.entries(selectedIssueReels)
         .filter(([lineId]) => lineId !== currentLineId)
         .flatMap(([, ids]) => ids)
     );
-    return getAvailableReelPackingSlips(materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber).filter(
-      (slip) => !selectedElsewhere.has(slip.id)
-    );
+    return (availableReelsByMaterial.get(materialId) || []).filter((slip) => !selectedElsewhere.has(slip.id));
   };
 
   // Find Reel: search any available reel by our reel no. or supplier reel no.
   // and add it straight to the issue (its material line is added if needed).
   const [reelSearch, setReelSearch] = useState("");
   const reelMaterialIds = useMemo(() => new Set(reelMaterialOptions.map((option) => option.value)), [reelMaterialOptions]);
+  // All available reels, worked out once when the data changes (not per keystroke).
+  const allAvailableReels = useMemo(
+    () => Array.from(availableReelsByMaterial.entries()).filter(([materialId]) => reelMaterialIds.has(materialId)).flatMap(([, slips]) => slips),
+    [availableReelsByMaterial, reelMaterialIds]
+  );
+  const materialLabelById = useMemo(() => new Map(reelMaterialOptions.map((option) => [option.value, option.label])), [reelMaterialOptions]);
+  const deferredReelSearch = useDeferredValue(reelSearch);
   const reelSearchResults = useMemo(() => {
-    const query = reelSearch.trim().toLowerCase();
+    const query = deferredReelSearch.trim().toLowerCase();
     if (query.length < 2) return [];
     const selected = new Set(Object.values(selectedIssueReels).flat());
     const results: Array<{ slip: MaterialInPackingSlip; materialName: string }> = [];
-    reelMaterialIds.forEach((materialId) => {
-      getAvailableReelPackingSlips(materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber).forEach((slip) => {
-        if (selected.has(slip.id)) return;
-        const ours = String(slip.ourReelNo || "").toLowerCase();
-        const supplier = String(slip.supplierReelNo || "").toLowerCase();
-        if (ours.includes(query) || supplier.includes(query)) {
-          results.push({ slip, materialName: reelMaterialOptions.find((option) => option.value === materialId)?.label || "" });
-        }
-      });
-    });
+    for (const slip of allAvailableReels) {
+      if (selected.has(slip.id)) continue;
+      const ours = String(slip.ourReelNo || "").toLowerCase();
+      const supplier = String(slip.supplierReelNo || "").toLowerCase();
+      if (ours.includes(query) || supplier.includes(query)) results.push({ slip, materialName: materialLabelById.get(slip.materialId) || "" });
+    }
     return results
       .sort((a, b) => {
         const exactA = [a.slip.ourReelNo, a.slip.supplierReelNo].some((value) => String(value || "").toLowerCase() === query) ? 0 : 1;
@@ -173,7 +185,7 @@ export function ReelIssueReturnForm() {
         return exactA - exactB || String(a.slip.ourReelNo).localeCompare(String(b.slip.ourReelNo), undefined, { numeric: true });
       })
       .slice(0, 20);
-  }, [reelSearch, reelMaterialIds, reelMaterialOptions, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber, selectedIssueReels]);
+  }, [deferredReelSearch, allAvailableReels, materialLabelById, selectedIssueReels]);
 
   const addReelFromSearch = (slip: MaterialInPackingSlip) => {
     const existingLine = issueLines.find((line) => line.materialId === slip.materialId);
@@ -226,7 +238,7 @@ export function ReelIssueReturnForm() {
 
   const computeIssueLineWeight = (line: ReelLineDraft) => {
     const ids = selectedIssueReels[line.id] || [];
-    return getAvailableReelPackingSlips(line.materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber)
+    return (availableReelsByMaterial.get(line.materialId) || [])
       .filter((slip) => ids.includes(slip.id))
       .reduce((sum, slip) => sum + Number(slip.weightKg || 0), 0);
   };

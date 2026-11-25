@@ -240,6 +240,27 @@ export function getAvailableReelPackingSlips(
   });
 }
 
+/** Every available reel of every active reel material, in one pass. */
+export function getAllAvailableReelPackingSlips(
+  packingSlips: MaterialInPackingSlip[],
+  issueReelLines: MaterialIssueReelLine[],
+  returnReelLines: MaterialReturnReelLine[],
+  materials: Pick<Material, "id" | "type" | "active" | "openingQty">[] = [],
+  ourReelNoStartNumber: unknown = 1
+) {
+  const netIssuedBySlip = buildSlipNetIssuedWeights(issueReelLines, returnReelLines);
+  const materialById = new Map(materials.map((material) => [material.id, material]));
+  const allSlips = [...packingSlips, ...buildOpeningReelPackingSlips(materials, packingSlips, ourReelNoStartNumber)];
+  return allSlips.flatMap((slip) => {
+    if (!isActiveReelMaterial(materialById.get(slip.materialId))) return [];
+    const baseWeight = Number(slip.weightKg || 0);
+    if (baseWeight <= 0) return [];
+    const availableWeight = Number((baseWeight - (netIssuedBySlip.get(slip.id) || 0)).toFixed(2));
+    if (availableWeight <= 0) return [];
+    return [{ ...slip, weightKg: availableWeight }];
+  });
+}
+
 export function getReturnableReelLinesForJob(
   materialId: string,
   productionId: string,
