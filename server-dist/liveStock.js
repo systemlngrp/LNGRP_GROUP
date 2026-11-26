@@ -112,7 +112,7 @@ async function buildLiveStock(db) {
     const erpFor = (type, itemId, erp) => s(erp) || (type === "FG" ? npdById.get(s(itemId))?.erp : masterById[type].get(s(itemId))?.erp) || "";
     const movements = [];
     // FG production: Printing entries (printed qty is already net of printing wastage).
-    const [printRows] = await db.query(`SELECT pp.id, pp.date, pp.qty, pp.erp, pp.itemName, pp.jobNo, p.masterErp, p.npdId
+    const [printRows] = await db.query(`SELECT pp.*, p.masterErp, p.npdId
      FROM \`production_processing\` pp LEFT JOIN \`productions\` p ON p.id = pp.productionId
      WHERE pp.machineName LIKE '%rint%' AND pp.date >= ?`, [from]);
     for (const row of printRows) {
@@ -138,7 +138,7 @@ async function buildLiveStock(db) {
         }
     }
     // Dispatch: loaded qty on loading slips (Unit-II and LNKI; Unit-I slips are boards / scrap).
-    const [slipRows] = await db.query("SELECT id, slipNo, date, `lines`, jobWastage FROM `loading_slips` WHERE date >= ? AND COALESCE(status, '') <> 'Cancelled' AND COALESCE(slipNo, '') NOT LIKE 'LNCB-1/%'", [from]);
+    const [slipRows] = await db.query("SELECT * FROM `loading_slips` WHERE date >= ? AND COALESCE(status, '') <> 'Cancelled' AND COALESCE(slipNo, '') NOT LIKE 'LNCB-1/%'", [from]);
     const wastageJobIds = new Set();
     for (const row of slipRows)
         for (const w of arr(row.jobWastage))
@@ -165,7 +165,7 @@ async function buildLiveStock(db) {
         }
     }
     for (const [table, type] of [["php_loading_slips", "PHP"], ["plate_loading_slips", "PLATE"]]) {
-        const [rows] = await db.query(`SELECT id, slipNo, date, \`lines\` FROM \`${table}\` WHERE date >= ? AND COALESCE(status, '') <> 'Cancelled'`, [from]);
+        const [rows] = await db.query(`SELECT * FROM \`${table}\` WHERE date >= ? AND COALESCE(status, '') <> 'Cancelled'`, [from]);
         for (const row of rows) {
             for (const line of arr(row.lines)) {
                 const lineType = sourceOf(line.itemSource || type) || type;
@@ -202,7 +202,7 @@ export function registerLiveStock(app, getPool, getRequestUser, canView) {
         }
         catch (error) {
             console.error("[LIVE_STOCK] failed", error.message);
-            return res.status(500).json({ error: "Failed to build live stock" });
+            return res.status(500).json({ error: isAdmin(user) ? `Failed to build live stock: ${error.message}` : "Failed to build live stock" });
         }
     });
     app.get("/api/live-stock/openings", async (req, res) => {
