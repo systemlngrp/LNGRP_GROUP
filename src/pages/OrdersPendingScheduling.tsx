@@ -93,6 +93,7 @@ export function OrdersPendingScheduling() {
         firmName,
         companyName,
         item?.name,
+        String((item as any)?.erp || order.erpCode || ""),
         formatQty(order.qty),
         formatQty(scheduledQty),
         formatQty(pendingQty),
@@ -115,6 +116,7 @@ export function OrdersPendingScheduling() {
       case "firm": return row.firmName;
       case "company": return row.companyName;
       case "item": return row.item?.name;
+      case "erp": return String((row.item as any)?.erp || row.order.erpCode || "");
       case "qty": return Number(row.order.qty || 0);
       case "scheduled": return row.scheduledQty;
       case "cancelled": return row.cancelledQty;
@@ -516,6 +518,7 @@ export function OrdersPendingScheduling() {
                 <th className="px-2 py-1.5 border border-black"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="center" /></th>
                 <th className="px-2 py-1.5 border border-black"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="center" /></th>
                 <th className="px-2 py-1.5 border border-black"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="center" /></th>
+                <th className="px-2 py-1.5 border border-black"><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="center" /></th>
                 <th className="px-2 py-1.5 border border-black text-right"><SortHeader label="Order Quantity" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-2 py-1.5 border border-black text-right"><SortHeader label="Scheduled Qty" sortKey="scheduled" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-2 py-1.5 border border-black text-right"><SortHeader label="Cancelled Qty" sortKey="cancelled" sort={sort} onToggle={toggleSort} align="right" /></th>
@@ -527,7 +530,7 @@ export function OrdersPendingScheduling() {
             </thead>
             <tbody>
               {paginatedPending.length === 0 ? (
-                <tr><td colSpan={14 + ORDER_APPROVAL_COLUMN_COUNT} className="h-16" aria-label="No records" /></tr>
+                <tr><td colSpan={15 + ORDER_APPROVAL_COLUMN_COUNT} className="h-16" aria-label="No records" /></tr>
               ) : paginatedPending.map(({ order: o, item, firmName, companyName, scheduledQty: sched, cancelledQty: cancelledSched, pendingQty: pendingSched }, idx) => {
                 const showGroup = groupByCompany && (idx === 0 || String(paginatedPending[idx - 1].companyName || "") !== String(companyName || ""));
                 const group = companyTotals.get(String(companyName || ""));
@@ -535,7 +538,7 @@ export function OrdersPendingScheduling() {
                   <React.Fragment key={o.id}>
                   {showGroup ? (
                     <tr className="bg-indigo-50">
-                      <td colSpan={14 + ORDER_APPROVAL_COLUMN_COUNT} className="border border-black px-3 py-1.5 text-sm font-black text-indigo-900">
+                      <td colSpan={15 + ORDER_APPROVAL_COLUMN_COUNT} className="border border-black px-3 py-1.5 text-sm font-black text-indigo-900">
                         {companyName || "No company"} <span className="ml-3 text-xs font-bold text-slate-600">{group?.orders || 0} {group?.orders === 1 ? "order" : "orders"} · Pending Scheduling {formatQty(group?.pending || 0)}</span>
                       </td>
                     </tr>
@@ -549,6 +552,7 @@ export function OrdersPendingScheduling() {
                     <td className="px-2 py-1.5 border border-black font-semibold">{firmName}</td>
                     <td className="px-2 py-1.5 border border-black">{companyName || "-"}</td>
                     <td className="px-2 py-1.5 border border-black">{item?.name || "-"}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 border border-black">{String((item as any)?.erp || o.erpCode || "") || "-"}</td>
                     <td className="px-2 py-1.5 border border-black text-right tabular-nums">{formatQty(o.qty)}</td>
                     <td className="px-2 py-1.5 border border-black text-right tabular-nums">{formatQty(sched)}</td>
                     <td className="px-2 py-1.5 border border-black text-right tabular-nums text-red-700">{cancelledSched ? formatQty(cancelledSched) : "-"}</td>
