@@ -6334,6 +6334,8 @@ function entityPermissionKey(entity) {
             return "/masters/truck-categories";
         case "coa_parameters":
             return "/quality/coa/parameters";
+        case "po_terms":
+            return "/purchase-orders/terms";
         case "trucks":
             return "/masters/trucks";
         case "machines":
@@ -9227,6 +9229,17 @@ async function initDb(retries = 5) {
           \`liveStatus\` VARCHAR(50),
           \`statusUpdatedAt\` VARCHAR(255),
           \`statusUpdatedBy\` VARCHAR(255),
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+            // PO Terms: terms & conditions printed on the PO, one record per Material Group (id = group id).
+            await db.query(`
+        CREATE TABLE IF NOT EXISTS \`po_terms\` (
+          \`id\` VARCHAR(64) PRIMARY KEY,
+          \`materialGroupId\` VARCHAR(64) NOT NULL,
+          \`materialGroupName\` VARCHAR(255),
+          \`terms\` TEXT,
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
         )
