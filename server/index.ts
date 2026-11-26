@@ -16,6 +16,7 @@ import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { buildNpdIndexes, computeInvoicedByItem, computeInvoiceOutputs, computeProcessedOutputs, ck as npdCk, round2 as npdRound2 } from "./npdStockFast.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
+import { registerLiveStock } from "./liveStock.js";
 import { ensurePerformanceIndexes } from "./performanceIndexes.js";
 import { getChangesSince, getTrackedChanges, instrumentPool, onSchemaChange, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
 import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappReportMessage, sendWhatsappTextMessage, sendWhatsappGateEntryMessage, resolveWhatsappGateEntryTemplate, DEFAULT_GATE_ENTRY_MESSAGE, WHATSAPP_GATE_ENTRY_MENU, type WhatsappSendStage } from "./whatsappSender.js";
@@ -22577,6 +22578,7 @@ app.post("/api/table-column-widths", async (req, res) => {
 });
 
 registerSalesOrderSync(app, getPool);
+registerLiveStock(app, getPool as any, getRequestUser, (user) => hasPermission(user, "/reports/live-stock"));
 
 async function startServer() {
   // Resolves once database setup has succeeded. A failed attempt (database
