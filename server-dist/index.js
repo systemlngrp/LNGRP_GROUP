@@ -10331,6 +10331,7 @@ async function initDb(retries = 5) {
                 { table: "gate_entries", column: "updatedBy", type: "VARCHAR(255)" },
                 { table: "gate_entries", column: "updateTimestamp", type: "VARCHAR(255)" },
                 { table: "gate_entries", column: "whatsappSendStatus", type: "VARCHAR(30)" },
+                { table: "gate_entries", column: "createdAt", type: "VARCHAR(255)" },
                 { table: "gate_entries", column: "whatsappSendError", type: "VARCHAR(255)" },
                 { table: "gate_entries", column: "whatsappSentAt", type: "VARCHAR(255)" },
                 { table: "gate_entries", column: "whatsappSendStartedAt", type: "VARCHAR(255)" },
@@ -12241,9 +12242,15 @@ async function sendGateEntryWhatsapp(db, config, gateEntryId) {
         const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
         return match ? `${match[3]}-${match[2]}-${match[1]}` : String(entry.date || "");
     })();
+    // Time the entry was saved, in IST (older entries: last saved).
+    const timestampText = (() => {
+        const time = Date.parse(String(entry.createdAt || entry.updateTimestamp || ""));
+        return Number.isFinite(time) ? new Date(time).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true }).replace(/,/, "") : "";
+    })();
     const values = {
         gateEntryNo: entry.gateEntryNo,
         date: dateText,
+        timestamp: timestampText,
         firmName: entry.firmName || entry.masterFirmName,
         purpose: entry.purpose || "Material Receipt",
         supplier: entry.supplierName,
@@ -12257,7 +12264,15 @@ async function sendGateEntryWhatsapp(db, config, gateEntryId) {
     // Gate Entry sends its text message with each photo attached (no PDF).
     const urls = photos.map((photo) => `${publicBase}/uploads/${photo.filename.split("/").map(encodeURIComponent).join("/")}`);
     const fileName = "";
-    const message = resolveWhatsappGateEntryTemplate(String(config.message || DEFAULT_GATE_ENTRY_MESSAGE), values)
+    // A message set in WhatsApp Master without {{timestamp}} gets it under the Date line.
+    let template = String(config.message || DEFAULT_GATE_ENTRY_MESSAGE);
+    if (!/\{\{\s*timestamp\s*\}\}/.test(template)) {
+        const lines = template.split("\n");
+        const dateLine = lines.findIndex((line) => /\{\{\s*date\s*\}\}/.test(line));
+        lines.splice(dateLine >= 0 ? dateLine + 1 : Math.min(1, lines.length), 0, "*Timestamp:* {{timestamp}}");
+        template = lines.join("\n");
+    }
+    const message = resolveWhatsappGateEntryTemplate(template, values)
         .split("\n")
         .filter((line) => !/pdf attached/i.test(line))
         .join("\n")
