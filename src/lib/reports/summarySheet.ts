@@ -190,6 +190,9 @@ export function computeSummarySheetRows(lists: SummarySheetLists, stockItems: an
     const jobClosed = s(production.closeBy).toLowerCase() === "yes" && Boolean(s(production.closeDate));
     const loadingStarted = dispatchedQty > 0;
     const stage = jobClosed ? "Job Closed"
+      // Boardline Prod. 0 or blank (and nothing loaded): board not made yet,
+      // whatever the material issue state (owner's rule, 26-Nov-2026).
+      : !loadingStarted && !(boardline > 0) ? "Pending Corrugation"
       // Same rule as the Pending Material Issue screen (paper from the job record).
       : !loadingStarted && isProductionPendingConsumption(production, pprUsed) ? "Pending Material Issue"
       : !loadingStarted && !isComplete(/corrugation/i, productionRows.filter((entry) => /corrugation/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0)) ? "Pending Corrugation"
