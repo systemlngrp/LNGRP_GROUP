@@ -16,6 +16,9 @@ import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 import { ORDER_APPROVAL_COLUMN_COUNT, OrderApprovalCells, OrderApprovalHeaders } from "../components/OrderApprovalColumns";
 
+// Order rate with 2 decimals; blank when there is no rate. (Module level: used by the search filter above the exports.)
+const formatRate = (value: unknown) => (value === null || value === undefined || value === "" ? "" : Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+
 export function OrdersPendingScheduling() {
   const [searchTerm, setSearchTerm] = useState('');
   const [firmFilter, setFirmFilter] = useState('');
@@ -109,7 +112,6 @@ export function OrdersPendingScheduling() {
     }
   });
 
-  const formatRate = (value: unknown) => (value === null || value === undefined || value === "" ? "" : Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const exportHeaders = ["S.No", "Order No", "PO Number", "Order Rate", "Order Date", "Firm", "Company", "Item", "ERP", "Order Qty", "Scheduled Qty", "Pending Scheduling", "Unit", "Approved By", "Approval Reason"];
   const exportRows = () => sortedPending.map(({ order, item, firmName, companyName, scheduledQty, pendingQty }, index) => [
     index + 1,
