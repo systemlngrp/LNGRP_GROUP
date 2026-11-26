@@ -123,7 +123,7 @@ async function buildLiveStock(db: mysql.Pool) {
 
   // FG production: Printing entries (printed qty is already net of printing wastage).
   const [printRows] = await db.query(
-    `SELECT pp.id, pp.date, pp.qty, pp.erp, pp.itemName, pp.jobNo, p.masterErp, p.npdId
+    `SELECT pp.*, p.masterErp, p.npdId
      FROM \`production_processing\` pp LEFT JOIN \`productions\` p ON p.id = pp.productionId
      WHERE pp.machineName LIKE '%rint%' AND pp.date >= ?`,
     [from],
@@ -155,7 +155,7 @@ async function buildLiveStock(db: mysql.Pool) {
 
   // Dispatch: loaded qty on loading slips (Unit-II and LNKI; Unit-I slips are boards / scrap).
   const [slipRows] = await db.query(
-    "SELECT id, slipNo, date, `lines`, jobWastage FROM `loading_slips` WHERE date >= ? AND COALESCE(status, '') <> 'Cancelled' AND COALESCE(slipNo, '') NOT LIKE 'LNCB-1/%'",
+    "SELECT * FROM `loading_slips` WHERE date >= ? AND COALESCE(status, '') <> 'Cancelled' AND COALESCE(slipNo, '') NOT LIKE 'LNCB-1/%'",
     [from],
   );
   const wastageJobIds = new Set<string>();
@@ -180,7 +180,7 @@ async function buildLiveStock(db: mysql.Pool) {
     }
   }
   for (const [table, type] of [["php_loading_slips", "PHP"], ["plate_loading_slips", "PLATE"]] as const) {
-    const [rows] = await db.query(`SELECT id, slipNo, date, \`lines\` FROM \`${table}\` WHERE date >= ? AND COALESCE(status, '') <> 'Cancelled'`, [from]);
+    const [rows] = await db.query(`SELECT * FROM \`${table}\` WHERE date >= ? AND COALESCE(status, '') <> 'Cancelled'`, [from]);
     for (const row of rows as any[]) {
       for (const line of arr(row.lines)) {
         const lineType = sourceOf(line.itemSource || type) || type;
@@ -221,7 +221,7 @@ export function registerLiveStock(
       return res.json(await buildLiveStock(db));
     } catch (error) {
       console.error("[LIVE_STOCK] failed", (error as Error).message);
-      return res.status(500).json({ error: "Failed to build live stock" });
+      return res.status(500).json({ error: isAdmin(user) ? `Failed to build live stock: ${(error as Error).message}` : "Failed to build live stock" });
     }
   });
 
