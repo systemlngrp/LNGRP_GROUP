@@ -487,7 +487,7 @@ export function SummarySheetReport() {
     return value;
   };
   const filterOptions = useMemo(() => ({
-    statuses: ["Pending Material Issue", "Pending Corrugation", "Pending Printing", "Pending Loading", "Pending Job Closure", "Job Closed"].filter((stage) => baseRows.some((r) => s(r.Status) === stage)),
+    statuses: ["Pending Material Issue", "Pending Corrugation", "Pending Printing", "Printed but Never Dispatched", "Pending Loading", "Pending Job Closure", "Job Closed"].filter((stage) => baseRows.some((r) => s(r.Status) === stage)),
     parties: [...new Set(rows.map((r) => s(r["Party Name"])).filter(Boolean))].sort(),
     items: [...new Set(rows.map((r) => s(r["Item Name"])).filter(Boolean))].sort(),
     erps: [...new Set(rows.map((r) => s(r.ERP)).filter(Boolean))].sort(),
