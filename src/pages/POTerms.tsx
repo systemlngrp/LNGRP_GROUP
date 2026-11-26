@@ -82,7 +82,6 @@ export function POTerms() {
                 value={textFor(group.id)}
                 onChange={(event) => setDrafts((current) => ({ ...current, [group.id]: event.target.value }))}
                 rows={Math.min(14, Math.max(4, textFor(group.id).split("\n").length + 1))}
-                placeholder={"One term per line, e.g.\n1. Delivery within 7 days of PO.\n2. Payment 30 days from receipt of material."}
                 className="w-full rounded border-2 border-black bg-yellow-50 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
               />
               <div className="mt-2 flex justify-end">
