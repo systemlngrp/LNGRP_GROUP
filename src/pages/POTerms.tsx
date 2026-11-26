@@ -21,7 +21,11 @@ export function POTerms() {
   const rows = useMemo(() => {
     const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return [...groups]
-      .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+      // Reel first, then the other groups A-Z.
+      .sort((a, b) => {
+        const reel = (name: unknown) => (String(name || "").trim().toLowerCase() === "reel" ? 0 : 1);
+        return reel(a.name) - reel(b.name) || String(a.name).localeCompare(String(b.name));
+      })
       .filter((group) => words.every((word) => `${group.name} ${byGroup.get(group.id)?.terms || ""}`.toLowerCase().includes(word)));
   }, [byGroup, groups, search]);
 
