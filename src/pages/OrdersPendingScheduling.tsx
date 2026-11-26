@@ -48,6 +48,7 @@ export function OrdersPendingScheduling() {
   const rowsFor = (orderId: string) => schedules.filter(s => s.orderId === orderId);
 
   const totalScheduled = (orderId: string) => rowsFor(orderId).reduce((sum, r) => sum + (Number((r as any).qty) || 0), 0);
+  const totalCancelled = (orderId: string) => rowsFor(orderId).reduce((sum, r) => sum + (Number((r as any).canceledQty) || 0), 0);
 
   const formatQty = (value: unknown) => {
     const n = Number(value ?? 0);
@@ -65,9 +66,12 @@ export function OrdersPendingScheduling() {
         const item = resolveOrderItem(order);
         const firmName = getFirmName(order);
         const companyName = (companies as any[]).find((company) => company.id === order.companyId)?.name || "";
-        const scheduledQty = totalScheduled(order.id);
-        const pendingQty = Number(order.qty || 0) - scheduledQty;
-        return { order, item, firmName, companyName, scheduledQty, pendingQty };
+        // Order Qty = Scheduled (net of cancels) + Cancelled + Pending Scheduling.
+        const grossScheduled = totalScheduled(order.id);
+        const cancelledQty = totalCancelled(order.id);
+        const scheduledQty = Math.max(0, grossScheduled - cancelledQty);
+        const pendingQty = Number(order.qty || 0) - grossScheduled;
+        return { order, item, firmName, companyName, scheduledQty, cancelledQty, pendingQty };
       })
       .filter(({ pendingQty }) => pendingQty > 0);
   }, [companies, firms, orders, resolveOrderItem, schedules]);
@@ -113,6 +117,7 @@ export function OrdersPendingScheduling() {
       case "item": return row.item?.name;
       case "qty": return Number(row.order.qty || 0);
       case "scheduled": return row.scheduledQty;
+      case "cancelled": return row.cancelledQty;
       case "pending": return row.pendingQty;
       case "uom": return row.item?.uom;
       default: return "";
@@ -137,8 +142,8 @@ export function OrdersPendingScheduling() {
     return totals;
   }, [sortedPending]);
 
-  const exportHeaders = ["S.No", "Order No", "PO Number", "Order Rate", "Order Date", "Firm", "Company", "Item", "ERP", "Order Qty", "Scheduled Qty", "Pending Scheduling", "Unit", "Approved By", "Approval Reason"];
-  const exportRows = () => sortedPending.map(({ order, item, firmName, companyName, scheduledQty, pendingQty }, index) => [
+  const exportHeaders = ["S.No", "Order No", "PO Number", "Order Rate", "Order Date", "Firm", "Company", "Item", "ERP", "Order Qty", "Scheduled Qty", "Cancelled Qty", "Pending Scheduling", "Unit", "Approved By", "Approval Reason"];
+  const exportRows = () => sortedPending.map(({ order, item, firmName, companyName, scheduledQty, cancelledQty, pendingQty }, index) => [
     index + 1,
     order.orderNo || "",
     String(order.poNumber || ""),
@@ -150,14 +155,15 @@ export function OrdersPendingScheduling() {
     String((item as any)?.erp || order.erpCode || ""),
     Number(order.qty || 0),
     scheduledQty,
+    cancelledQty,
     pendingQty,
     item?.uom || "",
     String(order.approvedEmail || ""),
     String(order.approvalReason || ""),
   ]);
   const exportTotals = () => sortedPending.reduce(
-    (sum, row) => ({ qty: sum.qty + Number(row.order.qty || 0), scheduled: sum.scheduled + row.scheduledQty, pending: sum.pending + row.pendingQty }),
-    { qty: 0, scheduled: 0, pending: 0 },
+    (sum, row) => ({ qty: sum.qty + Number(row.order.qty || 0), scheduled: sum.scheduled + row.scheduledQty, cancelled: sum.cancelled + row.cancelledQty, pending: sum.pending + row.pendingQty }),
+    { qty: 0, scheduled: 0, cancelled: 0, pending: 0 },
   );
   const exportFileDate = new Date().toISOString().slice(0, 10);
 
@@ -171,7 +177,7 @@ export function OrdersPendingScheduling() {
       [`Date: ${formatDate(exportFileDate)}`],
       exportHeaders,
       ...exportRows(),
-      ["TOTAL", "", "", "", "", "", "", "", "", totals.qty, totals.scheduled, totals.pending, "", "", ""],
+      ["TOTAL", "", "", "", "", "", "", "", "", totals.qty, totals.scheduled, totals.cancelled, totals.pending, "", "", ""],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } }, { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } }];
@@ -206,9 +212,9 @@ export function OrdersPendingScheduling() {
     doc.text(`Date: ${formatDate(exportFileDate)}   ·   ${sortedPending.length} ${sortedPending.length === 1 ? "order" : "orders"}`, pageWidth / 2, 18, { align: "center" });
     const qty = (value: number) => formatQty(value);
     autoTable(doc, {
-      head: [exportHeaders.slice(0, 13)],
-      body: exportRows().map((row) => [...row.slice(0, 3), formatRate(row[3]), ...row.slice(4, 9), qty(row[9] as number), qty(row[10] as number), qty(row[11] as number), row[12]].map(String)),
-      foot: [[{ content: "TOTAL", colSpan: 9, styles: { halign: "right" } }, { content: qty(totals.qty), styles: { halign: "right" } }, { content: qty(totals.scheduled), styles: { halign: "right" } }, { content: qty(totals.pending), styles: { halign: "right" } }, ""]],
+      head: [exportHeaders.slice(0, 14)],
+      body: exportRows().map((row) => [...row.slice(0, 3), formatRate(row[3]), ...row.slice(4, 9), qty(row[9] as number), qty(row[10] as number), qty(row[11] as number), qty(row[12] as number), row[13]].map(String)),
+      foot: [[{ content: "TOTAL", colSpan: 9, styles: { halign: "right" } }, { content: qty(totals.qty), styles: { halign: "right" } }, { content: qty(totals.scheduled), styles: { halign: "right" } }, { content: qty(totals.cancelled), styles: { halign: "right" } }, { content: qty(totals.pending), styles: { halign: "right" } }, ""]],
       startY: 22,
       margin: { left: 8, right: 8 },
       theme: "grid",
@@ -224,12 +230,13 @@ export function OrdersPendingScheduling() {
         4: { cellWidth: 16 },
         5: { cellWidth: 13 },
         6: { cellWidth: 40 },
-        7: { cellWidth: 58 },
+        7: { cellWidth: 50 },
         8: { cellWidth: 15 },
         9: { halign: "right" },
         10: { halign: "right" },
-        11: { halign: "right", fontStyle: "bold" },
-        12: { cellWidth: 10, halign: "center" },
+        11: { halign: "right" },
+        12: { halign: "right", fontStyle: "bold" },
+        13: { cellWidth: 10, halign: "center" },
       },
     });
     doc.save(`Pending_Scheduling_${exportFileDate}.pdf`);
@@ -421,42 +428,39 @@ export function OrdersPendingScheduling() {
     })();
   };
 
-  // Admin: cancel what is still to be scheduled. Nothing scheduled -> the whole order is
-  // cancelled (as on Plant Head). Partly scheduled -> the balance is recorded as a schedule
-  // line that is fully cancelled, so Orders Master shows it under Cancelled Qty.
-  const handleCancelBalance = async (orderId: string) => {
-    const order = orders.find((entry) => entry.id === orderId);
-    if (!order) return;
-    const scheduled = totalScheduled(orderId);
-    const balance = Number(order.qty || 0) - scheduled;
-    if (balance <= 0) return;
-    const whole = scheduled <= 0;
-    const reason = window.prompt(whole
-      ? `Cancel order ${order.orderNo} (${formatQty(balance)} not scheduled)?\nEnter cancel remarks:`
-      : `Cancel the unscheduled ${formatQty(balance)} of order ${order.orderNo}? (${formatQty(scheduled)} already scheduled stays.)\nEnter cancel remarks:`);
-    if (reason === null) return;
-    if (!reason.trim()) { alert("Cancel remarks are required."); return; }
-    setCancellingId(orderId);
+  // Admin: cancel part (or all) of the qty still to be scheduled. Never cancels the order
+  // itself: the qty is recorded as a schedule line that is fully cancelled, so Orders Master
+  // shows it under Cancelled Qty and the other schedule views count it as zero.
+  const [cancelModal, setCancelModal] = useState<null | { orderId: string; qty: string; remarks: string; error?: string }>(null);
+  const saveCancelQty = async () => {
+    if (!cancelModal) return;
+    const order = orders.find((entry) => entry.id === cancelModal.orderId);
+    if (!order) return setCancelModal(null);
+    const balance = Number(order.qty || 0) - totalScheduled(order.id);
+    const qty = Number(cancelModal.qty);
+    if (!Number.isFinite(qty) || qty <= 0) return setCancelModal({ ...cancelModal, error: "Enter the quantity to cancel." });
+    if (qty > balance + 1e-9) return setCancelModal({ ...cancelModal, error: `Cannot cancel more than the ${formatQty(balance)} still to be scheduled.` });
+    if (!cancelModal.remarks.trim()) return setCancelModal({ ...cancelModal, error: "Cancel remarks are required." });
+    setCancellingId(order.id);
     try {
       const timestamp = new Date().toISOString();
       const who = String(user?.name || user?.email || "System User");
-      const note = whole ? `Cancel Remarks: ${reason.trim()}` : `Unscheduled ${formatQty(balance)} cancelled: ${reason.trim()}`;
-      if (!whole) {
-        await setSchedules((prev) => [...prev, {
-          id: crypto.randomUUID(), orderId, firmId: order.firmId || "", firmName: getFirmName(order), scheduledDate: today,
-          qty: balance, producedQty: 0, canceledQty: balance, updatedBy: who, updateTimestamp: timestamp,
-        } as any]);
-      }
-      await setOrders((prev) => prev.map((entry) => entry.id === orderId ? {
+      await setSchedules((prev) => [...prev, {
+        id: crypto.randomUUID(), orderId: order.id, firmId: order.firmId || "", firmName: getFirmName(order), scheduledDate: today,
+        qty, producedQty: 0, canceledQty: qty, updatedBy: who, updateTimestamp: timestamp,
+      } as any]);
+      const fullyCovered = qty >= balance - 1e-9;
+      await setOrders((prev) => prev.map((entry) => entry.id === order.id ? {
         ...entry,
-        status: whole ? "Cancelled" : "Scheduled",
-        remarks: [entry.remarks?.trim(), note].filter(Boolean).join(" | "),
+        status: fullyCovered ? "Scheduled" : entry.status,
+        remarks: [entry.remarks?.trim(), `Cancelled ${formatQty(qty)} (not scheduled) on ${formatDate(today)} by ${who}: ${cancelModal.remarks.trim()}`].filter(Boolean).join(" | "),
         updatedBy: who,
         updateTimestamp: timestamp,
       } : entry));
+      setCancelModal(null);
     } catch (error) {
-      console.error("Cancel pending scheduling error:", error);
-      alert("Could not cancel. Please try again.");
+      console.error("Cancel qty error:", error);
+      setCancelModal({ ...cancelModal, error: "Could not save. Please try again." });
     } finally {
       setCancellingId(null);
     }
@@ -514,6 +518,7 @@ export function OrdersPendingScheduling() {
                 <th className="px-2 py-1.5 border border-black"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="center" /></th>
                 <th className="px-2 py-1.5 border border-black text-right"><SortHeader label="Order Quantity" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-2 py-1.5 border border-black text-right"><SortHeader label="Scheduled Qty" sortKey="scheduled" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-2 py-1.5 border border-black text-right"><SortHeader label="Cancelled Qty" sortKey="cancelled" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-2 py-1.5 border border-black text-right"><SortHeader label="Pending Scheduling" sortKey="pending" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-2 py-1.5 border border-black"><SortHeader label="Unit" sortKey="uom" sort={sort} onToggle={toggleSort} align="center" /></th>
                 <th className="px-2 py-1.5 border border-black">Actions</th>
@@ -522,15 +527,15 @@ export function OrdersPendingScheduling() {
             </thead>
             <tbody>
               {paginatedPending.length === 0 ? (
-                <tr><td colSpan={13 + ORDER_APPROVAL_COLUMN_COUNT} className="h-16" aria-label="No records" /></tr>
-              ) : paginatedPending.map(({ order: o, item, firmName, companyName, scheduledQty: sched, pendingQty: pendingSched }, idx) => {
+                <tr><td colSpan={14 + ORDER_APPROVAL_COLUMN_COUNT} className="h-16" aria-label="No records" /></tr>
+              ) : paginatedPending.map(({ order: o, item, firmName, companyName, scheduledQty: sched, cancelledQty: cancelledSched, pendingQty: pendingSched }, idx) => {
                 const showGroup = groupByCompany && (idx === 0 || String(paginatedPending[idx - 1].companyName || "") !== String(companyName || ""));
                 const group = companyTotals.get(String(companyName || ""));
                 return (
                   <React.Fragment key={o.id}>
                   {showGroup ? (
                     <tr className="bg-indigo-50">
-                      <td colSpan={13 + ORDER_APPROVAL_COLUMN_COUNT} className="border border-black px-3 py-1.5 text-sm font-black text-indigo-900">
+                      <td colSpan={14 + ORDER_APPROVAL_COLUMN_COUNT} className="border border-black px-3 py-1.5 text-sm font-black text-indigo-900">
                         {companyName || "No company"} <span className="ml-3 text-xs font-bold text-slate-600">{group?.orders || 0} {group?.orders === 1 ? "order" : "orders"} · Pending Scheduling {formatQty(group?.pending || 0)}</span>
                       </td>
                     </tr>
@@ -546,9 +551,10 @@ export function OrdersPendingScheduling() {
                     <td className="px-2 py-1.5 border border-black">{item?.name || "-"}</td>
                     <td className="px-2 py-1.5 border border-black text-right tabular-nums">{formatQty(o.qty)}</td>
                     <td className="px-2 py-1.5 border border-black text-right tabular-nums">{formatQty(sched)}</td>
+                    <td className="px-2 py-1.5 border border-black text-right tabular-nums text-red-700">{cancelledSched ? formatQty(cancelledSched) : "-"}</td>
                     <td className="px-2 py-1.5 border border-black text-right tabular-nums font-bold text-indigo-700">{formatQty(pendingSched)}</td>
                     <td className="px-2 py-1.5 border border-black">{item?.uom || "-"}</td>
-                    <td className="px-2 py-1.5 border border-black text-center"><div className="flex items-center justify-center gap-1"><button onClick={() => { setModalOrderId(o.id); setModalOpen(true); }} className="bg-indigo-600 text-white px-3 py-1 rounded">Schedule</button>{canCancel ? <button type="button" disabled={cancellingId === o.id} onClick={() => handleCancelBalance(o.id)} title={Number(sched) > 0 ? "Cancel the qty not yet scheduled" : "Cancel this order"} className="rounded border-2 border-red-700 bg-white px-2 py-0.5 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">{cancellingId === o.id ? "…" : "Cancel"}</button> : null}</div></td>
+                    <td className="px-2 py-1.5 border border-black text-center"><div className="flex items-center justify-center gap-1"><button onClick={() => { setModalOrderId(o.id); setModalOpen(true); }} className="bg-indigo-600 text-white px-3 py-1 rounded">Schedule</button>{canCancel ? <button type="button" disabled={cancellingId === o.id} onClick={() => setCancelModal({ orderId: o.id, qty: "", remarks: "" })} title="Cancel a quantity not yet scheduled" className="whitespace-nowrap rounded border-2 border-red-700 bg-white px-2 py-0.5 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">{cancellingId === o.id ? "…" : "Cancel Qty"}</button> : null}</div></td>
                     <OrderApprovalCells order={o} tdClassName="px-2 py-1.5 border border-black" />
                   </tr>
                   </React.Fragment>
@@ -647,6 +653,27 @@ export function OrdersPendingScheduling() {
           );
         })()}
       </div>
+      {cancelModal ? (() => {
+        const order = orders.find((entry) => entry.id === cancelModal.orderId);
+        const balance = order ? Number(order.qty || 0) - totalScheduled(order.id) : 0;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md space-y-3 rounded border-2 border-black bg-white p-4 shadow-xl">
+              <div className="flex items-center justify-between border-b-2 border-black pb-2"><h3 className="font-black uppercase">Cancel Quantity</h3><button type="button" onClick={() => setCancelModal(null)} className="rounded border-2 border-black p-1"><X size={14} /></button></div>
+              <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold">
+                <div className="rounded border border-black p-2">Order Qty<div className="text-base font-black">{formatQty(order?.qty)}</div></div>
+                <div className="rounded border border-black p-2">Scheduled<div className="text-base font-black">{formatQty(order ? Math.max(0, totalScheduled(order.id) - totalCancelled(order.id)) : 0)}</div></div>
+                <div className="rounded border border-black p-2">Yet to Schedule<div className="text-base font-black text-indigo-700">{formatQty(balance)}</div></div>
+              </div>
+              <div className="text-sm font-semibold">{order?.orderNo} · {resolveOrderItem(order as Order)?.name || ""}</div>
+              <label className="block text-xs font-black uppercase">Cancel Quantity<input type="number" min={0} max={balance} autoFocus className="mt-1 w-full rounded border-2 border-black bg-yellow-50 px-2 py-1.5 text-sm font-bold" value={cancelModal.qty} onChange={(event) => setCancelModal({ ...cancelModal, qty: event.target.value, error: "" })} placeholder={`Up to ${formatQty(balance)}`} /></label>
+              <label className="block text-xs font-black uppercase">Cancel Remarks<textarea rows={2} className="mt-1 w-full rounded border-2 border-black bg-yellow-50 px-2 py-1.5 text-sm font-semibold normal-case" value={cancelModal.remarks} onChange={(event) => setCancelModal({ ...cancelModal, remarks: event.target.value, error: "" })} /></label>
+              {cancelModal.error ? <div className="rounded border-2 border-red-700 bg-red-50 p-2 text-sm font-bold text-red-800">{cancelModal.error}</div> : null}
+              <div className="flex justify-end gap-2 border-t-2 border-black pt-3"><button type="button" onClick={() => setCancelModal(null)} className="rounded border-2 border-black bg-white px-3 py-1.5 text-sm font-bold">Close</button><button type="button" disabled={cancellingId === cancelModal.orderId} onClick={saveCancelQty} className="rounded border-2 border-black bg-red-600 px-3 py-1.5 text-sm font-bold text-white disabled:opacity-60">{cancellingId === cancelModal.orderId ? "Saving…" : "Cancel Quantity"}</button></div>
+            </div>
+          </div>
+        );
+      })() : null}
     </div>
   );
 }
