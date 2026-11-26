@@ -175,6 +175,7 @@ const FirmMaster = lazy(() => import("./pages/FirmMaster").then((module) => ({ d
 const OtherConsumablesInventoryReport = lazy(() => import("./pages/OtherConsumablesInventoryReport").then((module) => ({ default: module.OtherConsumablesInventoryReport })));
 const ErpWiseReelStockReport = lazy(() => import("./pages/ErpWiseReelStockReport").then((module) => ({ default: module.ErpWiseReelStockReport })));
 const FGStockReport = lazy(() => import("./pages/FGStockReport").then((module) => ({ default: module.FGStockReport })));
+const POTerms = lazy(() => import("./pages/POTerms").then((module) => ({ default: module.POTerms })));
 const JobWiseTracker = lazy(() => import("./pages/JobWiseTracker").then((module) => ({ default: module.JobWiseTracker })));
 const JobCorrectionLog = lazy(() => import("./pages/JobCorrectionLog").then((module) => ({ default: module.JobCorrectionLog })));
 const ReelwiseStockReport = lazy(() => import("./pages/ReelwiseStockReport").then((module) => ({ default: module.ReelwiseStockReport })));
@@ -320,6 +321,7 @@ export default function App() {
           <Route path="purchase-orders/pending-indent-lines" element={<PurchaseOrderPendingIndentLines />} />
           <Route path="purchase-orders/create/:indentId" element={<PurchaseOrderCreate />} />
           <Route path="purchase-orders/all" element={<PurchaseOrderAll />} />
+          <Route path="purchase-orders/terms" element={<POTerms />} />
           <Route path="purchase-orders/pending-approval" element={<PurchaseOrderPendingApproval />} />
           <Route path="purchase-orders/approved" element={<PurchaseOrderApproved />} />
           <Route path="purchase-orders/rejected" element={<PurchaseOrderRejected />} />

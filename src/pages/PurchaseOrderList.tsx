@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
+import { poTermsForOrder, type PoTerms } from "../lib/poTerms";
 import autoTable from "jspdf-autotable";
 import Select from "react-select";
 import { Select as FirmSelect } from "../components/Select";
@@ -151,6 +152,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
 
   const currentSetting = settings[0];
   const materialMap = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
+  const [poTerms] = useData<PoTerms>("po-terms", [], { firmScope: "all" });
   const supplierMap = useMemo(() => new Map(suppliers.map((s) => [s.id, s])), [suppliers]);
   const supplierNameMap = useMemo(() => new Map(suppliers.map((s) => [s.id, s.name])), [suppliers]);
   const resolvePurchaseFirmName = useCallback((order: PurchaseOrder) => {
@@ -1167,6 +1169,27 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         drawMeta("SGST", formatMoney(sgst), 140, summaryY + 18);
         drawMeta("Round Off", formatMoney(roundOff), 140, summaryY + 24);
         drawMeta("Grand Total", formatMoney(grandTotal), 140, summaryY + 32);
+      }
+
+      // PO Terms of the first item's material group (PO Terms view).
+      const terms = poTermsForOrder(lines, materialMap as any, poTerms);
+      if (terms.text) {
+        const pageHeight = doc.internal.pageSize.getHeight();
+        let termsY = summaryY + 42;
+        const termLines: string[] = doc.splitTextToSize(terms.text, 182);
+        if (termsY + 12 > pageHeight - 12) { doc.addPage(); termsY = 16; }
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(0);
+        doc.text("Terms & Conditions", 14, termsY);
+        termsY += 6;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        termLines.forEach((textLine) => {
+          if (termsY > pageHeight - 12) { doc.addPage(); termsY = 16; }
+          doc.text(textLine, 14, termsY);
+          termsY += 4.5;
+        });
       }
 
       doc.save(`PO_${order.poNo || order.id}.pdf`);
