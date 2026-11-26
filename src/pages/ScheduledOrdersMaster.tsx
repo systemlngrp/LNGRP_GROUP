@@ -302,6 +302,25 @@ export function ScheduledOrdersMaster({ pendingOnly: pendingOnlyProp = false, ne
       default: return "";
     }
   });
+  // Group by Company: companies A-Z, rows inside each company keep the chosen sort.
+  const [groupByCompany, setGroupByCompany] = useState(false);
+  const displaySchedules = useMemo(() => {
+    if (!groupByCompany) return sortedSchedules;
+    return sortedSchedules
+      .map((row, index) => ({ row, index }))
+      .sort((a, b) => String(a.row.companyName || "").localeCompare(String(b.row.companyName || "")) || a.index - b.index)
+      .map(({ row }) => row);
+  }, [groupByCompany, sortedSchedules]);
+  const companyGroupTotals = useMemo(() => {
+    const totals = new Map<string, { rows: number; qty: number; pending: number }>();
+    sortedSchedules.forEach((row) => {
+      const key = String(row.companyName || "");
+      const current = totals.get(key) || { rows: 0, qty: 0, pending: 0 };
+      totals.set(key, { rows: current.rows + 1, qty: current.qty + (Number(row.qty) || 0), pending: current.pending + row.pendingOrderQty });
+    });
+    return totals;
+  }, [sortedSchedules]);
+
   const {
     page,
     setPage,
@@ -309,7 +328,7 @@ export function ScheduledOrdersMaster({ pendingOnly: pendingOnlyProp = false, ne
     setPageSize,
     totalItems,
     paginatedItems: paginatedSchedules,
-  } = useClientPagination(sortedSchedules, 25);
+  } = useClientPagination(displaySchedules, 25);
 
   const clearFilters = () => {
     setSearchTerm("");
@@ -488,6 +507,7 @@ export function ScheduledOrdersMaster({ pendingOnly: pendingOnlyProp = false, ne
           </div>
         </div>
         <div data-mf-actions="true" className="flex justify-end gap-2">
+          <label className="flex h-[34px] cursor-pointer items-center gap-2 whitespace-nowrap rounded border-2 border-black bg-white px-3 text-xs font-bold"><input type="checkbox" checked={groupByCompany} onChange={(event) => setGroupByCompany(event.target.checked)} /> Group by Company</label>
           {hasActiveFilters ? (
             <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
           ) : null}
@@ -565,7 +585,16 @@ export function ScheduledOrdersMaster({ pendingOnly: pendingOnlyProp = false, ne
             </thead>
             <tbody className="divide-y divide-black bg-white">
               {paginatedSchedules.map((s, idx) => (
-                <tr key={s.id} className="hover:bg-slate-50 divide-x divide-black transition-colors">
+                <React.Fragment key={s.id}>
+                {groupByCompany && (idx === 0 || String(paginatedSchedules[idx - 1].companyName || "") !== String(s.companyName || "")) ? (
+                  <tr className="bg-indigo-50">
+                    <td colSpan={pendingOnly ? 18 : 17} className="border border-black px-3 py-1.5 text-left text-sm font-black text-indigo-900">
+                      {s.companyName || "No company"}
+                      <span className="ml-3 text-xs font-bold text-slate-600">{companyGroupTotals.get(String(s.companyName || ""))?.rows || 0} schedules · Scheduled {(companyGroupTotals.get(String(s.companyName || ""))?.qty || 0).toLocaleString()} · Pending Order Qty {(companyGroupTotals.get(String(s.companyName || ""))?.pending || 0).toLocaleString()}</span>
+                    </td>
+                  </tr>
+                ) : null}
+                <tr className="hover:bg-slate-50 divide-x divide-black transition-colors">
                   <td className="px-3 py-2 border border-black text-slate-500">{(page - 1) * pageSize + idx + 1}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap font-medium">
                     <button
@@ -623,6 +652,7 @@ export function ScheduledOrdersMaster({ pendingOnly: pendingOnlyProp = false, ne
                     </td>
                   ) : null}
                 </tr>
+                </React.Fragment>
               ))}
               {detailedSchedules.length === 0 && (
                 <tr><td colSpan={pendingOnly ? 18 : 17} className="h-16" aria-label="No records" /></tr>
