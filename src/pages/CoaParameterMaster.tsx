@@ -5,12 +5,10 @@ import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import {
-  COA_CHECK_OPTIONS, COA_PARAMETERS, COA_READING_OPTIONS, coaParameterForLabel, coaParameterToRecord, describeObservationSource,
+  COA_CHECK_OPTIONS, COA_PARAMETERS, COA_READING_OPTIONS, coaParameterToRecord, describeObservationSource,
   mergeCoaParameters, observationSourceFromText, observationSourceToText, plainRuleFromText, plainRuleToText,
   type CoaParameter, type CoaParameterRecord,
 } from "../lib/coaParameters";
-import { coaSheetTemplates } from "../lib/coaSheetTemplates";
-import { coaParameterRowParts } from "../lib/coa";
 
 // COA Parameter Master: each COA parameter, where its standard and its observation come from,
 // and the PASS / FAIL rule. Built-in list + edits saved in coa_parameters (id = code).
@@ -46,27 +44,14 @@ export function CoaParameterMaster() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Which sheet templates use each parameter.
-  const usedBy = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    Object.entries(coaSheetTemplates()).forEach(([tab, layout]) => {
-      coaParameterRowParts(layout).forEach((parts) => {
-        const parameter = coaParameterForLabel(parts.label, parameters);
-        if (!parameter) return;
-        if (!map.has(parameter.code)) map.set(parameter.code, new Set());
-        map.get(parameter.code)!.add(tab);
-      });
-    });
-    return map;
-  }, [parameters]);
 
   const rows = useMemo(() => {
     const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return parameters.filter((parameter) => {
-      const haystack = [parameter.code, parameter.name, parameter.standard, parameter.observationLabel, parameter.passRule, ...parameter.labels, ...(usedBy.get(parameter.code) || [])].join(" ").toLowerCase();
+      const haystack = [parameter.code, parameter.name, parameter.standard, parameter.observationLabel, parameter.passRule, ...parameter.labels].join(" ").toLowerCase();
       return words.every((word) => haystack.includes(word));
     });
-  }, [parameters, search, usedBy]);
+  }, [parameters, search]);
 
   const sourceOptions = [
     ...COA_READING_OPTIONS.map((option) => ({ value: `readings:${option.value}`, label: `Reading – ${option.label}` })),
@@ -132,7 +117,6 @@ export function CoaParameterMaster() {
       "Observation comes from": parameter.observationLabel,
       "PASS rule": parameter.passRule,
       "Row names on templates": parameter.labels.join(" | "),
-      "Used by templates": [...(usedBy.get(parameter.code) || [])].join(", "),
       "Changed here": savedCodes.has(parameter.code) ? "Yes" : "",
     }));
     const companyRows = rows.flatMap((parameter) => Object.entries(parameter.companyStandards || {}).map(([id, std]) => ({
@@ -140,7 +124,7 @@ export function CoaParameterMaster() {
     })));
     const book = XLSX.utils.book_new();
     const sheet = XLSX.utils.json_to_sheet(main);
-    sheet["!cols"] = [10, 32, 40, 34, 40, 28, 32, 26, 50, 40, 12].map((wch) => ({ wch }));
+    sheet["!cols"] = [10, 32, 40, 34, 40, 28, 32, 26, 50, 12].map((wch) => ({ wch }));
     XLSX.utils.book_append_sheet(book, sheet, "COA Parameters");
     const companySheet = XLSX.utils.json_to_sheet(companyRows.length ? companyRows : [{ Code: "", Parameter: "", Company: "", Standard: "" }]);
     companySheet["!cols"] = [12, 32, 40, 24].map((wch) => ({ wch }));
@@ -207,7 +191,7 @@ export function CoaParameterMaster() {
     <div className="max-h-[70vh] overflow-auto border border-slate-400 bg-white">
       <table className="w-full min-w-[1100px] border-collapse text-xs">
         <thead className="sticky top-0 z-10 bg-cyan-800 text-white"><tr>
-          {["Code", "Parameter", "Standard", "QC target (hint)", "Observation comes from", "PASS rule", "Used by templates", ...(canEdit ? ["Actions"] : [])].map((label) =>
+          {["Code", "Parameter", "Standard", "QC target (hint)", "Observation comes from", "PASS rule", ...(canEdit ? ["Actions"] : [])].map((label) =>
             <th key={label} className="whitespace-nowrap border border-slate-400 px-2 py-1.5 font-bold">{label}</th>)}
         </tr></thead>
         <tbody>{rows.map((parameter) => <tr key={parameter.code} className="align-top odd:bg-white even:bg-slate-50 hover:bg-cyan-50">
@@ -217,7 +201,6 @@ export function CoaParameterMaster() {
           <td className="border border-slate-300 px-2 py-1 text-slate-600">{parameter.targetByFlute ? Object.entries(parameter.targetByFlute).map(([flute, value]) => `${flute} ${value}`).join(" · ") : parameter.target || "-"}</td>
           <td className={`border border-slate-300 px-2 py-1 font-semibold ${sourceClass(parameter.observationLabel)}`}>{parameter.observationLabel}</td>
           <td className="border border-slate-300 px-2 py-1">{parameter.passRule}</td>
-          <td className="border border-slate-300 px-2 py-1">{[...(usedBy.get(parameter.code) || [])].join(", ") || "-"}</td>
           {canEdit ? <td className="whitespace-nowrap border border-slate-300 px-2 py-1"><div className="flex gap-2">
             <button type="button" onClick={() => { setMessage(""); setDraft(draftOf(parameter)); }} className="inline-flex items-center gap-1 font-bold text-indigo-700 underline"><Pencil size={12} /> Edit</button>
             {savedCodes.has(parameter.code) ? <button type="button" disabled={busy} onClick={() => void reset(parameter)} className="inline-flex items-center gap-1 font-bold text-slate-700 underline"><RotateCcw size={12} /> {COA_PARAMETERS.some((value) => value.code === parameter.code) ? "Reset" : "Delete"}</button> : null}
