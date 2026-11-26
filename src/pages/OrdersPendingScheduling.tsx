@@ -73,6 +73,9 @@ export function OrdersPendingScheduling() {
       .filter(({ item }) => !itemFilter || getItemKey(item) === itemFilter)
       .filter(({ order, item, firmName, companyName, pendingQty, scheduledQty }) => matchesTableSearch([
         order.orderNo,
+        order.poNumber,
+        formatRate(order.rate),
+        formatDate(order.orderDate),
         firmName,
         companyName,
         item?.name,
@@ -92,6 +95,9 @@ export function OrdersPendingScheduling() {
   const { sorted: sortedPending, sort, toggle: toggleSort } = useTableSort(pending, (row, key) => {
     switch (key) {
       case "orderNo": return row.order.orderNo;
+      case "poNumber": return row.order.poNumber;
+      case "rate": return Number(row.order.rate || 0);
+      case "orderDate": return row.order.orderDate;
       case "firm": return row.firmName;
       case "company": return row.companyName;
       case "item": return row.item?.name;
@@ -103,10 +109,13 @@ export function OrdersPendingScheduling() {
     }
   });
 
-  const exportHeaders = ["S.No", "Order No", "Order Date", "Firm", "Company", "Item", "ERP", "Order Qty", "Scheduled Qty", "Pending Scheduling", "Unit", "Approved By", "Approval Reason"];
+  const formatRate = (value: unknown) => (value === null || value === undefined || value === "" ? "" : Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  const exportHeaders = ["S.No", "Order No", "PO Number", "Order Rate", "Order Date", "Firm", "Company", "Item", "ERP", "Order Qty", "Scheduled Qty", "Pending Scheduling", "Unit", "Approved By", "Approval Reason"];
   const exportRows = () => sortedPending.map(({ order, item, firmName, companyName, scheduledQty, pendingQty }, index) => [
     index + 1,
     order.orderNo || "",
+    String(order.poNumber || ""),
+    order.rate === null || order.rate === undefined || order.rate === "" as any ? "" : Number(order.rate),
     formatDate(order.orderDate),
     firmName,
     companyName,
@@ -135,7 +144,7 @@ export function OrdersPendingScheduling() {
       [`Date: ${formatDate(exportFileDate)}`],
       exportHeaders,
       ...exportRows(),
-      ["TOTAL", "", "", "", "", "", "", totals.qty, totals.scheduled, totals.pending, "", "", ""],
+      ["TOTAL", "", "", "", "", "", "", "", "", totals.qty, totals.scheduled, totals.pending, "", "", ""],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } }, { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } }];
@@ -170,9 +179,9 @@ export function OrdersPendingScheduling() {
     doc.text(`Date: ${formatDate(exportFileDate)}   ·   ${sortedPending.length} ${sortedPending.length === 1 ? "order" : "orders"}`, pageWidth / 2, 18, { align: "center" });
     const qty = (value: number) => formatQty(value);
     autoTable(doc, {
-      head: [exportHeaders.slice(0, 11)],
-      body: exportRows().map((row) => [...row.slice(0, 7), qty(row[7] as number), qty(row[8] as number), qty(row[9] as number), row[10]].map(String)),
-      foot: [[{ content: "TOTAL", colSpan: 7, styles: { halign: "right" } }, { content: qty(totals.qty), styles: { halign: "right" } }, { content: qty(totals.scheduled), styles: { halign: "right" } }, { content: qty(totals.pending), styles: { halign: "right" } }, ""]],
+      head: [exportHeaders.slice(0, 13)],
+      body: exportRows().map((row) => [...row.slice(0, 3), formatRate(row[3]), ...row.slice(4, 9), qty(row[9] as number), qty(row[10] as number), qty(row[11] as number), row[12]].map(String)),
+      foot: [[{ content: "TOTAL", colSpan: 9, styles: { halign: "right" } }, { content: qty(totals.qty), styles: { halign: "right" } }, { content: qty(totals.scheduled), styles: { halign: "right" } }, { content: qty(totals.pending), styles: { halign: "right" } }, ""]],
       startY: 22,
       margin: { left: 8, right: 8 },
       theme: "grid",
@@ -181,17 +190,19 @@ export function OrdersPendingScheduling() {
       headStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold", halign: "center" },
       footStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold" },
       columnStyles: {
-        0: { cellWidth: 9, halign: "right" },
-        1: { cellWidth: 26 },
-        2: { cellWidth: 18 },
-        3: { cellWidth: 16 },
-        4: { cellWidth: 46 },
-        5: { cellWidth: 70 },
-        6: { cellWidth: 16 },
-        7: { halign: "right" },
-        8: { halign: "right" },
-        9: { halign: "right", fontStyle: "bold" },
-        10: { cellWidth: 12, halign: "center" },
+        0: { cellWidth: 8, halign: "right" },
+        1: { cellWidth: 24 },
+        2: { cellWidth: 20 },
+        3: { cellWidth: 13, halign: "right" },
+        4: { cellWidth: 16 },
+        5: { cellWidth: 13 },
+        6: { cellWidth: 40 },
+        7: { cellWidth: 58 },
+        8: { cellWidth: 15 },
+        9: { halign: "right" },
+        10: { halign: "right" },
+        11: { halign: "right", fontStyle: "bold" },
+        12: { cellWidth: 10, halign: "center" },
       },
     });
     doc.save(`Pending_Scheduling_${exportFileDate}.pdf`);
@@ -425,6 +436,9 @@ export function OrdersPendingScheduling() {
               <tr>
                 <th className="px-2 py-1.5 border border-black text-right">S.No</th>
                 <th className="px-2 py-1.5 border border-black"><SortHeader label="Order No" sortKey="orderNo" sort={sort} onToggle={toggleSort} align="center" /></th>
+                <th className="px-2 py-1.5 border border-black"><SortHeader label="PO Number" sortKey="poNumber" sort={sort} onToggle={toggleSort} align="center" /></th>
+                <th className="px-2 py-1.5 border border-black text-right"><SortHeader label="Order Rate" sortKey="rate" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-2 py-1.5 border border-black"><SortHeader label="Order Date" sortKey="orderDate" sort={sort} onToggle={toggleSort} align="center" /></th>
                 <th className="px-2 py-1.5 border border-black"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="center" /></th>
                 <th className="px-2 py-1.5 border border-black"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="center" /></th>
                 <th className="px-2 py-1.5 border border-black"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="center" /></th>
@@ -438,12 +452,15 @@ export function OrdersPendingScheduling() {
             </thead>
             <tbody>
               {paginatedPending.length === 0 ? (
-                <tr><td colSpan={10 + ORDER_APPROVAL_COLUMN_COUNT} className="h-16" aria-label="No records" /></tr>
+                <tr><td colSpan={13 + ORDER_APPROVAL_COLUMN_COUNT} className="h-16" aria-label="No records" /></tr>
               ) : paginatedPending.map(({ order: o, item, firmName, companyName, scheduledQty: sched, pendingQty: pendingSched }, idx) => {
                 return (
                   <tr key={o.id} className="hover:bg-slate-50">
                     <td className="px-2 py-1.5 border border-black text-right tabular-nums">{(page - 1) * pageSize + idx + 1}</td>
                     <td className="px-2 py-1.5 border border-black">{o.orderNo}</td>
+                    <td className="px-2 py-1.5 border border-black">{o.poNumber || "-"}</td>
+                    <td className="px-2 py-1.5 border border-black text-right tabular-nums">{formatRate(o.rate) || "-"}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 border border-black">{o.orderDate ? formatDate(o.orderDate) : "-"}</td>
                     <td className="px-2 py-1.5 border border-black font-semibold">{firmName}</td>
                     <td className="px-2 py-1.5 border border-black">{companyName || "-"}</td>
                     <td className="px-2 py-1.5 border border-black">{item?.name || "-"}</td>
