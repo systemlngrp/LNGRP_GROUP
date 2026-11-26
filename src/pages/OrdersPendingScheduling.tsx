@@ -25,6 +25,7 @@ export function OrdersPendingScheduling() {
   const [firmFilter, setFirmFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   const [itemFilter, setItemFilter] = useState('');
+  const [scheduledFilter, setScheduledFilter] = useState<"" | "never" | "partly">('');
   const [groupByCompany, setGroupByCompany] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const { user } = useAuth();
@@ -79,6 +80,7 @@ export function OrdersPendingScheduling() {
       .filter(({ order }) => !firmFilter || String(order.firmId || "") === firmFilter)
       .filter(({ order }) => !companyFilter || String(order.companyId || "") === companyFilter)
       .filter(({ item }) => !itemFilter || getItemKey(item) === itemFilter)
+      .filter(({ scheduledQty }) => !scheduledFilter || (scheduledFilter === "never" ? scheduledQty <= 0 : scheduledQty > 0))
       .filter(({ order, item, firmName, companyName, pendingQty, scheduledQty }) => matchesTableSearch([
         order.orderNo,
         order.poNumber,
@@ -98,7 +100,7 @@ export function OrdersPendingScheduling() {
         const cmp = aNo.localeCompare(bNo, undefined, { numeric: true, sensitivity: "base" });
         return -cmp;
       });
-  }, [companyFilter, firmFilter, itemFilter, pendingBase, searchTerm]);
+  }, [companyFilter, firmFilter, itemFilter, pendingBase, scheduledFilter, searchTerm]);
 
   const { sorted: sortedPending, sort, toggle: toggleSort } = useTableSort(pending, (row, key) => {
     switch (key) {
@@ -259,9 +261,9 @@ export function OrdersPendingScheduling() {
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [pendingBase]);
 
-  const filtersActive = Boolean(searchTerm.trim() || firmFilter || companyFilter || itemFilter);
+  const filtersActive = Boolean(searchTerm.trim() || firmFilter || companyFilter || itemFilter || scheduledFilter);
   const clearFilters = () => {
-    setSearchTerm(""); setFirmFilter(""); setCompanyFilter(""); setItemFilter("");
+    setSearchTerm(""); setFirmFilter(""); setCompanyFilter(""); setItemFilter(""); setScheduledFilter("");
   };
 
   const {
@@ -275,7 +277,7 @@ export function OrdersPendingScheduling() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, firmFilter, companyFilter, itemFilter, setPage]);
+  }, [searchTerm, firmFilter, companyFilter, itemFilter, scheduledFilter, setPage]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalOrderId, setModalOrderId] = useState<string | null>(null);
@@ -481,6 +483,7 @@ export function OrdersPendingScheduling() {
           <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
           <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
           <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Scheduled</span><Select compact value={scheduledFilter} onChange={(value) => setScheduledFilter((value as "" | "never" | "partly") || "")} options={[{ value: "", label: "All" }, { value: "never", label: "Never Scheduled" }, { value: "partly", label: "Partly Scheduled" }]} placeholder="All" /></div>
           {/* Downloads cover every row that matches the search and filters, in the table's order. */}
           <div className="flex items-end gap-2">
             <label className="flex h-[34px] cursor-pointer items-center gap-2 whitespace-nowrap rounded border-2 border-black bg-white px-3 text-xs font-bold"><input type="checkbox" checked={groupByCompany} onChange={(event) => setGroupByCompany(event.target.checked)} /> Group by Company</label>
