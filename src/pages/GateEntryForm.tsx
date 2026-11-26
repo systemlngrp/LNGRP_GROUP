@@ -234,6 +234,8 @@ export function GateEntryForm() {
         sourceGatePassNo: sourceGatePass?.gatePassNo || editingEntry?.sourceGatePassNo,
         updatedBy: "System User",
         updateTimestamp: timestamp,
+        // First-save time; kept as is on edits.
+        createdAt: editingEntry ? editingEntry.createdAt : timestamp,
       };
 
       const currentPhotos = photoSlots

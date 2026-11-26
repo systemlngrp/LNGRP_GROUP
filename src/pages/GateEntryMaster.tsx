@@ -33,6 +33,17 @@ function formatGateEntryDate(value?: string | null) {
   return formatted === "-" ? "" : formatted.replace(/-/g, "/");
 }
 
+/** Time the Gate Entry was first saved; older entries (before this was recorded) show their last-saved time. */
+function gateEntryTimestamp(entry: { createdAt?: string; updateTimestamp?: string }) {
+  return String(entry.createdAt || entry.updateTimestamp || "");
+}
+
+function formatGateEntryTimestamp(value: string) {
+  const time = Date.parse(value);
+  if (!value || !Number.isFinite(time)) return "-";
+  return new Date(time).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true }).replace(/,/, "");
+}
+
 export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps = {}) {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
@@ -151,6 +162,7 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
         case "Firm": return getFirmNameById(entry.firmId || entry.destinationFirmId, firms) || "Unassigned";
         case "Job No": return getJobNo(entry);
         case "Date": return entry.date;
+        case "Timestamp": return gateEntryTimestamp(entry);
         case "Supplier": return getSupplierNameById(entry.supplierId, suppliers, companies, firms);
         case "Invoice No.": return entry.invoiceNo;
         case "Invoice Value": return Number(entry.invoiceValue || 0);
@@ -227,8 +239,8 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
   };
 
   const tableHeadings = cancelledOnly
-    ? ["Gate Entry No", "Firm", "Job No", "Date", "Supplier", "Invoice No.", "Invoice Value", "Truck No", "Cancel Remarks", "Photos", "Action"]
-    : ["Gate Entry No", "Firm", "Job No", "Date", "Supplier", "Invoice No.", "Invoice Value", "Truck No", "MRR No", "Cancel Remarks", "Photos", "Action"];
+    ? ["Gate Entry No", "Firm", "Job No", "Date", "Timestamp", "Supplier", "Invoice No.", "Invoice Value", "Truck No", "Cancel Remarks", "Photos", "Action"]
+    : ["Gate Entry No", "Firm", "Job No", "Date", "Timestamp", "Supplier", "Invoice No.", "Invoice Value", "Truck No", "MRR No", "Cancel Remarks", "Photos", "Action"];
   const emptyColSpan = tableHeadings.length;
 
   return (
@@ -315,6 +327,7 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
                       <td className="border border-black px-4 py-3 text-sm font-semibold text-black">{getFirmNameById(entry.firmId || entry.destinationFirmId, firms) || "Unassigned"}</td>
                       <td className="border border-black px-4 py-3 text-sm font-semibold text-black">{getJobNo(entry)}</td>
                       <td className="border border-black px-4 py-3 text-sm text-black">{formatGateEntryDate(entry.date)}</td>
+                      <td className="whitespace-nowrap border border-black px-4 py-3 text-sm text-black" title={entry.createdAt ? "Time the Gate Entry was saved" : "Last saved (entry made before the time was recorded)"}>{formatGateEntryTimestamp(gateEntryTimestamp(entry))}</td>
                       <td className="border border-black px-4 py-3 text-sm text-black" title={getSupplierName(entry.supplierId)}><div className="line-clamp-2">{getSupplierName(entry.supplierId)}</div></td>
                       <td className="border border-black px-4 py-3 text-sm text-black">{entry.invoiceNo}</td>
                       <td className="border border-black px-4 py-3 text-sm text-black">{Number(entry.invoiceValue || 0).toFixed(2)}</td>

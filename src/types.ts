@@ -521,6 +521,8 @@ export interface GateEntry {
   cancelledAt?: string;
   cancelledBy?: string;
   updatedBy?: string;
+  /** When the Gate Entry was first saved (ISO). */
+  createdAt?: string;
   updateTimestamp?: string;
   orderFirmId?: string;
   sourceFirmId?: string;

@@ -150,6 +150,7 @@ export const DEFAULT_GATE_ENTRY_MESSAGE = `🚛 *GATE ENTRY*
 
 *Gate Entry No.:* {{gateEntryNo}}
 *Date:* {{date}}
+*Timestamp:* {{timestamp}}
 *Firm:* {{firmName}}
 *Purpose:* {{purpose}}
 *Supplier:* {{supplier}}
