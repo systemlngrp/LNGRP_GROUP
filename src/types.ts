@@ -1478,6 +1478,9 @@ export interface CoaTemplateLayout {
   footerRows: CoaTemplateRow[];
   // Other customer companies (e.g. a group's C/O units) that use this template.
   applyToCompanyIds?: string[];
+  // Firm printed at the top of the COA (one of our 3 firms). Blank = the job's firm.
+  pdfFirmId?: string;
+  pdfFirmName?: string;
 }
 
 export interface CoaTemplate {

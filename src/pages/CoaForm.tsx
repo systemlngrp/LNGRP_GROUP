@@ -105,7 +105,7 @@ export function CoaForm() {
     setBlocked(null);
     const nextContext = contextFor(nextProduction);
     const nextTemplate = nextContext.company ? activeTemplateForCompany(templates, nextContext.company.id) : undefined;
-    setEditingRecord(null); setProductionId(nextProductionId); setTemplateId(nextTemplate?.id || ""); setLayout(nextTemplate?.layout || defaultCoaLayout()); setHeaderData(buildCoaSourceMap(nextContext)); setCellValues(nextTemplate ? buildInitialCellValues(nextTemplate.layout, buildCoaSourceMap(nextContext), coaParameters) : {}); setMessage(nextTemplate ? "" : "No active COA template is configured for this customer company.");
+    setEditingRecord(null); setProductionId(nextProductionId); setTemplateId(nextTemplate?.id || ""); setLayout(nextTemplate?.layout || defaultCoaLayout()); setHeaderData({ ...buildCoaSourceMap(nextContext), ...(nextTemplate?.layout?.pdfFirmId ? { pdfFirmId: nextTemplate.layout.pdfFirmId, pdfFirmName: nextTemplate.layout.pdfFirmName || firms.find((row) => row.id === nextTemplate.layout.pdfFirmId)?.firmName || "" } : {}) }); setCellValues(nextTemplate ? buildInitialCellValues(nextTemplate.layout, buildCoaSourceMap(nextContext), coaParameters) : {}); setMessage(nextTemplate ? "" : "No active COA template is configured for this customer company.");
   };
   // ?productionId= (PDI Report → Generate COA) opens the form with that job selected.
   const [searchParams] = useSearchParams();
