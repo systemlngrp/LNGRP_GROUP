@@ -1754,7 +1754,7 @@ function computeSummarySheetRows(lists, stockItems) {
       "Vehicle 6": loadingRecords[5]?.vehicle || "",
       "FG LEFT": fgLeft,
       Rate: rate,
-      Status: stage,
+      Status: !jobClosed && printing > 0 && !(totalDispatchQty > 0) ? "Printed but Never Dispatched" : stage,
       "Printing Wastage": productionRows.filter((entry) => /printing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.misprinting), 0),
       "Sale Value": money(dispatchedQty * rate),
       "Sale Value (3 slips)": money(dispatchedQty3 * rate),
@@ -1778,6 +1778,7 @@ function computeSummarySheetRows(lists, stockItems) {
       const totalQty = combined.slice(0, 6).reduce((sum, record) => sum + record.qty, 0);
       const totalQty3 = combined.slice(0, 3).reduce((sum, record) => sum + record.qty, 0);
       const firstDate = [preAppDates[0], invoiceDates[0]].filter(Boolean).sort()[0] || "";
+      if (preAppQty > 0 && row.Status === "Printed but Never Dispatched") row.Status = stage;
       row["Pre-App Dispatched Qty"] = money(preAppQty);
       row["Pre-App Sale Value"] = money(preAppQty * rate);
       row["Pre-App Loading No"] = combined.filter((record) => record.preApp).map((record) => record.slipNo).filter(Boolean).join(", ");
