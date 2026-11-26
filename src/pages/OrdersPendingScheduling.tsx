@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
 import { Firm, Order, OrderSchedule } from "../types";
 import { Trash2, Search, Plus, X } from "lucide-react";
 import jsPDF from "jspdf";
@@ -24,6 +25,10 @@ export function OrdersPendingScheduling() {
   const [firmFilter, setFirmFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   const [itemFilter, setItemFilter] = useState('');
+  const [groupByCompany, setGroupByCompany] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const canCancel = user?.role === "Admin";
 
   const [orders, setOrders] = useData<Order>("orders", [], { firmScope: "all" });
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
@@ -110,7 +115,25 @@ export function OrdersPendingScheduling() {
       case "uom": return row.item?.uom;
       default: return "";
     }
-  });
+  }, [], { key: "orderDate", direction: "desc" });
+
+  // Group by Company: companies A-Z, rows inside each company keep the chosen sort.
+  const displayRows = useMemo(() => {
+    if (!groupByCompany) return sortedPending;
+    return sortedPending
+      .map((row, index) => ({ row, index }))
+      .sort((a, b) => String(a.row.companyName || "").localeCompare(String(b.row.companyName || "")) || a.index - b.index)
+      .map(({ row }) => row);
+  }, [groupByCompany, sortedPending]);
+  const companyTotals = useMemo(() => {
+    const totals = new Map<string, { orders: number; pending: number }>();
+    sortedPending.forEach((row) => {
+      const key = String(row.companyName || "");
+      const current = totals.get(key) || { orders: 0, pending: 0 };
+      totals.set(key, { orders: current.orders + 1, pending: current.pending + row.pendingQty });
+    });
+    return totals;
+  }, [sortedPending]);
 
   const exportHeaders = ["S.No", "Order No", "PO Number", "Order Rate", "Order Date", "Firm", "Company", "Item", "ERP", "Order Qty", "Scheduled Qty", "Pending Scheduling", "Unit", "Approved By", "Approval Reason"];
   const exportRows = () => sortedPending.map(({ order, item, firmName, companyName, scheduledQty, pendingQty }, index) => [
@@ -248,7 +271,7 @@ export function OrdersPendingScheduling() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedPending,
-  } = useClientPagination(sortedPending, 25);
+  } = useClientPagination(displayRows, 25);
 
   useEffect(() => {
     setPage(1);
@@ -396,6 +419,47 @@ export function OrdersPendingScheduling() {
     })();
   };
 
+  // Admin: cancel what is still to be scheduled. Nothing scheduled -> the whole order is
+  // cancelled (as on Plant Head). Partly scheduled -> the balance is recorded as a schedule
+  // line that is fully cancelled, so Orders Master shows it under Cancelled Qty.
+  const handleCancelBalance = async (orderId: string) => {
+    const order = orders.find((entry) => entry.id === orderId);
+    if (!order) return;
+    const scheduled = totalScheduled(orderId);
+    const balance = Number(order.qty || 0) - scheduled;
+    if (balance <= 0) return;
+    const whole = scheduled <= 0;
+    const reason = window.prompt(whole
+      ? `Cancel order ${order.orderNo} (${formatQty(balance)} not scheduled)?\nEnter cancel remarks:`
+      : `Cancel the unscheduled ${formatQty(balance)} of order ${order.orderNo}? (${formatQty(scheduled)} already scheduled stays.)\nEnter cancel remarks:`);
+    if (reason === null) return;
+    if (!reason.trim()) { alert("Cancel remarks are required."); return; }
+    setCancellingId(orderId);
+    try {
+      const timestamp = new Date().toISOString();
+      const who = String(user?.name || user?.email || "System User");
+      const note = whole ? `Cancel Remarks: ${reason.trim()}` : `Unscheduled ${formatQty(balance)} cancelled: ${reason.trim()}`;
+      if (!whole) {
+        await setSchedules((prev) => [...prev, {
+          id: crypto.randomUUID(), orderId, firmId: order.firmId || "", firmName: getFirmName(order), scheduledDate: today,
+          qty: balance, producedQty: 0, canceledQty: balance, updatedBy: who, updateTimestamp: timestamp,
+        } as any]);
+      }
+      await setOrders((prev) => prev.map((entry) => entry.id === orderId ? {
+        ...entry,
+        status: whole ? "Cancelled" : "Scheduled",
+        remarks: [entry.remarks?.trim(), note].filter(Boolean).join(" | "),
+        updatedBy: who,
+        updateTimestamp: timestamp,
+      } : entry));
+    } catch (error) {
+      console.error("Cancel pending scheduling error:", error);
+      alert("Could not cancel. Please try again.");
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="border-b border-black pb-3">
@@ -419,6 +483,7 @@ export function OrdersPendingScheduling() {
           <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
           {/* Downloads cover every row that matches the search and filters, in the table's order. */}
           <div className="flex items-end gap-2">
+            <label className="flex h-[34px] cursor-pointer items-center gap-2 whitespace-nowrap rounded border-2 border-black bg-white px-3 text-xs font-bold"><input type="checkbox" checked={groupByCompany} onChange={(event) => setGroupByCompany(event.target.checked)} /> Group by Company</label>
             <button type="button" onClick={handleExportExcel} disabled={sortedPending.length === 0} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold disabled:opacity-40">Excel</button>
             <button type="button" onClick={handleExportPDF} disabled={sortedPending.length === 0} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold disabled:opacity-40">PDF</button>
           </div>
@@ -456,8 +521,18 @@ export function OrdersPendingScheduling() {
               {paginatedPending.length === 0 ? (
                 <tr><td colSpan={13 + ORDER_APPROVAL_COLUMN_COUNT} className="h-16" aria-label="No records" /></tr>
               ) : paginatedPending.map(({ order: o, item, firmName, companyName, scheduledQty: sched, pendingQty: pendingSched }, idx) => {
+                const showGroup = groupByCompany && (idx === 0 || String(paginatedPending[idx - 1].companyName || "") !== String(companyName || ""));
+                const group = companyTotals.get(String(companyName || ""));
                 return (
-                  <tr key={o.id} className="hover:bg-slate-50">
+                  <React.Fragment key={o.id}>
+                  {showGroup ? (
+                    <tr className="bg-indigo-50">
+                      <td colSpan={13 + ORDER_APPROVAL_COLUMN_COUNT} className="border border-black px-3 py-1.5 text-sm font-black text-indigo-900">
+                        {companyName || "No company"} <span className="ml-3 text-xs font-bold text-slate-600">{group?.orders || 0} {group?.orders === 1 ? "order" : "orders"} · Pending Scheduling {formatQty(group?.pending || 0)}</span>
+                      </td>
+                    </tr>
+                  ) : null}
+                  <tr className="hover:bg-slate-50">
                     <td className="px-2 py-1.5 border border-black text-right tabular-nums">{(page - 1) * pageSize + idx + 1}</td>
                     <td className="px-2 py-1.5 border border-black">{o.orderNo}</td>
                     <td className="px-2 py-1.5 border border-black">{o.poNumber || "-"}</td>
@@ -470,9 +545,10 @@ export function OrdersPendingScheduling() {
                     <td className="px-2 py-1.5 border border-black text-right tabular-nums">{formatQty(sched)}</td>
                     <td className="px-2 py-1.5 border border-black text-right tabular-nums font-bold text-indigo-700">{formatQty(pendingSched)}</td>
                     <td className="px-2 py-1.5 border border-black">{item?.uom || "-"}</td>
-                    <td className="px-2 py-1.5 border border-black text-center"><button onClick={() => { setModalOrderId(o.id); setModalOpen(true); }} className="bg-indigo-600 text-white px-3 py-1 rounded">Schedule</button></td>
+                    <td className="px-2 py-1.5 border border-black text-center"><div className="flex items-center justify-center gap-1"><button onClick={() => { setModalOrderId(o.id); setModalOpen(true); }} className="bg-indigo-600 text-white px-3 py-1 rounded">Schedule</button>{canCancel ? <button type="button" disabled={cancellingId === o.id} onClick={() => handleCancelBalance(o.id)} title={Number(sched) > 0 ? "Cancel the qty not yet scheduled" : "Cancel this order"} className="rounded border-2 border-red-700 bg-white px-2 py-0.5 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">{cancellingId === o.id ? "…" : "Cancel"}</button> : null}</div></td>
                     <OrderApprovalCells order={o} tdClassName="px-2 py-1.5 border border-black" />
                   </tr>
+                  </React.Fragment>
                 );
               })}
             </tbody>
