@@ -377,41 +377,40 @@ export function ProductionForm() {
     }, 0);
   }, [selectedItem?.id, schedules, orders, plans, loadingSlips]);
 
-  const productionInProgress = useMemo(() => {
-    if (!selectedItem?.id) return 0;
-
-    return productions
-      .filter((production) => {
-        const prodFromFFGValue = production.prodFromFFG;
-        const hasFFGValue = !(prodFromFFGValue === null || prodFromFFGValue === undefined || String(prodFromFFGValue) === "");
-
-        // Jobs dated before 17-Nov-2026 are not counted.
-        const fromCutoff = String(production.date || "").slice(0, 10) >= PRODUCTION_IN_PROGRESS_FIRST_DATE;
-        return fromCutoff && isSameNpdItem(selectedItem, production) && !production.cancelTimestamp && !hasFFGValue;
-      })
-      .reduce((sum, production) => sum + (Number(production.qty) || 0), 0);
+  // Jobs from 17-Nov-2026 with no Prod. from FFG yet. Only their not-yet-printed qty is
+  // "in progress": printed boxes are already in Current Balance (live stock).
+  const inProgressJobs = useMemo(() => {
+    if (!selectedItem?.id) return [] as Production[];
+    return productions.filter((production) => {
+      const prodFromFFGValue = production.prodFromFFG;
+      const hasFFGValue = !(prodFromFFGValue === null || prodFromFFGValue === undefined || String(prodFromFFGValue) === "");
+      const fromCutoff = String(production.date || "").slice(0, 10) >= PRODUCTION_IN_PROGRESS_FIRST_DATE;
+      return fromCutoff && isSameNpdItem(selectedItem, production) && !production.cancelTimestamp && !hasFFGValue;
+    });
   }, [productions, selectedItem?.id]);
+  const inProgressJobIds = inProgressJobs.map((job) => String(job.id || "")).filter(Boolean).sort().join(",");
 
-  // Current Balance (temporary rule from 24-Nov-2026, review due 27-Nov):
-  // Production since 17-Nov − Invoiced since 17-Nov; Opening and Receipt left out.
-  // Previous rule: Opening + Receipt + Production − Invoiced (all dates) = selectedItem.balance.
-  const [recentBalance, setRecentBalance] = useState<{ itemId: string; production: number; invoiced: number } | null>(null);
+  // Current Balance = the item's live stock: physical count as on 26-Nov-2026 5 PM +
+  // receipts (FG Purchase / Rejection In) + printed − loaded − loading wastage since then.
+  // (24-Nov to 27-Nov rule was Production since 17-Nov − Invoiced since 17-Nov.)
+  type LiveItem = { opening: number; production: number; receiptPurchase: number; receiptRejection: number; dispatched: number; loadingWastage: number; live: number };
+  const [liveBalance, setLiveBalance] = useState<{ erp: string; jobs: string; item: LiveItem; asOn: string; printedByJob: Record<string, number> } | null>(null);
   const [recentBalanceError, setRecentBalanceError] = useState("");
   useEffect(() => {
-    const itemId = String(selectedItem?.id || "");
+    const erp = selectedItem ? selectedErp : "";
     setRecentBalanceError("");
-    if (!itemId) {
-      setRecentBalance(null);
+    if (!erp) {
+      setLiveBalance(null);
       return;
     }
     let cancelled = false;
-    fetch(`/api/npd/${encodeURIComponent(itemId)}/recent-balance?since=${PRODUCTION_IN_PROGRESS_FIRST_DATE}`, {
+    fetch(`/api/live-stock/item?type=FG&erp=${encodeURIComponent(erp)}&jobs=${encodeURIComponent(inProgressJobIds)}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem("authToken") || ""}` },
     })
       .then(async (response) => {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-        if (!cancelled) setRecentBalance({ itemId, production: Number(data.production || 0), invoiced: Number(data.invoiced || 0) });
+        if (!cancelled) setLiveBalance({ erp, jobs: inProgressJobIds, item: data.item, asOn: String(data.cutoff?.asOn || ""), printedByJob: data.printedByJob || {} });
       })
       .catch((error) => {
         if (!cancelled) setRecentBalanceError(error instanceof Error ? error.message : "Unable to load");
@@ -419,9 +418,13 @@ export function ProductionForm() {
     return () => {
       cancelled = true;
     };
-  }, [selectedItem?.id]);
-  const recentBalanceReady = Boolean(recentBalance && recentBalance.itemId === String(selectedItem?.id || ""));
-  const currentBalance = recentBalanceReady ? Math.max(recentBalance!.production - recentBalance!.invoiced, 0) : 0;
+  }, [selectedItem?.id, selectedErp, inProgressJobIds]);
+  const recentBalanceReady = Boolean(liveBalance && liveBalance.erp === selectedErp && liveBalance.jobs === inProgressJobIds);
+  const currentBalance = recentBalanceReady ? Math.max(Number(liveBalance!.item.live || 0), 0) : 0;
+  const productionInProgress = inProgressJobs.reduce((sum, job) => {
+    const printed = Number(liveBalance?.printedByJob?.[String(job.id || "")] || 0);
+    return sum + Math.max((Number(job.qty) || 0) - printed, 0);
+  }, 0);
 
   const maximumAllowedProduction = Math.max(
     pendingOrderQtyForItem - currentBalance - productionInProgress,
@@ -436,7 +439,7 @@ export function ProductionForm() {
     const uom = selectedItem?.uom ? ` ${selectedItem.uom}` : "";
     const line = `Pending Order ${fmt(pendingOrderQtyForItem)} − Current Balance ${fmt(balance)} − Production In Progress ${fmt(productionInProgress)} = ${fmt(raw)}${uom}${raw < 0 ? " → shown as 0" : ""}`;
     if (selectedItem && recentBalanceError) return `Current Balance could not be loaded (${recentBalanceError}); figure below uses 0.`;
-    if (selectedItem && !recentBalanceReady) return "Loading Current Balance…";
+    if (selectedItem && !recentBalanceReady) return "Loading Current Balance and Production In Progress…";
     return selectedItem
       ? line
       : `${line}. Item not found in NPD Master${selectedErp ? ` for ERP ${selectedErp}` : ""}, so all three are 0.`;
@@ -863,14 +866,19 @@ export function ProductionForm() {
               value={currentBalance}
               suffix={selectedItem?.uom || ""}
               helpText="Production (FFG) of jobs dated 17-Nov-2026 or later minus quantity invoiced on invoices dated 17-Nov-2026 or later. Opening and Receipt are not included. Never shown below zero."
-              note={selectedItem && recentBalanceReady ? `Production since 17-Nov ${recentBalance!.production.toLocaleString("en-IN", { maximumFractionDigits: 2 })} − Invoiced since 17-Nov ${recentBalance!.invoiced.toLocaleString("en-IN", { maximumFractionDigits: 2 })} = ${(recentBalance!.production - recentBalance!.invoiced).toLocaleString("en-IN", { maximumFractionDigits: 2 })}${selectedItem?.uom ? ` ${selectedItem.uom}` : ""}${recentBalance!.production - recentBalance!.invoiced < 0 ? " → shown as 0" : ""}` : undefined}
+              note={selectedItem && recentBalanceReady ? (() => {
+                const f = (v: number) => Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+                const it = liveBalance!.item;
+                return `Physical stock ${liveBalance!.asOn ? `as on ${liveBalance!.asOn} ` : ""}${f(it.opening)} + Receipts ${f(it.receiptPurchase + it.receiptRejection)} + Printed ${f(it.production)} − Loaded ${f(it.dispatched)} − Loading Wastage ${f(it.loadingWastage)} = ${f(it.live)}${selectedItem?.uom ? ` ${selectedItem.uom}` : ""}${it.live < 0 ? " → shown as 0" : ""}`;
+              })() : undefined}
             />}
 
             {showField("Production In Progress") && <ReadOnlyNumberField
               label="Production In Progress"
               value={productionInProgress}
               suffix={selectedItem?.uom || ""}
-              helpText="For the selected item, this sums planned qty of jobs dated 17-Nov-2026 or later where Production from FFG is blank and Cancel Timestamp is blank."
+              helpText="For the selected item: jobs dated 17-Nov-2026 or later with Production from FFG blank and not cancelled. Each counts Planned qty − Printed qty so far (never below 0), because printed boxes are already in Current Balance."
+              note={selectedItem && recentBalanceReady && inProgressJobs.length ? `${inProgressJobs.length} job(s): Planned ${inProgressJobs.reduce((sum, job) => sum + (Number(job.qty) || 0), 0).toLocaleString("en-IN")} − Printed ${inProgressJobs.reduce((sum, job) => sum + Math.min(Number(liveBalance?.printedByJob?.[String(job.id || "")] || 0), Number(job.qty) || 0), 0).toLocaleString("en-IN")} = ${productionInProgress.toLocaleString("en-IN")}` : undefined}
             />}
 
             {/* Shown with Maximum Allowed Production (same setting). */}
