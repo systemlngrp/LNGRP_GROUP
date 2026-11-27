@@ -23,13 +23,16 @@ const sourceOf = (value) => {
     return raw === "PHP" || raw === "PLATE" ? raw : raw === "" || raw === "FG" ? "FG" : "";
 };
 // What one slip takes out of stock. Shared by the live stock report and the save check,
-// so both always agree. Linked PHP / Plate on an FG slip are counted from their own
-// php / plate slips, not from the FG slip's phpDetails.
+// so both always agree. Linked PHP / Plate on an FG slip are counted from the FG slip's
+// phpDetails / plateDetails (their own php / plate slips are often missing since Nov-2026),
+// so php / plate slips linked to an FG slip (fgLoadingId) are not counted again.
 function slipMovements(entity, row, erpFor, jobErp) {
     const out = [];
     if (["cancelled", "canceled"].includes(s(row?.status).toLowerCase()))
         return out;
     if (entity === "loading_slips" && s(row?.slipNo).startsWith("LNCB-1/"))
+        return out;
+    if (entity !== "loading_slips" && s(row?.fgLoadingId))
         return out;
     const fallback = entity === "php_loading_slips" ? "PHP" : entity === "plate_loading_slips" ? "PLATE" : "FG";
     for (const line of arr(row?.lines)) {
@@ -39,6 +42,11 @@ function slipMovements(entity, row, erpFor, jobErp) {
         out.push({ entity, id: s(row.id), date: s(row.date), itemType: type, erp: erpFor(type, line.itemId, line.erpCode), itemName: s(line.itemName), kind: "dispatched", qty: n(line.loadedQty), ref: s(row.slipNo) });
     }
     if (entity === "loading_slips") {
+        for (const [field, type] of [["phpDetails", "PHP"], ["plateDetails", "PLATE"]]) {
+            for (const detail of arr(row?.[field])) {
+                out.push({ entity, id: s(row.id), date: s(row.date), itemType: type, erp: erpFor(type, detail.itemId, detail.erpCode), itemName: s(detail.itemName), kind: "dispatched", qty: n(detail.requiredQty), ref: `${s(row.slipNo)} (linked ${type === "PLATE" ? "Plate" : "PHP"})` });
+            }
+        }
         for (const w of arr(row?.jobWastage)) {
             const job = jobErp.get(s(w.jobId));
             out.push({ entity, id: s(row.id), date: s(row.date), itemType: "FG", erp: job?.erp || "", itemName: job?.name, kind: "loadingWastage", qty: n(w.qty), ref: `${s(row.slipNo)} (${s(w.jobNo)})` });
@@ -133,7 +141,8 @@ async function buildLiveStock(db) {
         for (const value of masterById[type].values())
             if (value.erp && !itemNames[`${type}|${value.erp}`])
                 itemNames[`${type}|${value.erp}`] = value.name;
-    const erpFor = (type, itemId, erp) => s(erp) || (type === "FG" ? npdById.get(s(itemId))?.erp : masterById[type].get(s(itemId))?.erp) || "";
+    // PHP / Plate lines often carry the FG item's ERP in erpCode, so the item master decides.
+    const erpFor = (type, itemId, erp) => (type === "FG" ? s(erp) || npdById.get(s(itemId))?.erp : masterById[type].get(s(itemId))?.erp || s(erp)) || "";
     const movements = [];
     // FG production: Printing entries (printed qty is already net of printing wastage).
     const [printRows] = await db.query(`SELECT pp.*, p.masterErp, p.npdId
@@ -191,7 +200,7 @@ async function buildLiveStock(db) {
             if (s(row.status) === "Cancelled" || s(row.cancelTimestamp))
                 continue;
             const master = masterById[type].get(s(row.itemId));
-            jobOutputs.push({ entity: table, id: s(row.id), date: s(row.date), itemType: type, erp: s(row.erpCode) || master?.erp || "", itemName: master?.name, output: n(row.productionOutputQty), ref: s(row.transactionNo) });
+            jobOutputs.push({ entity: table, id: s(row.id), date: s(row.date), itemType: type, erp: master?.erp || s(row.erpCode) || "", itemName: master?.name, output: n(row.productionOutputQty), ref: s(row.transactionNo) });
         }
     }
     const rows = computeLiveStock({ cutoff, openings, movements, jobOutputs, itemNames });
@@ -242,22 +251,6 @@ export async function checkSlipsAgainstLiveStock(db, entity, incoming) {
         add(slipMovements(entity, next, erpFor, jobErp), 1, entity);
         if (stored)
             add(slipMovements(entity, stored, erpFor, jobErp), -1, entity);
-        // An FG slip carries its linked PHP / Plate in phpDetails / plateDetails; their own
-        // slips are written right after it. Check them now so the FG slip is not saved alone.
-        if (entity !== "loading_slips")
-            continue;
-        for (const [field, table, type] of [["phpDetails", "php_loading_slips", "PHP"], ["plateDetails", "plate_loading_slips", "PLATE"]]) {
-            if (!Array.isArray(parse(row[field])))
-                continue;
-            const [childRows] = await db.query(`SELECT * FROM \`${table}\` WHERE fgLoadingId = ?`, [s(row.id)]);
-            const children = childRows.filter((child) => !["cancelled", "canceled"].includes(s(child.status).toLowerCase()));
-            for (const child of children)
-                add(slipMovements(table, child, erpFor, jobErp), -1, table);
-            const childId = s(children[0]?.id) || s(row.id);
-            const cancelled = ["cancelled", "canceled"].includes(s(next.status).toLowerCase());
-            const lines = cancelled ? [] : arr(row[field]).map((detail) => ({ itemId: detail.itemId, erpCode: detail.erpCode, itemName: detail.itemName, itemSource: type, loadedQty: detail.requiredQty }));
-            add(slipMovements(table, { id: childId, date: next.date, status: "Active", lines }, erpFor, jobErp), 1, table);
-        }
     }
     const liveByKey = new Map(live.rows.map((row) => [`${row.itemType}|${row.erp}`, row]));
     const errors = [];
