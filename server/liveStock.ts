@@ -15,6 +15,9 @@ import {
 // Opening rows: physical_stock_openings. Cutoff (time, ids saved before it, PHP/Plate job
 // output at the cutoff): live_stock_cutoffs, latest row wins.
 
+/** Jobs from this date were made in the app: their own record is their stock. */
+const APP_START_DATE = "2026-11-17";
+
 type RequestUser = { role?: string; name?: string; userId?: string } | null;
 
 const parse = (value: unknown) => {
@@ -157,16 +160,28 @@ async function buildLiveStock(db: mysql.Pool) {
 
   const movements: LiveStockMovement[] = [];
 
-  // FG production: Printing entries (printed qty is already net of printing wastage).
-  const [printRows] = await db.query(
-    `SELECT pp.*, p.masterErp, p.npdId
-     FROM \`production_processing\` pp LEFT JOIN \`productions\` p ON p.id = pp.productionId
-     WHERE pp.machineName LIKE '%rint%' AND pp.date >= ?`,
-    [from],
+  // FG jobs started in the app: their whole record counts (printed - loaded - loading wastage).
+  // Closed jobs count 0. Cancelled jobs do not count.
+  const [appJobRows] = await db.query(
+    "SELECT id, transactionNo, masterErp, npdId, closeBy, status FROM `productions` WHERE LEFT(`date`, 10) >= ? AND COALESCE(status, '') <> 'Cancelled'",
+    [APP_START_DATE],
   );
-  for (const row of printRows as any[]) {
-    const erp = s(row.erp) || s(row.masterErp) || npdById.get(s(row.npdId))?.erp || "";
-    movements.push({ entity: "production_processing", id: s(row.id), date: s(row.date), itemType: "FG", erp, itemName: s(row.itemName), kind: "production", qty: n(row.qty), ref: s(row.jobNo) });
+  const appJobs = new Map<string, { erp: string; name: string; ref: string; closed: boolean }>();
+  for (const job of appJobRows as any[]) {
+    const npd = npdById.get(s(job.npdId));
+    appJobs.set(s(job.id), { erp: s(job.masterErp) || npd?.erp || "", name: npd?.name || "", ref: s(job.transactionNo), closed: s(job.closeBy).toLowerCase() === "yes" });
+  }
+  const countedJob = (jobId: unknown) => { const job = appJobs.get(s(jobId)); return job && !job.closed ? job : null; };
+  if (appJobs.size) {
+    const [printRows] = await db.query(
+      "SELECT id, productionId, date, qty, jobNo, itemName, erp FROM `production_processing` WHERE machineName LIKE '%rint%' AND productionId IN (?)",
+      [[...appJobs.keys()]],
+    );
+    for (const row of printRows as any[]) {
+      const job = countedJob(row.productionId);
+      if (!job) continue;
+      movements.push({ entity: "production_processing", id: s(row.id), date: s(row.date), itemType: "FG", erp: job.erp || s(row.erp), itemName: s(row.itemName) || job.name, kind: "production", qty: n(row.qty), ref: s(row.jobNo) || job.ref, always: true });
+    }
   }
 
   // Receipts: FG Purchase / Rejection In MRRs into Unit-II, not the automatic inter-firm ones.
@@ -189,10 +204,12 @@ async function buildLiveStock(db: mysql.Pool) {
     }
   }
 
-  // Dispatch: loaded qty on loading slips (Unit-II and LNKI; Unit-I slips are boards / scrap).
+  // Dispatch. FG: loading against an app job (from 17-Nov) counts whatever its date;
+  // everything else (opening stock, older jobs, no job) counts after the count only.
+  // Linked PHP / Plate on FG slips as before. Unit-I slips are boards / scrap.
   const [slipRows] = await db.query(
     "SELECT * FROM `loading_slips` WHERE date >= ? AND COALESCE(status, '') <> 'Cancelled' AND COALESCE(slipNo, '') NOT LIKE 'LNCB-1/%'",
-    [from],
+    [APP_START_DATE < from ? APP_START_DATE : from],
   );
   const wastageJobIds = new Set<string>();
   for (const row of slipRows as any[]) for (const w of arr(row.jobWastage)) if (s(w.jobId)) wastageJobIds.add(s(w.jobId));
@@ -204,7 +221,32 @@ async function buildLiveStock(db: mysql.Pool) {
       jobErp.set(s(job.id), { erp: s(job.masterErp) || npd?.erp || "", name: npd?.name || "" });
     }
   }
-  for (const row of slipRows as any[]) movements.push(...slipMovements("loading_slips", row, erpFor, jobErp));
+  for (const row of slipRows as any[]) {
+    const afterCount = countsAfterCutoff(cutoff, "loading_slips", s(row.id), s(row.date));
+    for (const m of slipMovements("loading_slips", row, erpFor, jobErp)) if (m.itemType !== "FG" && afterCount) movements.push(m);
+    if (["cancelled", "canceled"].includes(s(row.status).toLowerCase())) continue;
+    for (const line of arr(row.lines)) {
+      if (sourceOf(line.itemSource) !== "FG") continue;
+      const erp = erpFor("FG", line.itemId, line.erpCode);
+      let toJobs = 0;
+      for (const a of arr(line.allocations)) {
+        if (s(a.sourceType) !== "job" || !appJobs.has(s(a.jobId))) continue;
+        toJobs += n(a.qty);
+        const job = countedJob(a.jobId);
+        if (job) movements.push({ entity: "loading_slips", id: s(row.id), date: s(row.date), itemType: "FG", erp: job.erp || erp, itemName: s(line.itemName), kind: "dispatched", qty: n(a.qty), ref: `${s(row.slipNo)} (${job.ref})`, always: true });
+      }
+      const rest = n(line.loadedQty) - toJobs;
+      if (afterCount && rest > 0.0001) movements.push({ entity: "loading_slips", id: s(row.id), date: s(row.date), itemType: "FG", erp, itemName: s(line.itemName), kind: "dispatched", qty: rest, ref: `${s(row.slipNo)} (old stock)` });
+    }
+    for (const w of arr(row.jobWastage)) {
+      const isApp = appJobs.has(s(w.jobId));
+      const job = countedJob(w.jobId);
+      if (isApp && !job) continue;
+      if (!isApp && !afterCount) continue;
+      const info = jobErp.get(s(w.jobId));
+      movements.push({ entity: "loading_slips", id: s(row.id), date: s(row.date), itemType: "FG", erp: job?.erp || info?.erp || "", itemName: info?.name, kind: "loadingWastage", qty: n(w.qty), ref: `${s(row.slipNo)} (${s(w.jobNo)})`, always: isApp });
+    }
+  }
   for (const [table, type] of [["php_loading_slips", "PHP"], ["plate_loading_slips", "PLATE"]] as const) {
     const [rows] = await db.query(`SELECT * FROM \`${table}\` WHERE date >= ? AND COALESCE(status, '') <> 'Cancelled'`, [from]);
     for (const row of rows as any[]) movements.push(...slipMovements(table, row, erpFor, jobErp));
@@ -292,7 +334,7 @@ export async function checkSlipsAgainstLiveStock(db: mysql.Pool, entity: LiveSto
 const NO_STOCK_CHECK_ERPS = new Set(["99010001", "99010004"]);
 
 export function liveStockErrorMessage(errors: string[]) {
-  return `Not enough stock (physical count as on 26-Nov-2026 5 PM + production + receipts − loaded). Stock cannot go below zero:\n${errors.join("\n")}\nIf the stock is really there, ask Admin to add an adjustment row in the physical count.`;
+  return `Not enough stock (jobs from 17-Nov: printed − loaded − wastage; older stock: physical count as on 26-Nov-2026 5 PM − loaded since). Stock cannot go below zero:\n${errors.join("\n")}\nIf the stock is really there, ask Admin to add an adjustment row in the physical count.`;
 }
 
 export function registerLiveStock(
