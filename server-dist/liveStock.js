@@ -155,7 +155,7 @@ async function buildLiveStock(db) {
     const appJobs = new Map();
     for (const job of appJobRows) {
         const npd = npdById.get(s(job.npdId));
-        appJobs.set(s(job.id), { erp: s(job.masterErp) || npd?.erp || "", name: npd?.name || "", ref: s(job.transactionNo), closed: s(job.closeBy).toLowerCase() === "yes" });
+        appJobs.set(s(job.id), { erp: s(job.masterErp) || npd?.erp || "", name: npd?.name || "", ref: s(job.transactionNo), no: s(job.transactionNo).split("/").pop() || s(job.transactionNo), closed: s(job.closeBy).toLowerCase() === "yes" });
     }
     const countedJob = (jobId) => { const job = appJobs.get(s(jobId)); return job && !job.closed ? job : null; };
     if (appJobs.size) {
@@ -164,7 +164,7 @@ async function buildLiveStock(db) {
             const job = countedJob(row.productionId);
             if (!job)
                 continue;
-            movements.push({ entity: "production_processing", id: s(row.id), date: s(row.date), itemType: "FG", erp: job.erp || s(row.erp), itemName: s(row.itemName) || job.name, kind: "production", qty: n(row.qty), ref: s(row.jobNo) || job.ref, always: true });
+            movements.push({ entity: "production_processing", id: s(row.id), date: s(row.date), itemType: "FG", erp: job.erp || s(row.erp), itemName: s(row.itemName) || job.name, kind: "production", qty: n(row.qty), ref: s(row.jobNo) || job.ref, always: true, bucket: job.no });
         }
     }
     // Receipts: FG Purchase / Rejection In MRRs into Unit-II, not the automatic inter-firm ones.
@@ -182,7 +182,7 @@ async function buildLiveStock(db) {
             if (!type)
                 continue;
             const qty = line.invoiceQty != null && s(line.invoiceQty) !== "" ? n(line.invoiceQty) : n(line.qty);
-            movements.push({ entity: "material_in", id: s(row.id), date: s(row.date), itemType: type, erp: erpFor(type, line.npdId || line.itemId, line.erpCode), itemName: s(line.itemName), kind, qty, ref: s(row.transactionNo || row.mrrNo) });
+            movements.push({ entity: "material_in", id: s(row.id), date: s(row.date), itemType: type, erp: erpFor(type, line.npdId || line.itemId, line.erpCode), itemName: s(line.itemName), kind, qty, ref: s(row.transactionNo || row.mrrNo), bucket: type === "FG" ? "Opening" : undefined });
         }
     }
     // Dispatch. FG: loading against an app job (from 17-Nov) counts whatever its date;
@@ -220,11 +220,11 @@ async function buildLiveStock(db) {
                 toJobs += n(a.qty);
                 const job = countedJob(a.jobId);
                 if (job)
-                    movements.push({ entity: "loading_slips", id: s(row.id), date: s(row.date), itemType: "FG", erp: job.erp || erp, itemName: s(line.itemName), kind: "dispatched", qty: n(a.qty), ref: `${s(row.slipNo)} (${job.ref})`, always: true });
+                    movements.push({ entity: "loading_slips", id: s(row.id), date: s(row.date), itemType: "FG", erp: job.erp || erp, itemName: s(line.itemName), kind: "dispatched", qty: n(a.qty), ref: `${s(row.slipNo)} (${job.ref})`, always: true, bucket: job.no });
             }
             const rest = n(line.loadedQty) - toJobs;
             if (afterCount && rest > 0.0001)
-                movements.push({ entity: "loading_slips", id: s(row.id), date: s(row.date), itemType: "FG", erp, itemName: s(line.itemName), kind: "dispatched", qty: rest, ref: `${s(row.slipNo)} (old stock)` });
+                movements.push({ entity: "loading_slips", id: s(row.id), date: s(row.date), itemType: "FG", erp, itemName: s(line.itemName), kind: "dispatched", qty: rest, ref: `${s(row.slipNo)} (old stock)`, bucket: "Opening" });
         }
         for (const w of arr(row.jobWastage)) {
             const isApp = appJobs.has(s(w.jobId));
@@ -234,7 +234,7 @@ async function buildLiveStock(db) {
             if (!isApp && !afterCount)
                 continue;
             const info = jobErp.get(s(w.jobId));
-            movements.push({ entity: "loading_slips", id: s(row.id), date: s(row.date), itemType: "FG", erp: job?.erp || info?.erp || "", itemName: info?.name, kind: "loadingWastage", qty: n(w.qty), ref: `${s(row.slipNo)} (${s(w.jobNo)})`, always: isApp });
+            movements.push({ entity: "loading_slips", id: s(row.id), date: s(row.date), itemType: "FG", erp: job?.erp || info?.erp || "", itemName: info?.name, kind: "loadingWastage", qty: n(w.qty), ref: `${s(row.slipNo)} (${s(w.jobNo)})`, always: isApp, bucket: job ? job.no : "Opening" });
         }
     }
     for (const [table, type] of [["php_loading_slips", "PHP"], ["plate_loading_slips", "PLATE"]]) {
