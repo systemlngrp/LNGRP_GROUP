@@ -101,7 +101,7 @@ export function JobwiseFgStock() {
     });
   }, [allLines, search, company, sourceFilter, range]);
 
-  const { sorted, sort, toggle } = useTableSort(filtered, (line, key) => (key === "source" ? (line.source === "Opening" ? "Opening" : `Job ${line.jobNo}`) : (line as any)[key]));
+  const { sorted, sort, toggle } = useTableSort(filtered, (line, key) => (key === "source" ? (line.source === "Opening" ? "" : line.jobNo) : (line as any)[key]));
 
   const tiles = useMemo(() => {
     const total = filtered.reduce((sum, line) => sum + line.qty, 0);
@@ -132,10 +132,10 @@ export function JobwiseFgStock() {
 
   const toggleGroup = (key: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; });
 
-  const exportRows = () => sorted.map((line, index) => ({ "Sl No": index + 1, Company: line.company, ERP: line.erp, Item: line.itemName, "Opening / Job No.": line.source === "Opening" ? "Opening" : `Job ${line.jobNo}`, Stock: line.qty }));
+  const exportRows = () => sorted.map((line, index) => ({ "Sl No": index + 1, "Opening / Job No.": line.source === "Opening" ? "Opening" : line.jobNo, Company: line.company, ERP: line.erp, Item: line.itemName, Stock: line.qty }));
   const downloadExcel = () => {
     const sheet = XLSX.utils.json_to_sheet(exportRows());
-    sheet["!cols"] = [{ wch: 6 }, { wch: 34 }, { wch: 12 }, { wch: 55 }, { wch: 18 }, { wch: 12 }];
+    sheet["!cols"] = [{ wch: 6 }, { wch: 18 }, { wch: 34 }, { wch: 12 }, { wch: 55 }, { wch: 12 }];
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, sheet, "Job-wise FG Stock");
     XLSX.writeFile(book, `Jobwise_FG_Stock_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -147,8 +147,8 @@ export function JobwiseFgStock() {
     doc.setFontSize(9);
     doc.text(`Total ${n0(tiles.total)} · Opening ${n0(tiles.opening)} · In jobs ${n0(tiles.jobs)} · ${tiles.items} items · ${new Date().toLocaleString("en-IN")}`, 14, 20);
     autoTable(doc, {
-      head: [["Sl", "Company", "ERP", "Item", "Opening / Job No.", "Stock"]],
-      body: exportRows().map((row) => [row["Sl No"], row.Company, row.ERP, row.Item, row["Opening / Job No."], n0(row.Stock)]),
+      head: [["Sl", "Opening / Job No.", "Company", "ERP", "Item", "Stock"]],
+      body: exportRows().map((row) => [row["Sl No"], row["Opening / Job No."], row.Company, row.ERP, row.Item, n0(row.Stock)]),
       startY: 24,
       theme: "grid",
       styles: { fontSize: 7.5, cellPadding: 1.5 },
@@ -169,14 +169,14 @@ export function JobwiseFgStock() {
   const lineRow = (line: StockLine, index: number) => (
     <tr key={line.key} className={`${line.qty < 0 ? "bg-red-50" : line.source === "Opening" ? "bg-amber-50" : index % 2 ? "bg-slate-50" : "bg-white"} hover:bg-indigo-50`}>
       <td className={`${td} text-center text-xs font-bold text-slate-500`}>{index + 1}</td>
-      <td className={`${td} text-left text-xs font-semibold text-slate-700`} style={{ textAlign: "left" }}>{line.company || "-"}</td>
-      <td className={`${td} text-center font-mono text-xs font-bold`}>{line.erp}</td>
-      <td className={`${td} text-left text-xs font-semibold`} style={{ textAlign: "left" }}>{line.itemName}</td>
       <td className={`${td} text-center`}>
         {line.source === "Opening"
           ? <span className="inline-block rounded-full border border-amber-400 bg-amber-100 px-2.5 py-0.5 text-[11px] font-black text-amber-800">Opening</span>
-          : <span className="inline-block rounded-full border border-emerald-400 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-black text-emerald-800">Job {line.jobNo}</span>}
+          : <span className="inline-block rounded-full border border-emerald-400 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-black text-emerald-800">{line.jobNo}</span>}
       </td>
+      <td className={`${td} text-left text-xs font-semibold text-slate-700`} style={{ textAlign: "left" }}>{line.company || "-"}</td>
+      <td className={`${td} text-center font-mono text-xs font-bold`}>{line.erp}</td>
+      <td className={`${td} text-left text-xs font-semibold`} style={{ textAlign: "left" }}>{line.itemName}</td>
       <td style={{ textAlign: "right" }} className={`${td} text-right text-sm font-black ${line.qty < 0 ? "text-red-700" : "text-slate-900"}`}>{n0(line.qty)}</td>
     </tr>
   );
@@ -235,18 +235,14 @@ export function JobwiseFgStock() {
           <thead className="sticky top-0 z-10">
             <tr className="bg-gradient-to-r from-[#0b4773] via-[#1d4ed8] to-[#0f766e] text-white">
               <th className={`${th} w-14 text-center`}>Sl</th>
+              <th className={`${th} text-center`}><SortHeader label="Opening / Job No." sortKey="source" sort={sort} onToggle={toggle} align="center" /></th>
               <th className={`${th} text-left`} style={{ textAlign: "left" }}><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggle} /></th>
               <th className={`${th} text-center`}><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggle} align="center" /></th>
               <th className={`${th} text-left`} style={{ textAlign: "left" }}><SortHeader label="Item" sortKey="itemName" sort={sort} onToggle={toggle} /></th>
-              <th className={`${th} text-center`}><SortHeader label="Opening / Job No." sortKey="source" sort={sort} onToggle={toggle} align="center" /></th>
               <th className={`${th} text-right`}><SortHeader label="Stock" sortKey="qty" sort={sort} onToggle={toggle} align="right" /></th>
             </tr>
           </thead>
           <tbody>
-            <tr className="bg-indigo-100 font-black">
-              <td className={`${td} text-left`} colSpan={5}>Total · {sorted.length} rows · {tiles.items} items</td>
-              <td className={`${td} text-right`}>{n0(tiles.total)}</td>
-            </tr>
             {loading && !rows.length ? <tr><td colSpan={6} className="p-8 text-center font-bold text-slate-500">Loading…</td></tr> : null}
             {!loading && !sorted.length ? <tr><td colSpan={6} className="p-8 text-center font-bold text-slate-500">No stock rows match.</td></tr> : null}
             {groupBy === "none"
