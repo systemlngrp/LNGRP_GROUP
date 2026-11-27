@@ -377,15 +377,16 @@ export function ProductionForm() {
     }, 0);
   }, [selectedItem?.id, schedules, orders, plans, loadingSlips]);
 
-  // Jobs from 17-Nov-2026 with no Prod. from FFG yet. Only their not-yet-printed qty is
-  // "in progress": printed boxes are already in Current Balance (live stock).
+  // Jobs from 17-Nov-2026 with no Prod. from FFG yet (0 counts as blank: it only means a
+  // printing entry was deleted or moved), not cancelled and not closed. Only their
+  // not-yet-printed qty is "in progress": printed boxes are already in Current Balance.
   const inProgressJobs = useMemo(() => {
     if (!selectedItem?.id) return [] as Production[];
     return productions.filter((production) => {
-      const prodFromFFGValue = production.prodFromFFG;
-      const hasFFGValue = !(prodFromFFGValue === null || prodFromFFGValue === undefined || String(prodFromFFGValue) === "");
+      const hasFFGValue = Number(production.prodFromFFG || 0) > 0;
+      const closed = Boolean(String((production as any).closeDate || "").trim());
       const fromCutoff = String(production.date || "").slice(0, 10) >= PRODUCTION_IN_PROGRESS_FIRST_DATE;
-      return fromCutoff && isSameNpdItem(selectedItem, production) && !production.cancelTimestamp && !hasFFGValue;
+      return fromCutoff && isSameNpdItem(selectedItem, production) && !production.cancelTimestamp && !closed && !hasFFGValue;
     });
   }, [productions, selectedItem?.id]);
   const inProgressJobIds = inProgressJobs.map((job) => String(job.id || "")).filter(Boolean).sort().join(",");
@@ -877,7 +878,7 @@ export function ProductionForm() {
               label="Production In Progress"
               value={productionInProgress}
               suffix={selectedItem?.uom || ""}
-              helpText="For the selected item: jobs dated 17-Nov-2026 or later with Production from FFG blank and not cancelled. Each counts Planned qty − Printed qty so far (never below 0), because printed boxes are already in Current Balance."
+              helpText="For the selected item: jobs dated 17-Nov-2026 or later with Production from FFG blank or 0, not cancelled and not closed. Each counts Planned qty − Printed qty so far (never below 0), because printed boxes are already in Current Balance."
               note={selectedItem && recentBalanceReady && inProgressJobs.length ? `${inProgressJobs.length} job(s): Planned ${inProgressJobs.reduce((sum, job) => sum + (Number(job.qty) || 0), 0).toLocaleString("en-IN")} − Printed ${inProgressJobs.reduce((sum, job) => sum + Math.min(Number(liveBalance?.printedByJob?.[String(job.id || "")] || 0), Number(job.qty) || 0), 0).toLocaleString("en-IN")} = ${productionInProgress.toLocaleString("en-IN")}` : undefined}
             />}
 
