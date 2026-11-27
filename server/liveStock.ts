@@ -138,11 +138,16 @@ async function buildLiveStock(db: mysql.Pool) {
   const openings: LiveStockOpening[] = (openingRows as any[]).map((row) => ({ itemType: s(row.itemType).toUpperCase() as LiveStockItemType, erp: s(row.erp), itemName: s(row.itemName), qty: n(row.qty) }));
 
   // Item masters: ERP and names by id.
-  const [npdRows] = await db.query("SELECT id, erp, itemName FROM `npd`");
+  const [npdRows] = await db.query("SELECT * FROM `npd`");
   const [phpRows] = await db.query("SELECT id, itemId, erpItemCode, itemName FROM `php_item_master`");
   const [plateRows] = await db.query("SELECT id, itemId, erpItemCode, itemName FROM `plate_item_master`");
   const npdById = new Map<string, { erp: string; name: string }>();
-  for (const row of npdRows as any[]) npdById.set(s(row.id), { erp: s(row.erp), name: s(row.itemName) });
+  const companyByErp = new Map<string, string>();
+  for (const row of npdRows as any[]) {
+    npdById.set(s(row.id), { erp: s(row.erp), name: s(row.itemName) });
+    const company = s(row.customerName || row.companyName);
+    if (s(row.erp) && company && !companyByErp.has(s(row.erp))) companyByErp.set(s(row.erp), company);
+  }
   const masterById: Record<"PHP" | "PLATE", Map<string, { erp: string; name: string }>> = { PHP: new Map(), PLATE: new Map() };
   for (const [type, rows] of [["PHP", phpRows], ["PLATE", plateRows]] as const) {
     for (const row of rows as any[]) {
@@ -263,7 +268,8 @@ async function buildLiveStock(db: mysql.Pool) {
     }
   }
 
-  const rows = computeLiveStock({ cutoff, openings, movements, jobOutputs, itemNames });
+  const rows = computeLiveStock({ cutoff, openings, movements, jobOutputs, itemNames })
+    .map((row) => (row.itemType === "FG" ? { ...row, company: companyByErp.get(row.erp) || "" } : row));
   return { cutoff: { asOn: cutoff.asOn, cutoffDate: cutoff.cutoffDate }, rows, context: { cutoff, erpFor, npdById, jobErp } };
 }
 

@@ -54,6 +54,7 @@ import { corrugationLinerQtyByJobId } from "../lib/productionProcessingProgress"
 import { usePhpPlateReceipts } from "../hooks/usePhpPlateReceipts";
 import { pendingFgTickText, wastageTickText } from "../lib/loadingWastageConfirmation";
 import { useQtyAtJobWorker } from "../hooks/useQtyAtJobWorker";
+import { AddToOpeningDialog } from "../components/AddToOpeningDialog";
 import {
   EligibleLoadingJob,
   getLoadingJobNumber,
@@ -179,6 +180,8 @@ export function PendingLoading() {
     void fetchLiveStockLevels().then((levels) => { if (active) setLiveStockLevels(levels); });
     return () => { active = false; };
   }, [loadingModal?.itemId, loadingModal?.itemSource]);
+  // Admin: add boxes found later to the item's opening stock (from the FG Stock row).
+  const [addOpeningFor, setAddOpeningFor] = useState<{ npdId: string; firmId: string } | null>(null);
   const [loadedQuantities, setLoadedQuantities] = useState<Record<string, number>>({});
   const [jobSplitQtys, setJobSplitQtys] = useState<Record<string, Record<string, number | "">>>({});
   const [jobWastageQtys, setJobWastageQtys] = useState<Record<string, Record<string, number | "">>>({});
@@ -1331,7 +1334,13 @@ export function PendingLoading() {
                                 );
                               })}
                               <tr className="divide-x divide-black bg-emerald-50/40 border-t-2 border-black">
-                                <td className="px-4 py-4 text-xs font-black uppercase text-emerald-800">{loadingModal.itemSource === "FG" ? `FG Stock - ${getFirmDisplayNameById(loadingModal.firmId, firms)}` : `${loadingModal.itemSource} Stock`}</td>
+                                <td className="px-4 py-4 text-xs font-black uppercase text-emerald-800">{loadingModal.itemSource === "FG" ? `FG Stock - ${getFirmDisplayNameById(loadingModal.firmId, firms)}` : `${loadingModal.itemSource} Stock`}{loadingModal.itemSource === "FG" && user?.role === "Admin" ? (
+                                  <div className="mt-1.5"><button type="button" onClick={() => {
+                                    const erp = String(itemsBySource.FG.find((row) => row.id === loadingModal.itemId)?.erp || "").trim();
+                                    const npd = npdItems.find((row) => String(row.id) === String(loadingModal.itemId)) || npdItems.find((row) => erp && String(row.erp || "").trim() === erp);
+                                    setAddOpeningFor({ npdId: String(npd?.id || ""), firmId: loadingModal.firmId });
+                                  }} className="rounded bg-emerald-700 px-2 py-1 text-[10px] font-black normal-case text-white hover:bg-emerald-800">+ Add to Opening</button></div>
+                                ) : null}</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-500">-</td> : null}
@@ -1605,6 +1614,7 @@ export function PendingLoading() {
           </div>
         </div>
       ) : null}
+      {addOpeningFor ? <AddToOpeningDialog source="Pending Loading" defaultItemId={addOpeningFor.npdId} defaultFirmId={addOpeningFor.firmId} onClose={() => setAddOpeningFor(null)} onSaved={(message) => { alert(message + " The FG Stock row will update in a moment."); void fetchLiveStockLevels().then(setLiveStockLevels); }} /> : null}
     </div>
   );
 }

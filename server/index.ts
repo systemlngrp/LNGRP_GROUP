@@ -17854,6 +17854,116 @@ app.post("/api/npd-firm-openings/bulk", requireAuth, async (req, res) => {
   }
 });
 
+// Admin: add boxes to an FG item's opening stock (found later, not in the physical count).
+// Adds to both the live-stock opening (physical count) and the firm's book opening, so
+// the FG Stock row on Pending Loading can take them. Every addition is logged.
+async function ensureFgOpeningAdditions(db: mysql.Pool | mysql.PoolConnection) {
+  await db.query(`CREATE TABLE IF NOT EXISTS \`fg_opening_additions\` (
+    \`id\` VARCHAR(36) PRIMARY KEY, \`npdId\` VARCHAR(36), \`erp\` VARCHAR(64), \`itemName\` VARCHAR(500),
+    \`firmId\` VARCHAR(36), \`firmName\` VARCHAR(255), \`qty\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+    \`liveBefore\` DECIMAL(15,2), \`liveAfter\` DECIMAL(15,2), \`firmBefore\` DECIMAL(15,2), \`firmAfter\` DECIMAL(15,2),
+    \`reason\` VARCHAR(1000), \`source\` VARCHAR(100), \`updatedBy\` VARCHAR(255), \`updateTimestamp\` VARCHAR(40),
+    KEY \`idx_fg_opening_additions_erp\` (\`erp\`)
+  )`);
+}
+
+app.get("/api/fg-opening/items", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || user.role !== "Admin") return res.status(403).json({ error: "Admin only" });
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  try {
+    const [rows] = await db.query("SELECT id, erp, itemName FROM `npd` WHERE COALESCE(TRIM(erp), '') <> '' ORDER BY erp");
+    const [firms] = await db.query("SELECT * FROM `firms` ORDER BY firmName");
+    return res.json({ items: rows, firms });
+  } catch (error) {
+    return res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+app.post("/api/fg-opening/add", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || user.role !== "Admin") return res.status(403).json({ error: "Only Admin can add to opening stock." });
+  const npdId = String(req.body?.npdId || "").trim();
+  const firmId = String(req.body?.firmId || "").trim();
+  const qty = Number(req.body?.qty);
+  const reason = String(req.body?.reason || "").trim();
+  const source = String(req.body?.source || "").trim().slice(0, 100);
+  if (!npdId || !firmId) return res.status(400).json({ error: "Item and firm are required." });
+  if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: "Quantity must be more than 0." });
+  if (reason.length < 3) return res.status(400).json({ error: "Please give a reason." });
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  const conn = await db.getConnection();
+  try {
+    await ensureFgOpeningAdditions(conn);
+    const [npdRows] = await conn.query("SELECT * FROM `npd` WHERE id = ? LIMIT 1", [npdId]);
+    const npd = (npdRows as any[])[0];
+    if (!npd || !String(npd.erp || "").trim()) return res.status(400).json({ error: "Item not found (or it has no ERP)." });
+    const [firmRows] = await conn.query("SELECT id, firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]);
+    const firm = (firmRows as any[])[0];
+    if (!firm) return res.status(400).json({ error: "Firm not found." });
+    const [cutRows] = await conn.query("SELECT asOn FROM `live_stock_cutoffs` ORDER BY updateTimestamp DESC LIMIT 1").catch(() => [[]] as any);
+    const asOn = String((cutRows as any[])[0]?.asOn || "").trim();
+    if (!asOn) return res.status(400).json({ error: "No physical count is set up yet." });
+    const erp = String(npd.erp).trim();
+    const actor = String(user.name || user.userId || "Admin").trim();
+    const now = new Date().toISOString();
+    const round2 = (value: number) => Math.round(value * 100) / 100;
+    await conn.beginTransaction();
+    const [liveRows] = await conn.query("SELECT id, qty, remarks FROM `physical_stock_openings` WHERE asOn = ? AND itemType = 'FG' AND erp = ? FOR UPDATE", [asOn, erp]);
+    const liveBefore = (liveRows as any[]).reduce((sum, row) => sum + Number(row.qty || 0), 0);
+    if ((liveRows as any[]).length) {
+      const row = (liveRows as any[])[0];
+      await conn.query("UPDATE `physical_stock_openings` SET qty = qty + ?, remarks = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [round2(qty), String(`${row.remarks || ""} | +${round2(qty)} added ${now.slice(0, 10)} by ${actor}`).slice(-1000), actor, now, row.id]);
+    } else {
+      await conn.query(
+        "INSERT INTO `physical_stock_openings` (id, itemType, erp, itemName, qty, asOn, sourceSheet, sourceRow, remarks, updatedBy, updateTimestamp) VALUES (UUID(), 'FG', ?, ?, ?, ?, 'Added by Admin', '', ?, ?, ?)",
+        [erp, String(npd.itemName || "").slice(0, 500), round2(qty), asOn, `Added ${now.slice(0, 10)} by ${actor}: ${reason}`.slice(0, 1000), actor, now],
+      );
+    }
+    const [firmOpenRows] = await conn.query("SELECT openingQty, openingRate FROM `npd_firm_openings` WHERE npdId = ? AND firmId = ? FOR UPDATE", [npdId, firmId]);
+    const firmBefore = Number((firmOpenRows as any[])[0]?.openingQty || 0);
+    const rate = Number((firmOpenRows as any[])[0]?.openingRate || 0) || Number(npd.rate || 0);
+    const firmAfter = round2(firmBefore + qty);
+    await conn.query(
+      `INSERT INTO \`npd_firm_openings\` (id, npdId, firmId, openingQty, openingRate, openingValue, remarks, updatedBy, updateTimestamp)
+       VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE openingQty = VALUES(openingQty), openingValue = VALUES(openingValue), updatedBy = VALUES(updatedBy), updateTimestamp = VALUES(updateTimestamp)`,
+      [npdId, firmId, firmAfter, Number((firmOpenRows as any[])[0]?.openingRate || 0), round2(firmAfter * rate), `Added by ${actor}`.slice(0, 500), actor, now],
+    );
+    await conn.query(
+      "INSERT INTO `fg_opening_additions` (id, npdId, erp, itemName, firmId, firmName, qty, liveBefore, liveAfter, firmBefore, firmAfter, reason, source, updatedBy, updateTimestamp) VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [npdId, erp, String(npd.itemName || "").slice(0, 500), firmId, String(firm.firmName || ""), round2(qty), round2(liveBefore), round2(liveBefore + qty), round2(firmBefore), firmAfter, reason.slice(0, 1000), source, actor, now],
+    );
+    await conn.commit();
+    invalidateNpdCache();
+    publishRealtimeDataChange(["npd_firm_openings", "npd"]);
+    return res.json({ ok: true, erp, itemName: npd.itemName, added: round2(qty), openingNow: round2(liveBefore + qty), firmOpeningNow: firmAfter });
+  } catch (error) {
+    try { await conn.rollback(); } catch {}
+    console.error("[FG_OPENING_ADD] failed:", error);
+    return res.status(500).json({ error: "Could not add to opening stock." });
+  } finally {
+    conn.release();
+  }
+});
+
+// Super admin: history of additions to opening stock.
+app.get("/api/fg-opening/history", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!isSystemAdminUser(user)) return res.status(403).json({ error: "Only the System Admin can see this history." });
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  try {
+    await ensureFgOpeningAdditions(db);
+    const [rows] = await db.query("SELECT * FROM `fg_opening_additions` ORDER BY updateTimestamp DESC LIMIT 1000");
+    return res.json(rows);
+  } catch (error) {
+    return res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 app.delete("/api/npd-firm-openings/:id", requireAuth, async (req, res) => {
   try {
     const user = await getRequestUser(req);
@@ -20857,7 +20967,7 @@ app.get("/api/material-issues/pending-daily", requireAuth, async (req, res) => {
   const firmFilter = String(req.query.firmId || "").trim();
   try {
     const today = String(req.query.today || new Date().toISOString().slice(0, 10)).slice(0, 10);
-    const [firmRows] = await db.query("SELECT id, firmName, shortName FROM `firms` ORDER BY firmName ASC");
+    const [firmRows] = await db.query("SELECT * FROM `firms` ORDER BY firmName ASC");
     const [productionRows] = await db.query(
       "SELECT COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), '')) AS firmId, MIN(LEFT(p.date, 10)) AS firstJobDate FROM `productions` p LEFT JOIN `orders_schedule` os ON os.id = p.scheduleId LEFT JOIN `orders` o ON o.id = os.orderId WHERE COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), '')) <> '' AND LEFT(p.date, 10) <> '' GROUP BY COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), ''))"
     );
