@@ -564,8 +564,15 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
         s.id === slipId ? { ...syncedDraft, updatedBy: "System User", updateTimestamp: now } : s
       )
     );
-    await setPhpLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: syncedDraft, details: phpDetails, source: "PHP" }));
-    await setPlateLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: syncedDraft, details: plateDetails, source: "PLATE" }));
+    // The FG slip is already saved here. If its linked PHP / Plate slip fails, say so
+    // plainly and carry on: the FG slip must not be reported as not saved.
+    try {
+      await setPhpLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: syncedDraft, details: phpDetails, source: "PHP" }));
+      await setPlateLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: syncedDraft, details: plateDetails, source: "PLATE" }));
+    } catch (linkedErr) {
+      console.error("Linked PHP / Plate slip save failed:", linkedErr);
+      alert(`Loading slip was saved, but its linked PHP / Plate slip could not be saved.${linkedErr instanceof Error && linkedErr.message ? `\n\n${linkedErr.message}` : ""}\n\nPlease tell Admin.`);
+    }
 
     if (original.invoiceId && !direct) {
       const invoiceId = original.invoiceId;

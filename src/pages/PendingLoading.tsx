@@ -877,8 +877,15 @@ export function PendingLoading() {
       }
 
       const loadingSaveResult = await updateLoadingSlips((prev) => [...prev, newSlip]);
-      await updatePhpLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: newSlip, details: phpDetails, source: "PHP" }));
-      await updatePlateLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: newSlip, details: plateDetails, source: "PLATE" }));
+      // The FG slip is already saved here. If its linked PHP / Plate slip fails, say so
+      // plainly and carry on: the FG slip must not be reported as not saved.
+      try {
+        await updatePhpLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: newSlip, details: phpDetails, source: "PHP" }));
+        await updatePlateLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: newSlip, details: plateDetails, source: "PLATE" }));
+      } catch (linkedErr) {
+        console.error("Linked PHP / Plate slip save failed:", linkedErr);
+        alert(`Loading slip was saved, but its linked PHP / Plate slip could not be saved.${linkedErr instanceof Error && linkedErr.message ? `\n\n${linkedErr.message}` : ""}\n\nPlease tell Admin.`);
+      }
 
       await updatePlans((prev) =>
         prev.map((plan) => {

@@ -61,8 +61,15 @@ export function DirectLoadingSlip() {
         return false;
       }
       const loadingSaveResult = await setLoadingSlips((prev) => [newSlip, ...prev]);
-      await setPhpLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: newSlip, details: phpDetails || [], source: "PHP" }));
-      await setPlateLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: newSlip, details: plateDetails || [], source: "PLATE" }));
+      // The FG slip is already saved here. If its linked PHP / Plate slip fails, say so
+      // plainly and carry on: the FG slip must not be reported as not saved.
+      try {
+        await setPhpLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: newSlip, details: phpDetails || [], source: "PHP" }));
+        await setPlateLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: newSlip, details: plateDetails || [], source: "PLATE" }));
+      } catch (linkedErr) {
+        console.error("Linked PHP / Plate slip save failed:", linkedErr);
+        alert(`Loading slip was saved, but its linked PHP / Plate slip could not be saved.${linkedErr instanceof Error && linkedErr.message ? `\n\n${linkedErr.message}` : ""}\n\nPlease tell Admin.`);
+      }
       const whatsapp = (loadingSaveResult as any)?.whatsapp;
       if (whatsapp?.status === "Sent") alert("Loading Slip saved and WhatsApp message sent.");
       else if (whatsapp?.status === "Not Configured") alert("Loading Slip saved, but no active Loading Slip WhatsApp configuration was found.");
