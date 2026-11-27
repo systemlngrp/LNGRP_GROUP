@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useData } from "../hooks/useData";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
+import { loadedAndWastageByJob, slipFgJobs, unconfirmedSlipJobs } from "../lib/loadingWastageConfirmation";
 import { EXPORT_GST_OPTION_VALUE, EXPORT_GST_RATE_NAME, isExportGstRateMaster } from "../lib/gstExport";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -139,8 +140,86 @@ export function PendingInvoicing() {
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [interFirmPending, , , interFirmApi] = useData<InterFirmPendingInvoice>("inter_firm_pending_invoices", [], { firmScope: "all", storageKey: "inter-firm-pending-all-firms" });
   const [materialIns] = useData<MaterialIn>("material_in", [], { firmScope: "all" });
-  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", storageKey: "production-processing-all-firms", fields: ["id", "productionId", "machineName", "qty"] });
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", storageKey: "production-processing-all-firms", fields: ["id", "productionId", "machineName", "qty", "completionStatus"] });
   const printedJobIds = useMemo(() => jobIdsWithPrintingEntry(processing), [processing]);
+  // Printed qty per order: printing entries of every job made for the order's schedules.
+  const [jobRefs] = useData<any>("productions", [], { firmScope: "all", storageKey: "productions-schedule-refs", fields: ["id", "scheduleId", "status", "date", "transactionNo"] });
+  const [scheduleRefs] = useData<any>("orders_schedule", [], { firmScope: "all", storageKey: "schedules-order-refs", fields: ["id", "orderId"] });
+  const printedByOrderId = useMemo(() => {
+    const orderBySchedule = new Map<string, string>(scheduleRefs.map((row: any) => [String(row.id), String(row.orderId || "")]));
+    const orderByJob = new Map<string, string>();
+    jobRefs.forEach((job: any) => { if (job.status !== "Cancelled" && job.scheduleId) orderByJob.set(String(job.id), orderBySchedule.get(String(job.scheduleId)) || ""); });
+    const totals = new Map<string, number>();
+    processing.forEach((row: any) => {
+      if (!/print/i.test(String(row.machineName || ""))) return;
+      const orderId = orderByJob.get(String(row.productionId || ""));
+      if (orderId) totals.set(orderId, (totals.get(orderId) || 0) + (Number(row.qty) || 0));
+    });
+    return totals;
+  }, [jobRefs, scheduleRefs, processing]);
+
+  // Ready for invoice (owner's rule, 27-Nov-2026): a slip dated from 17-Nov can be invoiced only when
+  // (1) no app job on it has loaded + loading wastage above its printed qty, (2) the item's Opening is
+  // not below zero when the slip takes boxes from FG Stock / older jobs, and (3) each job whose Printing
+  // is Complete has its loading wastage entered and confirmed (0 allowed). Adjust Loading fixes a slip.
+  const [openingLeftByErp, setOpeningLeftByErp] = useState<Map<string, number> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/live-stock", { headers: getDataAuthHeaders(false) as HeadersInit })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => {
+        if (!alive || !body?.rows) return;
+        const map = new Map<string, number>();
+        for (const row of body.rows as any[]) {
+          if (row.itemType !== "FG") continue;
+          const left = Number(row.opening || 0) + (row.movements || []).reduce((sum: number, m: any) => ((m.bucket || "Opening") === "Opening" ? sum + (m.kind === "dispatched" || m.kind === "loadingWastage" ? -1 : 1) * Number(m.qty || 0) : sum), 0);
+          map.set(String(row.erp), Math.round(left * 100) / 100);
+        }
+        setOpeningLeftByErp(map);
+      })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [loadingSlips]);
+  const slipBlockReasons = useMemo(() => {
+    const printed = new Map<string, number>();
+    const complete = new Set<string>();
+    processing.forEach((row: any) => {
+      if (!/print/i.test(String(row.machineName || ""))) return;
+      const jobId = String(row.productionId || "");
+      printed.set(jobId, (printed.get(jobId) || 0) + (Number(row.qty) || 0));
+      const status = String(row.completionStatus || "").trim().toLowerCase();
+      if (!status || status === "full") complete.add(jobId);
+    });
+    const appJobs = new Map<string, string>();
+    jobRefs.forEach((job: any) => { if (String(job.date || "").slice(0, 10) >= "2026-11-17" && job.status !== "Cancelled") appJobs.set(String(job.id), String(job.transactionNo || "").split("/").pop() || ""); });
+    const { loaded, wastage } = loadedAndWastageByJob(loadingSlips as any);
+    const reasons = new Map<string, string[]>();
+    loadingSlips.forEach((slip: any) => {
+      if (["cancelled", "canceled"].includes(String(slip.status || "").toLowerCase())) return;
+      if (String(slip.date || "").slice(0, 10) < "2026-11-17") return;
+      const list: string[] = [];
+      const pending = new Set(unconfirmedSlipJobs(slip).map((job) => String(job.jobId)));
+      for (const job of slipFgJobs(slip)) {
+        const jobNo = appJobs.get(job.jobId);
+        if (!jobNo) continue;
+        const p = printed.get(job.jobId) || 0;
+        const used = (loaded.get(job.jobId.toLowerCase()) || 0) + (wastage.get(job.jobId.toLowerCase()) || 0);
+        if (used > p + 0.001) list.push(`Job ${jobNo}: loaded + wastage ${used.toLocaleString("en-IN")} is more than printed ${p.toLocaleString("en-IN")}`);
+        if (complete.has(job.jobId) && pending.has(job.jobId)) list.push(`Job ${jobNo}: loading wastage not entered / confirmed`);
+      }
+      if (openingLeftByErp) {
+        for (const line of slip.lines || []) {
+          if (String(line.itemSource || "FG").toUpperCase() !== "FG") continue;
+          const fromOld = (line.allocations || []).some((a: any) => a.sourceType === "opening_stock" || (a.sourceType === "job" && !appJobs.has(String(a.jobId))));
+          const erp = String(line.erpCode || "").trim();
+          const left = openingLeftByErp.get(erp);
+          if (fromOld && erp && left !== undefined && left < -0.001) list.push(`${erp}: Opening stock short by ${Math.abs(left).toLocaleString("en-IN")}`);
+        }
+      }
+      if (list.length) reasons.set(String(slip.id), [...new Set(list)]);
+    });
+    return reasons;
+  }, [processing, jobRefs, loadingSlips, openingLeftByErp]);
 
   const mrrNumberById = useMemo(() => {
     const map = new Map<string, string>();
@@ -674,6 +753,11 @@ export function PendingInvoicing() {
 
   const handleToggleSlip = (id: string) => {
     const slip = loadingSlips.find((row) => row.id === id);
+    const blocked = slipBlockReasons.get(id);
+    if (blocked && !selectedSlips.has(id)) {
+      alert(`Loading slip ${slip?.slipNo || ""} is not ready for invoice:\n\n${blocked.join("\n")}\n\nUse Adjust Loading to correct it first.`);
+      return;
+    }
     if (slip && needsPdfRedownload(slip) && !selectedSlips.has(id)) {
       alert(`Loading slip ${slip.slipNo} was adjusted. Download its updated PDF (Adjust Loading → PDF) before invoicing.`);
       return;
@@ -710,6 +794,11 @@ export function PendingInvoicing() {
     if (!companyGroup) return;
     
     const selected = companyGroup.slips.filter(s => selectedSlips.has(s.id));
+    const notReady = selected.filter((slip) => slipBlockReasons.has(slip.id));
+    if (notReady.length > 0) {
+      alert(`Not ready for invoice — use Adjust Loading first:\n\n${notReady.map((slip) => `${slip.slipNo}: ${(slipBlockReasons.get(slip.id) || []).join("; ")}`).join("\n")}`);
+      return;
+    }
     const waitingPdf = selected.filter((slip) => needsPdfRedownload(loadingSlips.find((row) => row.id === slip.id) || slip));
     if (waitingPdf.length > 0) {
       alert(`Download the updated PDF first for: ${waitingPdf.map((slip) => slip.slipNo).join(", ")}.`);
@@ -1391,14 +1480,14 @@ export function PendingInvoicing() {
                     return (
                       <label key={s.id} className={cn("block rounded border-2 bg-white p-2.5 text-black", selecting && checked ? "border-indigo-600 bg-indigo-50" : "border-slate-400", selecting ? "cursor-pointer" : "")}>
                         <div className="flex items-start gap-2">
-                          {selecting ? <input type="checkbox" checked={checked} onChange={() => handleToggleSlip(s.id)} className="mt-0.5 h-5 w-5 shrink-0" /> : null}
+                          {selecting ? <input type="checkbox" checked={checked} onChange={() => handleToggleSlip(s.id)} disabled={slipBlockReasons.has(s.id) && !checked} className="mt-0.5 h-5 w-5 shrink-0" /> : null}
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <span className="text-sm font-black">{s.slipNo}{needsPdfRedownload(s) ? <span className="ml-1 rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-black text-amber-900">Download updated PDF</span> : null}</span>
                               <button type="button" onClick={(event) => { event.preventDefault(); setAdjustSlipId(s.id); }} className="rounded border border-black bg-white px-2 py-0.5 text-[11px] font-bold hover:bg-slate-100">Adjust Loading</button>
                               <span className="text-xs font-bold text-slate-600">Qty <span className="text-sm font-black text-black">{s.totalQty.toLocaleString()}</span></span>
                             </div>
-                            <div className="text-[11px] font-semibold text-slate-700">{formatDate(s.date)} · <span className="font-bold uppercase text-indigo-700">{s.truckNo || trucks.find(t => t.id === s.truckId)?.truckNo || "N/A"}</span></div>
+                            {slipBlockReasons.has(s.id) ? <div className="mb-1 space-y-0.5 rounded border border-red-400 bg-red-50 px-1.5 py-1 text-[10px] font-black text-red-700">{(slipBlockReasons.get(s.id) || []).map((reason) => <div key={reason}>⛔ {reason}</div>)}</div> : <div className="mb-1 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-black text-emerald-800">✓ Ready for invoice</div>}<div className="text-[11px] font-semibold text-slate-700">{formatDate(s.date)} · <span className="font-bold uppercase text-indigo-700">{s.truckNo || trucks.find(t => t.id === s.truckId)?.truckNo || "N/A"}</span></div>
                             <div className="mt-1 space-y-0.5">{s.items.map((itemName) => <div key={itemName} className="break-words text-xs font-semibold">{itemName}</div>)}</div>
                           </div>
                         </div>
@@ -1429,11 +1518,13 @@ export function PendingInvoicing() {
                               type="checkbox"
                               checked={selectedSlips.has(s.id)}
                               onChange={() => handleToggleSlip(s.id)}
-                              className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-black rounded"
+                              disabled={slipBlockReasons.has(s.id) && !selectedSlips.has(s.id)}
+                              title={slipBlockReasons.has(s.id) ? "Not ready: use Adjust Loading first" : undefined}
+                              className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-black rounded disabled:cursor-not-allowed disabled:opacity-40"
                             />
                           </td>
                         )}
-                        <td className="px-3 py-2 text-xs font-bold">{s.slipNo}{needsPdfRedownload(s) ? <div className="mt-1 inline-block rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-black text-amber-900" title="Adjusted: download the updated PDF before invoicing">Download updated PDF</div> : null}</td>
+                        <td className="px-3 py-2 text-xs font-bold">{s.slipNo}{slipBlockReasons.has(s.id) ? <div className="mt-1 space-y-0.5 rounded border border-red-400 bg-red-50 px-1.5 py-1 text-[10px] font-black text-red-700">{(slipBlockReasons.get(s.id) || []).map((reason) => <div key={reason}>⛔ {reason}</div>)}</div> : <div className="mt-1 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-black text-emerald-800">✓ Ready for invoice</div>}{needsPdfRedownload(s) ? <div className="mt-1 inline-block rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-black text-amber-900" title="Adjusted: download the updated PDF before invoicing">Download updated PDF</div> : null}</td>
                         <td className="px-3 py-2 text-xs">{formatDate(s.date)}</td>
                         <td className="px-3 py-2 text-xs font-bold text-indigo-700">
                           {s.truckNo || trucks.find(t => t.id === s.truckId)?.truckNo || "N/A"}
@@ -1525,6 +1616,7 @@ export function PendingInvoicing() {
                       <th className="px-3 py-2 text-left text-[10px] font-black uppercase">Item Name</th>
                       <th className="px-3 py-2 text-left text-[10px] font-black uppercase min-w-[200px]">Order No / PO No</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Order Qty</th>
+                      <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Printed</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Dispatched</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Pending</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Rate</th>
@@ -1547,7 +1639,7 @@ export function PendingInvoicing() {
 
                       const parentRow = (
                         <tr key={itemRow.id} className="bg-slate-50 border-t-2 border-black">
-                          <td colSpan={10} className="px-3 py-2">
+                          <td colSpan={11} className="px-3 py-2">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               {(() => {
                                 const allocatedTotal = itemRow.allocations.reduce((s, a) => s + Number(a.qty || 0), 0);
@@ -1632,6 +1724,7 @@ export function PendingInvoicing() {
                               </select>
                             </td>
                             <td className="px-2 py-2 text-right text-[11px] font-medium">{isDirectAlloc ? "-" : order ? orderQty.toLocaleString() : "-"}</td>
+                            <td className="px-2 py-2 text-right text-[11px] font-medium">{isDirectAlloc ? "-" : order ? (printedByOrderId.get(order.id) || 0).toLocaleString() : "-"}</td>
                             <td className="px-2 py-2 text-right text-[11px] font-medium text-slate-500">{isDirectAlloc ? "-" : order ? dispatched.toLocaleString() : "-"}</td>
                             <td className="px-2 py-2 text-right text-[11px] font-black text-indigo-700">{isDirectAlloc ? "Direct" : order ? pending.toLocaleString() : "-"}</td>
                             <td className="px-2 py-2 text-right text-[11px] font-bold">{rate || "-"}</td>
