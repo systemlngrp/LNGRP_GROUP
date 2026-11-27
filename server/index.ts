@@ -11565,6 +11565,7 @@ await db.query(`
         { table: "settings", column: "summarySheetDateRange", type: "LONGTEXT" },
         { table: "settings", column: "summarySheetUserColumns", type: "LONGTEXT" },
         { table: "settings", column: "summarySheetUserViews", type: "LONGTEXT" },
+        { table: "settings", column: "summarySheetSeparators", type: "LONGTEXT" },
         { table: "settings", column: "salesTargetSnapshot", type: "LONGTEXT" },
         { table: "settings", column: "realizationPerKgTargets", type: "LONGTEXT" },
         { table: "settings", column: "invoiceNumberSeries", type: "LONGTEXT" },
@@ -22406,6 +22407,47 @@ app.put("/api/summary-sheet-view", async (req, res) => {
   } catch (error) {
     console.error("[summary-sheet-view] save failed", (error as Error).message);
     return res.status(500).json({ error: "Unable to save the Summary Sheet view." });
+  }
+});
+// Summary Sheet column separators (black lines), set by Admin for everyone:
+// settings.summarySheetSeparators = { "<column name>": "thin" | "thick" } (null = not set yet: defaults).
+app.get("/api/summary-sheet-separators", async (req, res) => {
+  const user = await getRequestUser(req).catch(() => null);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const db = await getPool();
+  if (!db) return res.status(503).json({ error: "DB connection not available" });
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    const [rows] = await db.query("SELECT `summarySheetSeparators` FROM `settings` LIMIT 1");
+    const raw = (rows as any[])[0]?.summarySheetSeparators;
+    const parsed = raw ? JSON.parse(String(raw)) : null;
+    return res.json({ separators: parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null });
+  } catch {
+    return res.json({ separators: null });
+  }
+});
+app.put("/api/summary-sheet-separators", async (req, res) => {
+  const user = await getRequestUser(req).catch(() => null);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (user.role !== "Admin") return res.status(403).json({ error: "Only Admin can set the Summary Sheet separators." });
+  const input = req.body?.separators && typeof req.body.separators === "object" ? req.body.separators : {};
+  const separators: Record<string, string> = {};
+  for (const [column, width] of Object.entries(input)) {
+    const name = String(column || "").trim().slice(0, 100);
+    if (name && (width === "thin" || width === "thick")) separators[name] = width;
+  }
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "DB connection not available" });
+    const value = JSON.stringify(separators);
+    const [rows] = await db.query("SELECT id FROM `settings` LIMIT 1");
+    const id = (rows as any[])[0]?.id;
+    if (id) await db.query("UPDATE `settings` SET `summarySheetSeparators` = ? WHERE id = ?", [value, id]);
+    else await db.query("INSERT INTO `settings` (`id`, `summarySheetSeparators`) VALUES (?, ?)", [crypto.randomUUID(), value]);
+    return res.json({ ok: true, separators });
+  } catch (error) {
+    console.error("[summary-sheet-separators] save failed", (error as Error).message);
+    return res.status(500).json({ error: "Unable to save the separators." });
   }
 });
 app.get("/api/summary-sheet-user-columns", async (req, res) => {
