@@ -312,6 +312,38 @@ export function registerLiveStock(app, getPool, getRequestUser, canView) {
             return res.status(500).json({ error: "Could not check live stock. Please try again." });
         }
     });
+    // Any signed-in user: one item's live stock with its parts (Production Form).
+    app.get("/api/live-stock/item", async (req, res) => {
+        const user = await getRequestUser(req);
+        if (!user)
+            return res.status(401).json({ error: "Unauthorized" });
+        const itemType = (s(req.query.type) || "FG").toUpperCase();
+        const erp = s(req.query.erp);
+        if (!erp)
+            return res.status(400).json({ error: "erp is required" });
+        try {
+            const db = await getPool();
+            if (!db)
+                return res.status(503).json({ error: "DB connection not available" });
+            const { cutoff, rows } = await buildLiveStock(db);
+            const row = rows.find((item) => item.itemType === itemType && item.erp === erp);
+            const empty = { itemType, erp, itemName: "", opening: 0, production: 0, receiptPurchase: 0, receiptRejection: 0, dispatched: 0, loadingWastage: 0, live: 0 };
+            const { movements, ...parts } = row || { ...empty, movements: [] };
+            // Printed qty (all dates) of the given jobs, for Production In Progress.
+            const jobIds = s(req.query.jobs).split(",").map((id) => id.trim()).filter(Boolean).slice(0, 500);
+            const printedByJob = {};
+            if (jobIds.length) {
+                const [printRows] = await db.query("SELECT productionId, SUM(qty) AS printed FROM `production_processing` WHERE machineName LIKE '%rint%' AND productionId IN (?) GROUP BY productionId", [jobIds]);
+                for (const printRow of printRows)
+                    printedByJob[s(printRow.productionId)] = n(printRow.printed);
+            }
+            return res.json({ cutoff, item: parts, printedByJob });
+        }
+        catch (error) {
+            console.error("[LIVE_STOCK] item failed", error.message);
+            return res.status(500).json({ error: "Could not load live stock" });
+        }
+    });
     // Any signed-in user: live stock per item, for the loading screens.
     app.get("/api/live-stock/levels", async (req, res) => {
         const user = await getRequestUser(req);
