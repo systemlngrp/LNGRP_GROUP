@@ -1,3 +1,7 @@
+// FG (owner's rule, 27-Nov-2026 evening): jobs started in the app (from 17-Nov-2026) count
+// from their own record (printed - loaded - loading wastage, all dates; closed jobs 0); the
+// physical count is kept only for older stock (lots before 17-Nov, boxes with no lot), less
+// what is loaded from it after the count. PHP / Plate keep the rule below.
 // Live stock from a physical count (owner's rule, 27-Nov-2026):
 //   Live = Opening (physical count + adjustment rows, as on the cutoff)
 //        + Production (FG: printed qty; PHP/Plate: job output)
@@ -46,7 +50,7 @@ export function computeLiveStock(input) {
     for (const movement of input.movements) {
         if (!String(movement.erp || "").trim() || !num(movement.qty))
             continue;
-        if (!countsAfterCutoff(input.cutoff, movement.entity, movement.id, movement.date))
+        if (!movement.always && !countsAfterCutoff(input.cutoff, movement.entity, movement.id, movement.date))
             continue;
         const row = rowFor(movement.itemType, movement.erp, movement.itemName);
         row[movement.kind] += num(movement.qty);
