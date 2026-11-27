@@ -112,7 +112,7 @@ async function loadCutoff(db) {
         jobBaselines: parse(row.jobBaselines) || {},
     };
 }
-async function buildLiveStock(db) {
+export async function buildLiveStock(db) {
     await ensureTables(db);
     const cutoff = await loadCutoff(db);
     if (!cutoff)
