@@ -159,7 +159,7 @@ async function buildLiveStock(db) {
     }
     const countedJob = (jobId) => { const job = appJobs.get(s(jobId)); return job && !job.closed ? job : null; };
     if (appJobs.size) {
-        const [printRows] = await db.query("SELECT id, productionId, date, qty, jobNo, itemName, erp FROM `production_processing` WHERE machineName LIKE '%rint%' AND productionId IN (?)", [[...appJobs.keys()]]);
+        const [printRows] = await db.query("SELECT * FROM `production_processing` WHERE machineName LIKE '%rint%' AND productionId IN (?)", [[...appJobs.keys()]]);
         for (const row of printRows) {
             const job = countedJob(row.productionId);
             if (!job)
