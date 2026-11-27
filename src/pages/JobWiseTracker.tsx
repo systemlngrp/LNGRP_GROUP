@@ -12,7 +12,7 @@ import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 const LoadingMasterFocus = React.lazy(() => import("./LoadingMaster").then((module) => ({ default: module.LoadingMaster })));
 
-type CorrectionField = "Corrugation" | "Printed" | "Loaded" | "Loading Wastage";
+export type CorrectionField = "Corrugation" | "Printed" | "Loaded" | "Loading Wastage";
 
 /**
  * Job Wise Tracker: for each FG job, what was corrugated, printed, loaded,
@@ -24,7 +24,7 @@ const FIRST_DATE = "2026-11-17";
 const TH = "border border-black px-3 py-2 text-[11px] font-black uppercase";
 const TD = "border border-black px-3 py-2 text-xs";
 
-type Row = {
+export type Row = {
   jobId: string;
   jobNo: string;
   date: string;
@@ -353,7 +353,7 @@ const PRINTING_WASTAGE_KEYS: Array<[string, string]> = [
  * the Admin change one entry, with a reason. Saves go through the normal save
  * (so every existing rule still applies) and are written to the correction log.
  */
-function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
+export function JobCorrectionModal({ row, field, loadingSlips, userName, onClose }: {
   row: Row;
   field: CorrectionField;
   loadingSlips: LoadingSlip[];
