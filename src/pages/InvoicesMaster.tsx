@@ -4,6 +4,7 @@ import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { UndoInvoiceDialog, UndoneInvoicesDialog } from "../components/UndoInvoiceDialog";
+import { UndoTallyPostingDialog } from "../components/UndoTallyPostingDialog";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import {
   Invoice,
@@ -81,6 +82,9 @@ export function InvoicesMaster() {
   // Admin: Undo Invoicing (loading slips back to Pending Invoicing) and the Undone Invoices log.
   const isAdminUser = user?.role === "Admin";
   const [undoInvoiceId, setUndoInvoiceId] = useState<string | null>(null);
+  // System Admin login only: Undo Tally Posting (invoice back to Pending Tally Posting, on hold).
+  const isSystemAdmin = user?.role === "Admin" && [user?.userId, user?.email].some((value) => String(value || "").trim().toLowerCase() === "system.lngrp.in");
+  const [undoTallyId, setUndoTallyId] = useState<string | null>(null);
   const [showUndoneInvoices, setShowUndoneInvoices] = useState(false);
   const [undoNotice, setUndoNotice] = useState("");
   const canManage = canManageMasterRecords(user?.role);
@@ -518,6 +522,17 @@ export function InvoicesMaster() {
           />
         );
       })() : null}
+      {undoTallyId ? (() => {
+        const invoice = invoices.find((entry) => entry.id === undoTallyId);
+        if (!invoice) return null;
+        return (
+          <UndoTallyPostingDialog
+            target={{ id: invoice.id, invoiceNo: invoice.invoiceNo, tallyInvNo: invoice.tallyInvNo, tallyInvDate: invoice.tallyInvDate ? formatDate(invoice.tallyInvDate) : "", companyName: lookup.companyById.get(invoice.companyId)?.name || "" }}
+            onClose={() => setUndoTallyId(null)}
+            onDone={(message) => { setUndoTallyId(null); setUndoNotice(message); }}
+          />
+        );
+      })() : null}
       {showUndoneInvoices ? <UndoneInvoicesDialog onClose={() => setShowUndoneInvoices(false)} /> : null}
 
       <FirmTabs firms={firms} counts={firmTabCounts} value={firmTab} onChange={setFirmTab} />
@@ -737,6 +752,15 @@ export function InvoicesMaster() {
                         >
                           <TruckIcon size={18} />
                         </button>
+                        {isSystemAdmin && invoice.tallyTimestamp ? (
+                          <button
+                            onClick={() => setUndoTallyId(invoice.id)}
+                            className="rounded border border-red-700 px-1.5 py-1 text-[10px] font-black uppercase leading-tight text-red-700 hover:bg-red-50"
+                            title="Undo Tally Posting (back to Pending Tally Posting, on hold, so it can be edited)"
+                          >
+                            Undo Tally
+                          </button>
+                        ) : null}
                         {isAdminUser ? (
                           <button
                             onClick={() => setUndoInvoiceId(invoice.id)}

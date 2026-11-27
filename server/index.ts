@@ -11450,6 +11450,8 @@ await db.query(`
         { table: "invoices", column: "tallyTimestamp", type: "VARCHAR(255)" },
         { table: "invoices", column: "tallyBy", type: "VARCHAR(255)" },
         { table: "invoices", column: "tallySyncRemark", type: "TEXT" },
+        { table: "invoices", column: "tallyHold", type: "VARCHAR(5)" },
+        { table: "invoices", column: "tallyUndoLog", type: "LONGTEXT" },
         { table: "invoices", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "invoices", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "gate_passes", column: "gatePassNo", type: "VARCHAR(100) NOT NULL" },
@@ -16663,8 +16665,9 @@ async function fetchTallyPendingInvoices(db: mysql.Pool) {
   const [rows] = await db.query(`
     SELECT inv.*
     FROM \`invoices\` inv
-    WHERE inv.\`tallyTimestamp\` IS NULL
-       OR TRIM(inv.\`tallyTimestamp\`) = ''
+    WHERE (inv.\`tallyTimestamp\` IS NULL
+       OR TRIM(inv.\`tallyTimestamp\`) = '')
+      AND COALESCE(inv.\`tallyHold\`, '') <> 'Yes'
   `);
 
   return (rows as any[]).map((row) => normalizeFetchedRow("invoices", row));
@@ -18205,13 +18208,75 @@ app.post("/api/invoices/:id/manual-tally", async (req, res) => {
     const who = String(user.name || user.email || "User");
     const now = new Date().toISOString();
     await db.query(
-      "UPDATE `invoices` SET `tallyTimestamp` = ?, `tallyBy` = ?, `tallySyncRemark` = ?, `tallyInvNo` = ?, `tallyInvDate` = ?, `updatedBy` = ?, `updateTimestamp` = ? WHERE id = ?",
+      "UPDATE `invoices` SET `tallyTimestamp` = ?, `tallyBy` = ?, `tallySyncRemark` = ?, `tallyInvNo` = ?, `tallyInvDate` = ?, `tallyHold` = '', `updatedBy` = ?, `updateTimestamp` = ? WHERE id = ?",
       [now.slice(0, 19).replace("T", " "), who, `Posted manually by ${who}`, tallyInvNo, tallyInvDate, who, now, invoiceId],
     );
     return res.json({ ok: true });
   } catch (error) {
     console.error("[manual-tally] failed", (error as Error).message);
     return res.status(500).json({ error: "Unable to post the invoice." });
+  }
+});
+
+// System Admin: undo an invoice's Tally posting (the voucher must already be deleted in Tally).
+// The invoice goes back to Pending Tally Posting ON HOLD, so it can be edited; the Tally
+// connector does not pick it up until it is released. The old Tally details are logged.
+const isSystemAdminUser = (user: AuthUser | null | undefined) =>
+  Boolean(user) && user!.role === "Admin" && [user!.userId, user!.email].some((value) => String(value || "").trim().toLowerCase() === "system.lngrp.in");
+app.post("/api/invoices/:id/undo-tally", async (req, res) => {
+  const user = await getRequestUser(req).catch(() => null);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (!isSystemAdminUser(user)) return res.status(403).json({ error: "Only System Admin can undo a Tally posting." });
+  const invoiceId = String(req.params.id || "").trim();
+  const reason = String(req.body?.reason || "").trim();
+  if (!reason) return res.status(400).json({ error: "Enter the reason for undoing the Tally posting." });
+  if (req.body?.deletedInTally !== true) return res.status(400).json({ error: "First delete the voucher in Tally, then tick the confirmation." });
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "DB connection not available" });
+    const [rows] = await db.query("SELECT * FROM `invoices` WHERE id = ? LIMIT 1", [invoiceId]);
+    const invoice = (rows as any[])[0];
+    if (!invoice) return res.status(404).json({ error: "Invoice not found." });
+    if (!String(invoice.tallyTimestamp || "").trim()) return res.status(409).json({ error: "This invoice is not posted to Tally." });
+    const who = String(user.name || user.userId || "System Admin");
+    const now = new Date().toISOString();
+    let log: any[] = [];
+    try { const parsed = JSON.parse(String(invoice.tallyUndoLog || "[]")); if (Array.isArray(parsed)) log = parsed; } catch { log = []; }
+    log.push({ at: now, by: who, reason, tallyTimestamp: invoice.tallyTimestamp || "", tallyBy: invoice.tallyBy || "", tallyInvNo: invoice.tallyInvNo || "", tallyInvDate: invoice.tallyInvDate || "", tallyInvId: invoice.tallyInvId || "", tallySyncRemark: invoice.tallySyncRemark || "" });
+    const remark = `Tally posting undone by ${who} on ${now.slice(0, 10)} (was Tally No. ${invoice.tallyInvNo || "-"}): ${reason}. On hold – edit if needed, then Release to Tally.`;
+    await db.query(
+      "UPDATE `invoices` SET `tallyTimestamp` = NULL, `tallyBy` = NULL, `tallyInvNo` = NULL, `tallyInvDate` = NULL, `tallyInvId` = NULL, `tallySyncRemark` = ?, `tallyHold` = 'Yes', `tallyUndoLog` = ?, `updatedBy` = ?, `updateTimestamp` = ? WHERE id = ?",
+      [remark, JSON.stringify(log), who, now, invoiceId],
+    );
+    publishRealtimeDataChange(["invoices"]);
+    return res.json({ ok: true, invoiceNo: invoice.invoiceNo || "" });
+  } catch (error) {
+    console.error("[undo-tally] failed", (error as Error).message);
+    return res.status(500).json({ error: "Unable to undo the Tally posting." });
+  }
+});
+// Pending Tally Posting: release an on-hold invoice so the Tally connector posts it again.
+app.post("/api/invoices/:id/release-tally", async (req, res) => {
+  const user = await getRequestUser(req).catch(() => null);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const allowed = user.role === "Admin" || (user.role !== "TruckDriver" && hasPermission(user, "/billing/pending-tally"));
+  if (!allowed) return res.status(403).json({ error: "You do not have access to Pending Tally Posting." });
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "DB connection not available" });
+    const invoiceId = String(req.params.id || "").trim();
+    const who = String(user.name || user.userId || "User");
+    const now = new Date().toISOString();
+    const [result] = await db.query(
+      "UPDATE `invoices` SET `tallyHold` = '', `tallySyncRemark` = ?, `updatedBy` = ?, `updateTimestamp` = ? WHERE id = ? AND COALESCE(`tallyHold`, '') = 'Yes'",
+      [`Released to Tally by ${who} on ${now.slice(0, 10)}`, who, now, invoiceId],
+    );
+    if (!(result as any).affectedRows) return res.status(409).json({ error: "This invoice is not on hold." });
+    publishRealtimeDataChange(["invoices"]);
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("[release-tally] failed", (error as Error).message);
+    return res.status(500).json({ error: "Unable to release the invoice." });
   }
 });
 

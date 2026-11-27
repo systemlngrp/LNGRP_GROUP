@@ -1818,6 +1818,8 @@ export interface Invoice {
   tallyInvNo?: string;
   tallyInvDate?: string;
   tallyInvId?: string;
+  tallyHold?: string;
+  tallyUndoLog?: string;
   updatedBy?: string;
   updateTimestamp?: string;
 }

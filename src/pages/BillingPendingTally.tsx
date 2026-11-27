@@ -35,6 +35,7 @@ import { normalizeOrderItemSource } from "../lib/orderItems";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { SortHeader, useTableSort } from "../lib/tableSort";
+import { useNavigate } from "react-router-dom";
 
 const formatInr = new Intl.NumberFormat("en-IN", {
   minimumFractionDigits: 2,
@@ -86,6 +87,32 @@ export function BillingPendingTally() {
   const [manualError, setManualError] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
   const [postedIds, setPostedIds] = useState<Set<string>>(new Set());
+  const navigate = useNavigate();
+  // Invoices whose Tally posting System Admin undid: ON HOLD until released (the Tally connector skips them).
+  const [releasedIds, setReleasedIds] = useState<Set<string>>(new Set());
+  const isOnHold = (inv: { id: string; tallyHold?: string }) => String(inv.tallyHold || "").trim() === "Yes" && !releasedIds.has(inv.id);
+  const releaseToTally = async (inv: { id: string; invoiceNo?: string }) => {
+    if (!(await confirm(`Release invoice ${inv.invoiceNo || ""} to Tally? The Tally connector will post it on its next run.`))) return;
+    setProcessingId(inv.id);
+    try {
+      const token = localStorage.getItem("authToken") || "";
+      const response = await fetch(`/api/invoices/${encodeURIComponent(inv.id)}/release-tally`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(body?.error || response.statusText));
+      setReleasedIds((current) => new Set([...current, inv.id]));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Unable to release the invoice.");
+    } finally {
+      setProcessingId(null);
+    }
+  };
+  const holdActions = (inv: { id: string; invoiceNo?: string; tallyHold?: string }) => isOnHold(inv) ? (
+    <>
+      <span className="rounded border border-red-700 bg-red-50 px-1.5 py-0.5 text-[10px] font-black uppercase text-red-700" title="Tally posting was undone; the Tally connector skips it until released">On hold</span>
+      <button type="button" onClick={() => navigate(`/billing/pending?editInvoiceId=${encodeURIComponent(inv.id)}`)} className="flex items-center gap-1 rounded border border-amber-700 bg-amber-50 px-2 py-1 text-[11px] font-bold uppercase text-amber-800 hover:bg-amber-100" title="Edit this invoice"><Pencil size={13} /> Edit</button>
+      <button type="button" disabled={!!processingId} onClick={() => void releaseToTally(inv)} className="rounded bg-indigo-700 px-2 py-1 text-[11px] font-black uppercase text-white hover:bg-indigo-800 disabled:opacity-50" title="Let the Tally connector post it again">Release to Tally</button>
+    </>
+  ) : null;
   const tableColumnCount = canPostTally ? 9 : 8;
   const toggleRow = (id: string) => {
     const next = new Set(expandedRows);
@@ -478,7 +505,7 @@ export function BillingPendingTally() {
                 <button type="button" onClick={() => toggleRow(inv.id)} className="flex items-center gap-1 rounded border border-black bg-white px-2 py-1 text-[11px] font-bold uppercase">
                   {open ? "Hide" : "Items"} {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </button>
-                {canPostTally ? postButton(inv) : null}
+                <div className="flex flex-wrap items-center justify-end gap-1">{holdActions(inv)}{canPostTally ? postButton(inv) : null}</div>
               </div>
               {open ? <div className="mt-2">{renderDetails(inv)}</div> : null}
             </div>
@@ -555,7 +582,8 @@ export function BillingPendingTally() {
                     </td>
                     {canPostTally ? (
                       <td className="px-4 py-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex flex-wrap items-center justify-center gap-2">
+                          {holdActions(inv)}
                           <button 
                             disabled={!!processingId}
                             onClick={() => openManualPost(inv)}

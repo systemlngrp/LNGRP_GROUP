@@ -1455,13 +1455,16 @@ def get_pending_invoice_rows(conn, source_firm_id, destination_firm_id):
         firm_filter = "firmId = %s"
         params = (source_firm_id,)
 
+    # Invoices put ON HOLD in the app (Tally posting undone by System Admin) wait until
+    # they are released from Pending Tally Posting.
+    hold_filter = " AND COALESCE(tallyHold, '') <> 'Yes'" if column_exists(conn, "invoices", "tallyHold") else ""
     sql = f"""
         SELECT *
         FROM invoices
         WHERE {firm_filter}
           AND (tallyTimestamp IS NULL
            OR tallyTimestamp = ''
-          )
+          ){hold_filter}
     """
 
     cursor = get_db_cursor(conn, dictionary=True)
