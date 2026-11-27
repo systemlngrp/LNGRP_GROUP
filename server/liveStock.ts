@@ -275,6 +275,9 @@ export async function checkSlipsAgainstLiveStock(db: mysql.Pool, entity: LiveSto
   const errors: string[] = [];
   for (const [key, change] of delta) {
     if (change <= 0.0001) continue;
+    // Wastage scrap (Corrugated Wastage Scrap, Wastage Scrap Core Pipe) is not in the physical count: never blocked.
+    const [, keyErp] = key.split("|");
+    if (NO_STOCK_CHECK_ERPS.has(keyErp) || /scrap/i.test(liveByKey.get(key)?.itemName || names.get(key) || "")) continue;
     const row = liveByKey.get(key);
     const current = row?.live || 0;
     const after = Math.round((current - change) * 100) / 100;
@@ -285,6 +288,8 @@ export async function checkSlipsAgainstLiveStock(db: mysql.Pool, entity: LiveSto
   }
   return errors;
 }
+
+const NO_STOCK_CHECK_ERPS = new Set(["99010001", "99010004"]);
 
 export function liveStockErrorMessage(errors: string[]) {
   return `Not enough stock (physical count as on 26-Nov-2026 5 PM + production + receipts − loaded). Stock cannot go below zero:\n${errors.join("\n")}\nIf the stock is really there, ask Admin to add an adjustment row in the physical count.`;
