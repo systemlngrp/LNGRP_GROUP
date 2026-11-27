@@ -11566,6 +11566,7 @@ await db.query(`
         { table: "settings", column: "summarySheetUserColumns", type: "LONGTEXT" },
         { table: "settings", column: "summarySheetUserViews", type: "LONGTEXT" },
         { table: "settings", column: "summarySheetSeparators", type: "LONGTEXT" },
+        { table: "settings", column: "summarySheetColumnOrder", type: "LONGTEXT" },
         { table: "settings", column: "salesTargetSnapshot", type: "LONGTEXT" },
         { table: "settings", column: "realizationPerKgTargets", type: "LONGTEXT" },
         { table: "settings", column: "invoiceNumberSeries", type: "LONGTEXT" },
@@ -22632,6 +22633,42 @@ app.put("/api/summary-sheet-separators", async (req, res) => {
   } catch (error) {
     console.error("[summary-sheet-separators] save failed", (error as Error).message);
     return res.status(500).json({ error: "Unable to save the separators." });
+  }
+});
+// Summary Sheet column order, set by Admin for everyone (column names in order; null = default).
+app.get("/api/summary-sheet-column-order", async (req, res) => {
+  const user = await getRequestUser(req).catch(() => null);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const db = await getPool();
+  if (!db) return res.status(503).json({ error: "DB connection not available" });
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    const [rows] = await db.query("SELECT `summarySheetColumnOrder` FROM `settings` LIMIT 1");
+    const raw = (rows as any[])[0]?.summarySheetColumnOrder;
+    const parsed = raw ? JSON.parse(String(raw)) : null;
+    return res.json({ order: Array.isArray(parsed) ? parsed.map((name) => String(name)) : null });
+  } catch {
+    return res.json({ order: null });
+  }
+});
+app.put("/api/summary-sheet-column-order", async (req, res) => {
+  const user = await getRequestUser(req).catch(() => null);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (user.role !== "Admin") return res.status(403).json({ error: "Only Admin can set the Summary Sheet column order." });
+  const input = Array.isArray(req.body?.order) ? req.body.order : null;
+  const order = input ? [...new Set(input.map((name: unknown) => String(name || "").trim().slice(0, 100)).filter(Boolean))].slice(0, 300) : null;
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "DB connection not available" });
+    const value = order ? JSON.stringify(order) : null;
+    const [rows] = await db.query("SELECT id FROM `settings` LIMIT 1");
+    const id = (rows as any[])[0]?.id;
+    if (id) await db.query("UPDATE `settings` SET `summarySheetColumnOrder` = ? WHERE id = ?", [value, id]);
+    else await db.query("INSERT INTO `settings` (`id`, `summarySheetColumnOrder`) VALUES (?, ?)", [crypto.randomUUID(), value]);
+    return res.json({ ok: true, order });
+  } catch (error) {
+    console.error("[summary-sheet-column-order] save failed", (error as Error).message);
+    return res.status(500).json({ error: "Unable to save the column order." });
   }
 });
 app.get("/api/summary-sheet-user-columns", async (req, res) => {

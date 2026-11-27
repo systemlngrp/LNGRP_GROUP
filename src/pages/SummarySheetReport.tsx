@@ -505,7 +505,7 @@ export function SummarySheetReport() {
   // Status tiles: jobs per status over the filters above (Status filter not applied), searched like the table.
   const STATUS_TILES = ["Pending Corrugation", "Pending Printing", "Printed but Not Loaded", "Printed but Never Dispatched", "Pending Loading", "Pending Job Closure"] as const;
 
-  const selectedColumns = useMemo(() => {
+  const selectedColumnsDefault = useMemo(() => {
     if (!isAdmin) {
       const allowed = new Set(userColumnNames || []);
       const shown = new Set(visibleColumns);
@@ -523,6 +523,18 @@ export function SummarySheetReport() {
   // Separators: loaded once; null on the server = not set yet, so the defaults show.
   const [separators, setSeparators] = useState<Record<string, SeparatorWidth>>(DEFAULT_SEPARATORS);
   const [addOpeningOpen, setAddOpeningOpen] = useState(false);
+  // Column order set by Admin for everyone (column names; null = the default order).
+  const [columnOrder, setColumnOrder] = useState<string[] | null>(null);
+  const [columnOrderOpen, setColumnOrderOpen] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/summary-sheet-column-order", { headers: getDataAuthHeaders(false) as HeadersInit })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => { if (alive && Array.isArray(body?.order)) setColumnOrder(body.order); })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
+  const selectedColumns = useMemo(() => orderColumns(selectedColumnsDefault, columnOrder), [selectedColumnsDefault, columnOrder]);
   const [separatorsOpen, setSeparatorsOpen] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -574,11 +586,18 @@ export function SummarySheetReport() {
     statusTileRows.forEach((row) => counts.set(s(row.Status), (counts.get(s(row.Status)) || 0) + 1));
     return STATUS_TILES.map((status) => ({ status, count: counts.get(status) || 0 }));
   }, [statusTileRows]);
-  const selectedSections = useMemo(() => SUMMARY_SECTIONS.map((section) => {
-    const start = COLUMNS.indexOf(section.start);
-    const end = COLUMNS.indexOf(section.end);
-    return { ...section, columns: selectedColumns.filter((index) => index >= start && index <= end) };
-  }).filter((section) => section.columns.length), [selectedColumns]);
+  // Section bands follow the shown order: one band per run of columns from the same section.
+  const selectedSections = useMemo(() => {
+    const bands: Array<{ label: string; columns: number[] }> = [];
+    for (const index of selectedColumns) {
+      const section = SUMMARY_SECTIONS.find((item) => index >= COLUMNS.indexOf(item.start) && index <= COLUMNS.indexOf(item.end));
+      const label = section?.label || "";
+      const last = bands[bands.length - 1];
+      if (last && last.label === label) last.columns.push(index);
+      else bands.push({ label, columns: [index] });
+    }
+    return bands;
+  }, [selectedColumns]);
   // QC & documents: "Open" when the record exists, "Add" to create it (opens in a new tab).
   const [coaRecords] = useData<any>("coa-records", []);
   const coaIdByProduction = useMemo(() => { const map = new Map<string, { id: string; at: string }>(); coaRecords.forEach((record: any) => { const id = s(record.productionId); if (!id) return; const at = s(record.updateTimestamp); const current = map.get(id); if (!current || at > current.at) map.set(id, { id: s(record.id), at }); }); return map; }, [coaRecords]);
@@ -741,7 +760,9 @@ export function SummarySheetReport() {
   const tableWrapRef = useRef<HTMLDivElement>(null);
   const frozenCount = useMemo(() => {
     const limit = freezeColumn ? COLUMNS.indexOf(freezeColumn as (typeof COLUMNS)[number]) : -1;
-    return limit > 0 ? selectedColumns.filter((index) => index <= limit).length : 0;
+    if (limit <= 0) return 0;
+    const at = selectedColumns.indexOf(limit);
+    return at >= 0 ? at + 1 : selectedColumns.filter((index) => index <= limit).length;
   }, [freezeColumn, selectedColumns]);
   useEffect(() => {
     const table = tableWrapRef.current?.querySelector("table");
@@ -833,9 +854,10 @@ export function SummarySheetReport() {
     ) : null}
     {isAdmin && showTiles && !isPhone ? <div className="grid grid-cols-1 items-start gap-2 lg:grid-cols-2">{tiles.map((section) => <SummaryTileGroup key={section.id} section={section} />)}</div> : null}
     <StatusTiles counts={statusTileCounts} active={statusFilter} onPick={(status) => setStatusFilter((current) => current === status ? "" : status)} />
-    <div data-mf-panel="true" className="relative z-40 grid grid-cols-2 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative col-span-2 xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option>{isAdmin ? <option value="Temporary Closed">Temporary Closed</option> : null}<option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={fgRangeFilter} onChange={(event) => setFgRangeFilter(event.target.value)} title="FG Stock range"><option value="">All FG</option><option value="Negative">FG: Negative</option><option value="Zero">FG: 0</option><option value="UpTo100">FG: Up to 100</option><option value="Over100">FG: More than 100</option></select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button>{isAdmin ? <button type="button" onClick={() => setUserColumnsOpen(true)} className="rounded border border-black bg-indigo-700 px-3 py-2 font-bold text-white hover:bg-indigo-800">User Columns</button> : null}{isAdmin ? <button type="button" onClick={() => setSeparatorsOpen(true)} className="rounded border border-black bg-black px-3 py-2 font-bold text-white hover:bg-slate-800" title="Black lines between columns, for everyone">Separators</button> : null}{isAdmin ? <button type="button" onClick={() => setAddOpeningOpen(true)} className="rounded border border-black bg-emerald-700 px-3 py-2 font-bold text-white hover:bg-emerald-800" title="Add or reduce an FG item's opening stock">± Opening Stock</button> : null}<details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{pickableColumns.length})</summary><div className="absolute right-0 z-50 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg"><div className="sticky -top-3 z-10 -mx-3 -mt-3 mb-2 flex gap-2 border-b border-black bg-white px-3 py-2"><button type="button" onClick={() => setVisibleColumns(COLUMNS.map((_, index) => index))} className="flex-1 rounded border-2 border-black bg-indigo-700 px-2 py-1 text-xs font-bold text-white hover:bg-indigo-800">Reset Columns</button><button type="button" onClick={() => setVisibleColumns([0, 1])} className="flex-1 rounded border-2 border-black bg-white px-2 py-1 text-xs font-bold hover:bg-slate-100">Hide All</button></div>{pickableColumns.map((index) => <label key={`${COLUMNS[index]}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{columnTitle(COLUMNS[index])}</span></label>)}</div></details>
+    <div data-mf-panel="true" className="relative z-40 grid grid-cols-2 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative col-span-2 xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option>{isAdmin ? <option value="Temporary Closed">Temporary Closed</option> : null}<option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={fgRangeFilter} onChange={(event) => setFgRangeFilter(event.target.value)} title="FG Stock range"><option value="">All FG</option><option value="Negative">FG: Negative</option><option value="Zero">FG: 0</option><option value="UpTo100">FG: Up to 100</option><option value="Over100">FG: More than 100</option></select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button>{isAdmin ? <button type="button" onClick={() => setUserColumnsOpen(true)} className="rounded border border-black bg-indigo-700 px-3 py-2 font-bold text-white hover:bg-indigo-800">User Columns</button> : null}{isAdmin ? <button type="button" onClick={() => setSeparatorsOpen(true)} className="rounded border border-black bg-black px-3 py-2 font-bold text-white hover:bg-slate-800" title="Black lines between columns, for everyone">Separators</button> : null}{isAdmin ? <button type="button" onClick={() => setColumnOrderOpen(true)} className="rounded border border-black bg-sky-700 px-3 py-2 font-bold text-white hover:bg-sky-800" title="Move columns, for everyone">Column Order</button> : null}{isAdmin ? <button type="button" onClick={() => setAddOpeningOpen(true)} className="rounded border border-black bg-emerald-700 px-3 py-2 font-bold text-white hover:bg-emerald-800" title="Add or reduce an FG item's opening stock">± Opening Stock</button> : null}<details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{pickableColumns.length})</summary><div className="absolute right-0 z-50 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg"><div className="sticky -top-3 z-10 -mx-3 -mt-3 mb-2 flex gap-2 border-b border-black bg-white px-3 py-2"><button type="button" onClick={() => setVisibleColumns(COLUMNS.map((_, index) => index))} className="flex-1 rounded border-2 border-black bg-indigo-700 px-2 py-1 text-xs font-bold text-white hover:bg-indigo-800">Reset Columns</button><button type="button" onClick={() => setVisibleColumns([0, 1])} className="flex-1 rounded border-2 border-black bg-white px-2 py-1 text-xs font-bold hover:bg-slate-100">Hide All</button></div>{pickableColumns.map((index) => <label key={`${COLUMNS[index]}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{columnTitle(COLUMNS[index])}</span></label>)}</div></details>
 <label className="flex items-center gap-2 rounded border border-black bg-white px-2 py-1 text-xs font-bold" title="Keep the first columns fixed while scrolling sideways">Freeze<select value={freezeColumn} onChange={(event) => setFreezeColumn(event.target.value)} className="min-w-0 flex-1 bg-transparent py-1 text-xs font-bold outline-none"><option value="">None</option>{FREEZE_OPTIONS.map((column) => <option key={column} value={column}>Up to {columnTitle(column)}</option>)}</select></label></div>
     {isAdmin && userColumnsOpen ? <SummaryUserColumnsDialog onClose={() => setUserColumnsOpen(false)} /> : null}
+    {isAdmin && columnOrderOpen ? <ColumnOrderDialog value={columnOrder} onClose={() => setColumnOrderOpen(false)} onSaved={(next) => { setColumnOrder(next); setColumnOrderOpen(false); }} /> : null}
     {isAdmin && addOpeningOpen ? <AddToOpeningDialog source="Summary Sheet" onClose={() => setAddOpeningOpen(false)} onSaved={(message) => alert(message)} /> : null}
     {isAdmin && separatorsOpen ? <SeparatorsDialog value={separators} onClose={() => setSeparatorsOpen(false)} onSaved={(next) => { setSeparators(next); setSeparatorsOpen(false); }} /> : null}
     {isAdmin && correctJob ? <SummaryJobCorrection job={{ jobId: s(correctJob.__productionId), jobNo: s(correctJob["Job No."]), date: s(correctJob.Date), companyName: s(correctJob["Party Name"]), itemName: s(correctJob["Item Name"]), erp: s(correctJob.ERP), plannedQty: n(correctJob["Planned Qty"]) }} userName={String(user?.name || "Admin")} onClose={() => setCorrectJob(null)} /> : null}
@@ -1077,4 +1099,73 @@ function SummaryUserColumnsDialog({ onClose }: { onClose: () => void }) {
       </div>
     </div>
   </div>;
+}
+
+/** Puts the shown columns in the Admin's saved order; columns not in it keep their default place after the column before them. */
+function orderColumns(columns: number[], order: string[] | null): number[] {
+  if (!order?.length) return columns;
+  const rank = new Map(order.map((name, at) => [name, at]));
+  const known = columns.filter((index) => rank.has(COLUMNS[index])).sort((a, b) => (rank.get(COLUMNS[a]) as number) - (rank.get(COLUMNS[b]) as number));
+  const result = [...known];
+  columns.forEach((index, at) => {
+    if (rank.has(COLUMNS[index])) return;
+    const before = columns.slice(0, at).reverse().find((prev) => result.includes(prev));
+    result.splice(before === undefined ? 0 : result.indexOf(before) + 1, 0, index);
+  });
+  return result;
+}
+
+// Admin: move Summary Sheet columns (drag, or the arrows), for every user.
+function ColumnOrderDialog({ value, onClose, onSaved }: { value: string[] | null; onClose: () => void; onSaved: (next: string[] | null) => void }) {
+  const allColumns = COLUMNS.slice(1) as string[];
+  const [draft, setDraft] = useState<string[]>(() => orderColumns(allColumns.map((_, i) => i + 1), value).map((index) => COLUMNS[index] as string));
+  const [dragging, setDragging] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const move = (from: number, to: number) => setDraft((current) => { if (to < 0 || to >= current.length || from === to) return current; const next = [...current]; const [item] = next.splice(from, 1); next.splice(to, 0, item); return next; });
+  const save = async (order: string[] | null) => {
+    setSaving(true); setError("");
+    try {
+      const token = localStorage.getItem("authToken") || "";
+      const response = await fetch("/api/summary-sheet-column-order", { method: "PUT", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ order }) });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(body?.error || response.statusText));
+      onSaved(order);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4" onClick={() => { if (!saving) onClose(); }}>
+      <div className="flex max-h-[88vh] w-full max-w-md flex-col rounded border-2 border-black bg-white text-black" role="dialog" aria-modal="true" aria-label="Column Order" onClick={(event) => event.stopPropagation()}>
+        <div className="border-b-2 border-black bg-sky-700 px-4 py-3 text-white">
+          <h3 className="text-lg font-black uppercase">Column Order</h3>
+          <p className="text-xs font-semibold text-sky-100">Drag a column, or use the arrows. Saved for every user; hidden columns keep their place.</p>
+        </div>
+        <div className="flex-1 overflow-y-auto px-3 py-2">
+          {draft.map((column, at) => (
+            <div key={column} draggable onDragStart={() => setDragging(at)} onDragOver={(event) => { event.preventDefault(); if (dragging !== null && dragging !== at) { move(dragging, at); setDragging(at); } }} onDragEnd={() => setDragging(null)}
+              className={`flex cursor-grab items-center justify-between gap-2 border-b border-slate-200 px-1 py-1 ${dragging === at ? "bg-sky-100" : "hover:bg-slate-50"}`}>
+              <span className="flex items-center gap-2 text-xs font-semibold"><span className="w-6 text-right text-[10px] font-black text-slate-400">{at + 1}</span><span className="text-slate-400">⋮⋮</span>{columnTitle(column)}</span>
+              <span className="flex gap-1">
+                <button type="button" onClick={() => move(at, 0)} disabled={at === 0} className="rounded border px-1.5 text-[11px] font-bold disabled:opacity-30" title="To the start">⤒</button>
+                <button type="button" onClick={() => move(at, at - 1)} disabled={at === 0} className="rounded border px-1.5 text-[11px] font-bold disabled:opacity-30" title="Up">▲</button>
+                <button type="button" onClick={() => move(at, at + 1)} disabled={at === draft.length - 1} className="rounded border px-1.5 text-[11px] font-bold disabled:opacity-30" title="Down">▼</button>
+              </span>
+            </div>
+          ))}
+        </div>
+        {error ? <div className="mx-4 mb-2 rounded border-2 border-red-600 bg-red-50 p-2 text-sm font-bold text-red-700">{error}</div> : null}
+        <div className="flex justify-between gap-2 border-t-2 border-black px-4 py-3">
+          <button type="button" disabled={saving} onClick={() => void save(null)} className="rounded border-2 border-black px-3 py-1.5 text-xs font-bold disabled:opacity-50">Reset to default</button>
+          <div className="flex gap-2">
+            <button type="button" disabled={saving} onClick={onClose} className="rounded border-2 border-black px-3 py-1.5 text-xs font-bold disabled:opacity-50">Cancel</button>
+            <button type="button" disabled={saving} onClick={() => void save(draft)} className="rounded bg-sky-700 px-3 py-1.5 text-xs font-black text-white disabled:opacity-50">{saving ? "Saving..." : "Save for everyone"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
