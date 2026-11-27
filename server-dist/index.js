@@ -6423,6 +6423,10 @@ function entityPermissionKey(entity) {
         case "dispatch_plans":
             return "/dispatch";
         case "loading_slips":
+        // Linked PHP / Plate slips are written by the same loading screens right after
+        // the FG slip (they had no entry here, so only Admin could save them).
+        case "php_loading_slips":
+        case "plate_loading_slips":
             return "/loading";
         case "gate_passes":
             return "/gate-pass";
