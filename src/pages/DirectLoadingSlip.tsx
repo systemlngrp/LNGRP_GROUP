@@ -4,7 +4,7 @@ import { useData } from "../hooks/useData";
 import type { Company, DispatchPlan, Firm, LoadingSlip, Order, Truck } from "../types";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { upsertFgLinkedChildSlip } from "../lib/linkedLoadingSlipSync";
-import { buildPhpPlateStockAlertMessage, getPhpPlateStockShortages } from "../lib/phpPlateStockValidation";
+import { checkLiveStock } from "../lib/liveStockCheck";
 import { DirectLoadingSlipModal } from "../components/DirectLoadingSlipModal";
 import { usePhpPlateReceipts } from "../hooks/usePhpPlateReceipts";
 import { isMeghaTrading } from "../lib/scrapSales";
@@ -54,21 +54,10 @@ export function DirectLoadingSlip() {
         updatedBy: "System User",
         updateTimestamp: timestamp,
       };
-      const shortages = getPhpPlateStockShortages({
-        phpDetails: phpDetails || [],
-        plateDetails: plateDetails || [],
-        phpMasterRows: phpItemMaster,
-        plateMasterRows: plateItemMaster,
-        phpJobs,
-        plateJobs,
-        fgLoadingSlips: loadingSlips,
-        phpLoadingSlips,
-        plateLoadingSlips,
-        parentFgLoadingId: newSlip.id,
-        receipts: phpPlateReceipts,
-      });
-      if (shortages.length > 0) {
-        alert(buildPhpPlateStockAlertMessage(shortages));
+      // Stock (physical count + movements since) cannot go below zero, FG and linked PHP / Plate.
+      const stockMessage = await checkLiveStock("loading_slips", [newSlip]);
+      if (stockMessage) {
+        alert(stockMessage);
         return false;
       }
       const loadingSaveResult = await setLoadingSlips((prev) => [newSlip, ...prev]);
@@ -83,7 +72,7 @@ export function DirectLoadingSlip() {
       return true;
     } catch (error) {
       console.error("Failed to save direct loading slip:", error);
-      alert("Failed to save direct loading slip.");
+      alert(`Failed to save direct loading slip.${error instanceof Error && error.message ? `\n\n${error.message}` : ""}`);
       return false;
     }
   };

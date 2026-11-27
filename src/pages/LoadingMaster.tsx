@@ -31,7 +31,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { buildLinkedLoadingDetailsFromSlip } from "../lib/linkedLoading";
 import { upsertFgLinkedChildSlip } from "../lib/linkedLoadingSlipSync";
 import { downloadLoadingSlipPdf } from "../lib/loadingSlipPdf";
-import { buildPhpPlateStockAlertMessage, getPhpPlateStockShortages } from "../lib/phpPlateStockValidation";
+import { checkLiveStock } from "../lib/liveStockCheck";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { SortHeader, useTableSort } from "../lib/tableSort";
@@ -541,21 +541,10 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
         ? { jobConfirmations: parseJobConfirmations(original).map((row) => ({ jobId: row.jobId, jobNo: row.jobNo, printingCompleteAtLoading: row.printingCompleteAtLoading })) }
         : {}),
     };
-    const shortages = getPhpPlateStockShortages({
-      phpDetails,
-      plateDetails,
-      phpMasterRows: phpItemMaster,
-      plateMasterRows: plateItemMaster,
-      phpJobs,
-      plateJobs,
-      fgLoadingSlips: loadingSlips,
-      phpLoadingSlips,
-      plateLoadingSlips,
-      parentFgLoadingId: original.id,
-      receipts: phpPlateReceipts,
-    });
-    if (shortages.length > 0) {
-      alert(buildPhpPlateStockAlertMessage(shortages));
+    // Stock (physical count + movements since) cannot go below zero, FG and linked PHP / Plate.
+    const stockMessage = await checkLiveStock("loading_slips", [syncedDraft]);
+    if (stockMessage) {
+      alert(stockMessage);
       return;
     }
 
@@ -726,7 +715,7 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
               <>
                 {canManage ? <button
                   type="button"
-                  onClick={() => void saveEdit(slip.id)}
+                  onClick={() => void saveEdit(slip.id).catch((err) => alert(`Loading slip was not saved.${err instanceof Error && err.message ? `\n\n${err.message}` : ""}`))}
                   className="px-3 py-1.5 text-xs font-bold border border-black rounded bg-emerald-600 text-white hover:bg-emerald-700"
                 >
                   Save
@@ -918,7 +907,7 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
           </button>
           <button
             type="button"
-            onClick={() => void saveEdit(slip.id)}
+            onClick={() => void saveEdit(slip.id).catch((err) => alert(`Loading slip was not saved.${err instanceof Error && err.message ? `\n\n${err.message}` : ""}`))}
             className="px-3 py-1.5 text-xs font-bold border border-black rounded bg-emerald-600 text-white hover:bg-emerald-700"
           >
             Save

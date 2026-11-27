@@ -45,7 +45,7 @@ import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { buildLinkedLoadingDetailsFromSlip, findLinkedItemByMasterErp, getLinkedSetsPerBox } from "../lib/linkedLoading";
 import { upsertFgLinkedChildSlip } from "../lib/linkedLoadingSlipSync";
-import { buildPhpPlateStockAlertMessage, getPhpPlateStockShortages } from "../lib/phpPlateStockValidation";
+import { checkLiveStock, fetchLiveStockLevels } from "../lib/liveStockCheck";
 import { normalizeTruckStatus } from "../lib/truckStatus";
 import { useAuth } from "../auth/AuthContext";
 import { usePageDataStatus } from "../components/DataLoadingBoundary";
@@ -171,6 +171,14 @@ export function PendingLoading() {
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [loadingModal, setLoadingModal] = useState<LoadingModalState | null>(null);
+  // Live stock per item (physical count + movements since), refreshed each time the loading popup opens.
+  const [liveStockLevels, setLiveStockLevels] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!loadingModal) return;
+    let active = true;
+    void fetchLiveStockLevels().then((levels) => { if (active) setLiveStockLevels(levels); });
+    return () => { active = false; };
+  }, [loadingModal?.itemId, loadingModal?.itemSource]);
   const [loadedQuantities, setLoadedQuantities] = useState<Record<string, number>>({});
   const [jobSplitQtys, setJobSplitQtys] = useState<Record<string, Record<string, number | "">>>({});
   const [jobWastageQtys, setJobWastageQtys] = useState<Record<string, Record<string, number | "">>>({});
@@ -532,7 +540,7 @@ export function PendingLoading() {
     if (modal.itemSource === "FG" && npdStockLoading) errors.unshift("FG stock is still loading. Please wait a moment.");
     const stockLabel = modal.itemSource === "FG" ? "FG Stock" : `${modal.itemSource} Stock`;
     if (openingStockQty < 0) errors.push(`${stockLabel} quantity cannot be negative.`);
-    // FG Stock quantity is not checked against the available FG stock for now.
+    // Stock is checked against live stock (physical count + movements) on save, server-side too.
     if (allocatedTotal <= 0) errors.push("At least one positive adjustment is required.");
     if (Math.abs(allocatedTotal - rowLoadedQty) > 0.0001) errors.push(`Job/${stockLabel} total must exactly match Loaded qty.`);
 
@@ -861,21 +869,10 @@ export function PendingLoading() {
         phpDetails,
         plateDetails,
       };
-      const shortages = getPhpPlateStockShortages({
-        phpDetails,
-        plateDetails,
-        phpMasterRows: phpItemMaster,
-        plateMasterRows: plateItemMaster,
-        phpJobs,
-        plateJobs,
-        fgLoadingSlips: loadingSlips,
-        phpLoadingSlips,
-        plateLoadingSlips,
-        parentFgLoadingId: newSlip.id,
-        receipts: phpPlateReceipts,
-      });
-      if (shortages.length > 0) {
-        alert(buildPhpPlateStockAlertMessage(shortages));
+      // Stock (physical count + movements since) cannot go below zero, FG and linked PHP / Plate.
+      const stockMessage = await checkLiveStock("loading_slips", [newSlip]);
+      if (stockMessage) {
+        alert(stockMessage);
         return;
       }
 
@@ -905,6 +902,7 @@ export function PendingLoading() {
       handleCloseLoad();
     } catch (err) {
       console.error("Failed to submit loading:", err);
+      alert(`Loading slip was not saved.${err instanceof Error && err.message ? `\n\n${err.message}` : ""}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -1330,7 +1328,11 @@ export function PendingLoading() {
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-500">-</td> : null}
-                                <td className="px-4 py-4 text-right text-xs font-black text-emerald-700" title={loadingModal.itemSource === "FG" ? "Stock with no job behind it: Opening + FG receipts − loaded from FG Stock, never more than the firm's book stock left after the job rows" : undefined}>{loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId, loadingModal.eligibleJobs || []).toLocaleString() : "-"}</td>
+                                <td className="px-4 py-4 text-right text-xs font-black text-emerald-700" title={loadingModal.itemSource === "FG" ? "Stock with no job behind it: Opening + FG receipts − loaded from FG Stock, never more than the firm's book stock left after the job rows" : undefined}>{loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId, loadingModal.eligibleJobs || []).toLocaleString() : "-"}{(() => {
+                                  const erp = String((itemsBySource[loadingModal.itemSource] || []).find((row) => row.id === loadingModal.itemId)?.erp || "").trim();
+                                  const level = erp ? liveStockLevels[`${loadingModal.itemSource}|${erp}`] : undefined;
+                                  return erp ? <div className={`mt-0.5 text-[10px] font-black ${Number(level || 0) <= 0 ? "text-red-700" : "text-indigo-700"}`} title="Physical count as on 26-Nov-2026 5 PM + production + receipts − loaded − loading wastage, all boxes of this item. The slip cannot take it below zero.">Live stock: {Number(level || 0).toLocaleString()}</div> : null;
+                                })()}</td>
                                 <td className="px-4 py-2 text-right bg-indigo-50/30">
                                   <input
                                     type="number"
