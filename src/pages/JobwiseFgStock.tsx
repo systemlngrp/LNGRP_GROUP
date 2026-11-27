@@ -169,15 +169,15 @@ export function JobwiseFgStock() {
   const lineRow = (line: StockLine, index: number) => (
     <tr key={line.key} className={`${line.qty < 0 ? "bg-red-50" : line.source === "Opening" ? "bg-amber-50" : index % 2 ? "bg-slate-50" : "bg-white"} hover:bg-indigo-50`}>
       <td className={`${td} text-center text-xs font-bold text-slate-500`}>{index + 1}</td>
-      <td className={`${td} text-left text-xs font-semibold text-slate-700`}>{line.company || "-"}</td>
+      <td className={`${td} text-left text-xs font-semibold text-slate-700`} style={{ textAlign: "left" }}>{line.company || "-"}</td>
       <td className={`${td} text-center font-mono text-xs font-bold`}>{line.erp}</td>
-      <td className={`${td} text-left text-xs font-semibold`}>{line.itemName}</td>
+      <td className={`${td} text-left text-xs font-semibold`} style={{ textAlign: "left" }}>{line.itemName}</td>
       <td className={`${td} text-center`}>
         {line.source === "Opening"
           ? <span className="inline-block rounded-full border border-amber-400 bg-amber-100 px-2.5 py-0.5 text-[11px] font-black text-amber-800">Opening</span>
           : <span className="inline-block rounded-full border border-emerald-400 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-black text-emerald-800">Job {line.jobNo}</span>}
       </td>
-      <td className={`${td} text-right text-sm font-black ${line.qty < 0 ? "text-red-700" : "text-slate-900"}`}>{n0(line.qty)}</td>
+      <td style={{ textAlign: "right" }} className={`${td} text-right text-sm font-black ${line.qty < 0 ? "text-red-700" : "text-slate-900"}`}>{n0(line.qty)}</td>
     </tr>
   );
 
@@ -235,9 +235,9 @@ export function JobwiseFgStock() {
           <thead className="sticky top-0 z-10">
             <tr className="bg-gradient-to-r from-[#0b4773] via-[#1d4ed8] to-[#0f766e] text-white">
               <th className={`${th} w-14 text-center`}>Sl</th>
-              <th className={`${th} text-left`}><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggle} /></th>
+              <th className={`${th} text-left`} style={{ textAlign: "left" }}><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggle} /></th>
               <th className={`${th} text-center`}><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggle} align="center" /></th>
-              <th className={`${th} text-left`}><SortHeader label="Item" sortKey="itemName" sort={sort} onToggle={toggle} /></th>
+              <th className={`${th} text-left`} style={{ textAlign: "left" }}><SortHeader label="Item" sortKey="itemName" sort={sort} onToggle={toggle} /></th>
               <th className={`${th} text-center`}><SortHeader label="Opening / Job No." sortKey="source" sort={sort} onToggle={toggle} align="center" /></th>
               <th className={`${th} text-right`}><SortHeader label="Stock" sortKey="qty" sort={sort} onToggle={toggle} align="right" /></th>
             </tr>
@@ -258,7 +258,7 @@ export function JobwiseFgStock() {
                     <Fragment key={group.key}>
                       <tr className="cursor-pointer bg-gradient-to-r from-slate-800 to-slate-700 text-white" onClick={() => toggleGroup(group.key)}>
                         <td className={`${td} text-center font-black`}>{isCollapsed ? "▸" : "▾"}</td>
-                        <td className={`${td} text-left`} colSpan={4}>
+                        <td className={`${td} text-left`} style={{ textAlign: "left" }} colSpan={4}>
                           <span className="font-black">{group.title}</span>
                           {group.sub ? <span className="ml-2 text-xs font-semibold text-slate-200">{group.sub}</span> : null}
                           <span className="ml-2 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-bold">{group.lines.length} rows</span>
