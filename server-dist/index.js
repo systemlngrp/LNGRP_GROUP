@@ -14066,16 +14066,7 @@ const createHandlers = (tableName) => {
             let materialOpening = null;
             let whatsappDelivery;
             try {
-                // One PDI per job: a new PDI for a job that already has one updates that record.
-                if (tableName === "pre_dispatch_inspections" && data && !Array.isArray(data) && String(data.productionId || "").trim()) {
-                    const [existingPdi] = await db.query("SELECT id FROM `pre_dispatch_inspections` WHERE productionId = ? ORDER BY updateTimestamp DESC LIMIT 1", [String(data.productionId).trim()]);
-                    const existingId = String(existingPdi[0]?.id || "");
-                    if (existingId && existingId !== String(data.id || "")) {
-                        const [sameId] = await db.query("SELECT id FROM `pre_dispatch_inspections` WHERE id = ? LIMIT 1", [String(data.id || "")]);
-                        if (!sameId.length)
-                            data.id = existingId;
-                    }
-                }
+                // A job can have several PDIs (each save of the PDI form is a new record); the latest one counts.
                 // Closing / unclosing a job (Closer + Close Date) is for Admin only.
                 if (tableName === "productions" && requestUser?.role !== "Admin") {
                     const incoming = (Array.isArray(data) ? data : [data]).filter((row) => row && typeof row === "object");
@@ -20503,7 +20494,7 @@ app.post("/api/coa-records", async (req, res) => {
         if (required.some((value) => value === undefined || value === null || value === ""))
             return res.status(400).json({ error: "Template, company, Job No., date, and COA values are required." });
         // COA only after the job's latest PDI is PASS (PDIs saved on the job first, else by job no.).
-        const [pdiRows] = await db.query("SELECT result, csRequired, erpCode, printingArtworkCheck, printingColorCheck, boxSquaringCheck, flapGapCheck, jointPastingDelaminationCheck FROM `pre_dispatch_inspections` WHERE productionId = ? OR LOWER(TRIM(jobNo)) = LOWER(TRIM(?)) ORDER BY (productionId = ?) DESC, COALESCE(NULLIF(updateTimestamp, ''), inspectionDate) DESC LIMIT 1", [String(body.productionId), String(body.jobNo), String(body.productionId)]);
+        const [pdiRows] = await db.query("SELECT result, csRequired, erpCode, printingArtworkCheck, printingColorCheck, boxSquaringCheck, flapGapCheck, jointPastingDelaminationCheck FROM `pre_dispatch_inspections` WHERE productionId = ? OR LOWER(TRIM(jobNo)) = LOWER(TRIM(?)) ORDER BY (productionId = ?) DESC, COALESCE(NULLIF(inspectionDate, ''), updateTimestamp) DESC, updateTimestamp DESC LIMIT 1", [String(body.productionId), String(body.jobNo), String(body.productionId)]);
         const latestPdi = pdiRows[0];
         const latestPdiResult = String(latestPdi?.result || "").trim().toLowerCase();
         if (!latestPdi)

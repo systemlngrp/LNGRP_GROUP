@@ -1499,9 +1499,8 @@ var normalized = (value) => text2(value).toLowerCase();
 function findLatestInspection(inspections, productionId, jobNo) {
   const byProduction = productionId ? inspections.filter((inspection) => normalized(inspection.productionId) === normalized(productionId)) : [];
   const matches = byProduction.length ? byProduction : jobNo ? inspections.filter((inspection) => normalized(inspection.jobNo) === normalized(jobNo)) : [];
-  const latest2 = [...matches].sort(
-    (left, right) => text2(left.updateTimestamp || left.inspectionDate).localeCompare(text2(right.updateTimestamp || right.inspectionDate))
-  ).at(-1);
+  const when = (inspection) => `${text2(inspection.inspectionDate || inspection.updateTimestamp)}|${text2(inspection.updateTimestamp)}`;
+  const latest2 = [...matches].sort((left, right) => when(left).localeCompare(when(right))).at(-1);
   return latest2 ? { ...latest2, result: normalizeQcResult(latest2.result) } : void 0;
 }
 function photoPath(value) {
