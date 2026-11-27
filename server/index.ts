@@ -16,7 +16,7 @@ import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { buildNpdIndexes, computeInvoicedByItem, computeInvoiceOutputs, computeProcessedOutputs, ck as npdCk, round2 as npdRound2 } from "./npdStockFast.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
-import { LIVE_STOCK_SLIP_ENTITIES, checkSlipsAgainstLiveStock, liveStockErrorMessage, registerLiveStock } from "./liveStock.js";
+import { LIVE_STOCK_SLIP_ENTITIES, buildLiveStock, checkSlipsAgainstLiveStock, liveStockErrorMessage, registerLiveStock } from "./liveStock.js";
 import { ensurePerformanceIndexes } from "./performanceIndexes.js";
 import { getChangesSince, getTrackedChanges, instrumentPool, onSchemaChange, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
 import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappReportMessage, sendWhatsappTextMessage, sendWhatsappGateEntryMessage, resolveWhatsappGateEntryTemplate, DEFAULT_GATE_ENTRY_MESSAGE, WHATSAPP_GATE_ENTRY_MENU, type WhatsappSendStage } from "./whatsappSender.js";
@@ -17944,6 +17944,80 @@ app.post("/api/fg-opening/add", requireAuth, async (req, res) => {
     try { await conn.rollback(); } catch {}
     console.error("[FG_OPENING_ADD] failed:", error);
     return res.status(500).json({ error: "Could not add to opening stock." });
+  } finally {
+    conn.release();
+  }
+});
+
+// Admin: reduce an FG item's opening stock (boxes counted that are not really there).
+// Never below zero: the reduction must fit in the item's remaining old stock (opening less
+// what was loaded from it since the count) and in its total live stock.
+app.post("/api/fg-opening/reduce", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || user.role !== "Admin") return res.status(403).json({ error: "Only Admin can reduce opening stock." });
+  const npdId = String(req.body?.npdId || "").trim();
+  const firmId = String(req.body?.firmId || "").trim();
+  const qty = Number(req.body?.qty);
+  const reason = String(req.body?.reason || "").trim();
+  const source = String(req.body?.source || "").trim().slice(0, 100);
+  if (!npdId || !firmId) return res.status(400).json({ error: "Item and firm are required." });
+  if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: "Quantity must be more than 0." });
+  if (reason.length < 3) return res.status(400).json({ error: "Please give a reason." });
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  const conn = await db.getConnection();
+  try {
+    await ensureFgOpeningAdditions(conn);
+    const [npdRows] = await conn.query("SELECT * FROM `npd` WHERE id = ? LIMIT 1", [npdId]);
+    const npd = (npdRows as any[])[0];
+    if (!npd || !String(npd.erp || "").trim()) return res.status(400).json({ error: "Item not found (or it has no ERP)." });
+    const [firmRows] = await conn.query("SELECT id, firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]);
+    const firm = (firmRows as any[])[0];
+    if (!firm) return res.status(400).json({ error: "Firm not found." });
+    const erp = String(npd.erp).trim();
+    const round2 = (value: number) => Math.round(value * 100) / 100;
+    const live = await buildLiveStock(db);
+    const asOn = String(live.cutoff?.asOn || "").trim();
+    if (!asOn) return res.status(400).json({ error: "No physical count is set up yet." });
+    const row: any = live.rows.find((item: any) => item.itemType === "FG" && item.erp === erp);
+    const oldStockLeft = round2(row ? Number(row.opening || 0) + (row.movements || []).reduce((sum: number, m: any) => ((m.bucket || "Opening") === "Opening" ? sum + (m.kind === "dispatched" || m.kind === "loadingWastage" ? -1 : 1) * Number(m.qty || 0) : sum), 0) : 0);
+    const liveNow = round2(Number(row?.live || 0));
+    const allowed = Math.max(0, Math.min(oldStockLeft, liveNow));
+    if (qty > allowed + 0.0001) {
+      return res.status(400).json({ error: `Cannot reduce ${round2(qty).toLocaleString("en-IN")}: ${erp} ${npd.itemName || ""} has ${oldStockLeft.toLocaleString("en-IN")} opening (old) stock left and ${liveNow.toLocaleString("en-IN")} live stock in all. At most ${allowed.toLocaleString("en-IN")} can be reduced. Job stock is reduced through the job (printing correction or loading wastage).` });
+    }
+    const actor = String(user.name || user.userId || "Admin").trim();
+    const now = new Date().toISOString();
+    await conn.beginTransaction();
+    const [liveRows] = await conn.query("SELECT id, qty, remarks FROM `physical_stock_openings` WHERE asOn = ? AND itemType = 'FG' AND erp = ? ORDER BY qty DESC FOR UPDATE", [asOn, erp]);
+    const liveBefore = (liveRows as any[]).reduce((sum, item) => sum + Number(item.qty || 0), 0);
+    if (!(liveRows as any[]).length || liveBefore < qty - 0.0001) { await conn.rollback(); return res.status(400).json({ error: "The opening of this item is smaller than the reduction." }); }
+    let left = qty;
+    for (const item of liveRows as any[]) {
+      if (left <= 0.0001) break;
+      const take = Math.min(left, Number(item.qty || 0));
+      await conn.query("UPDATE `physical_stock_openings` SET qty = qty - ?, remarks = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [round2(take), String(`${item.remarks || ""} | -${round2(take)} reduced ${now.slice(0, 10)} by ${actor}`).slice(-1000), actor, now, item.id]);
+      left -= take;
+    }
+    const [firmOpenRows] = await conn.query("SELECT openingQty, openingRate FROM `npd_firm_openings` WHERE npdId = ? AND firmId = ? FOR UPDATE", [npdId, firmId]);
+    const firmBefore = Number((firmOpenRows as any[])[0]?.openingQty || 0);
+    const firmAfter = round2(Math.max(0, firmBefore - qty));
+    if ((firmOpenRows as any[]).length) {
+      const rate = Number((firmOpenRows as any[])[0]?.openingRate || 0) || Number(npd.rate || 0);
+      await conn.query("UPDATE `npd_firm_openings` SET openingQty = ?, openingValue = ?, updatedBy = ?, updateTimestamp = ? WHERE npdId = ? AND firmId = ?", [firmAfter, round2(firmAfter * rate), actor, now, npdId, firmId]);
+    }
+    await conn.query(
+      "INSERT INTO `fg_opening_additions` (id, npdId, erp, itemName, firmId, firmName, qty, liveBefore, liveAfter, firmBefore, firmAfter, reason, source, updatedBy, updateTimestamp) VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [npdId, erp, String(npd.itemName || "").slice(0, 500), firmId, String(firm.firmName || ""), -round2(qty), round2(liveBefore), round2(liveBefore - qty), round2(firmBefore), firmAfter, reason.slice(0, 1000), source, actor, now],
+    );
+    await conn.commit();
+    invalidateNpdCache();
+    publishRealtimeDataChange(["npd_firm_openings", "npd"]);
+    return res.json({ ok: true, erp, itemName: npd.itemName, reduced: round2(qty), openingNow: round2(liveBefore - qty), firmOpeningNow: firmAfter });
+  } catch (error) {
+    try { await conn.rollback(); } catch {}
+    console.error("[FG_OPENING_REDUCE] failed:", error);
+    return res.status(500).json({ error: "Could not reduce opening stock." });
   } finally {
     conn.release();
   }

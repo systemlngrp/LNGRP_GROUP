@@ -198,7 +198,7 @@ export function JobwiseFgStock() {
           <p className="text-xs font-semibold text-slate-600">Jobs from 17-Nov: printed − loaded − loading wastage. Opening: older stock from the physical count{asOn ? ` as on ${asOn}` : ""}, less what is loaded from it since.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {isAdmin ? <button type="button" onClick={() => setAddOpen(true)} className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 px-3 py-2 text-sm font-black text-white shadow hover:bg-emerald-800"><PackagePlus size={16} /> Add to Opening</button> : null}
+          {isAdmin ? <button type="button" onClick={() => setAddOpen(true)} className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 px-3 py-2 text-sm font-black text-white shadow hover:bg-emerald-800"><PackagePlus size={16} /> Add / Reduce Opening</button> : null}
           {isSystemAdmin ? <button type="button" onClick={() => setHistoryOpen(true)} className="inline-flex items-center gap-1.5 rounded-md border-2 border-black bg-white px-3 py-2 text-sm font-bold hover:bg-slate-50"><History size={16} /> Opening History</button> : null}
           {exportsAllowed() ? <><button type="button" onClick={downloadExcel} className="rounded-md border-2 border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-700">Excel</button><button type="button" onClick={downloadPdf} className="rounded-md border-2 border-red-700 px-3 py-2 text-sm font-bold text-red-700">PDF</button></> : null}
           <button type="button" data-export="refresh" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-1.5 rounded-md border-2 border-black bg-white px-3 py-2 text-sm font-bold"><RefreshCw size={15} className={loading ? "animate-spin" : ""} /> Refresh</button>
@@ -289,14 +289,14 @@ function OpeningHistoryDialog({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
       <div className="flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border-2 border-black bg-white shadow-2xl">
         <div className="flex items-center justify-between bg-gradient-to-r from-slate-800 to-indigo-700 px-4 py-3 text-white">
-          <div className="flex items-center gap-2 font-black uppercase"><History size={18} /> Opening Stock Additions</div>
+          <div className="flex items-center gap-2 font-black uppercase"><History size={18} /> Opening Stock Changes</div>
           <button type="button" onClick={onClose} aria-label="Close" className="rounded p-1 hover:bg-white/20"><X size={18} /></button>
         </div>
         <div className="overflow-auto p-3">
           {error ? <div className="rounded border-2 border-red-600 bg-red-50 p-2 text-sm font-bold text-red-700">{error}</div> : null}
           <table className="w-full border-collapse text-xs">
             <thead className="sticky top-0 bg-[#0b4773] text-white">
-              <tr>{["When", "By", "ERP", "Item", "Firm", "Added", "Opening before → after", "Firm opening before → after", "Reason", "From"].map((label) => <th key={label} className={`${cell} text-left font-black uppercase`}>{label}</th>)}</tr>
+              <tr>{["When", "By", "ERP", "Item", "Firm", "Change", "Opening before → after", "Firm opening before → after", "Reason", "From"].map((label) => <th key={label} className={`${cell} text-left font-black uppercase`}>{label}</th>)}</tr>
             </thead>
             <tbody>
               {rows.length ? rows.map((row) => (
@@ -306,7 +306,7 @@ function OpeningHistoryDialog({ onClose }: { onClose: () => void }) {
                   <td className={`${cell} font-mono`}>{row.erp}</td>
                   <td className={cell}>{row.itemName}</td>
                   <td className={cell}>{row.firmName}</td>
-                  <td className={`${cell} text-right font-black text-emerald-700`}>+{Number(row.qty).toLocaleString("en-IN")}</td>
+                  <td className={`${cell} text-right font-black ${Number(row.qty) < 0 ? "text-red-700" : "text-emerald-700"}`}>{Number(row.qty) > 0 ? "+" : ""}{Number(row.qty).toLocaleString("en-IN")}</td>
                   <td className={`${cell} text-right`}>{Number(row.liveBefore).toLocaleString("en-IN")} → {Number(row.liveAfter).toLocaleString("en-IN")}</td>
                   <td className={`${cell} text-right`}>{Number(row.firmBefore).toLocaleString("en-IN")} → {Number(row.firmAfter).toLocaleString("en-IN")}</td>
                   <td className={cell}>{row.reason}</td>

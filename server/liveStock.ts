@@ -127,7 +127,7 @@ async function loadCutoff(db: mysql.Pool): Promise<LiveStockCutoff | null> {
   };
 }
 
-async function buildLiveStock(db: mysql.Pool) {
+export async function buildLiveStock(db: mysql.Pool) {
   await ensureTables(db);
   const cutoff = await loadCutoff(db);
   if (!cutoff) return { cutoff: null, rows: [], context: null };
