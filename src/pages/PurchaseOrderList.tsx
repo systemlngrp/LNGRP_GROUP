@@ -1154,9 +1154,13 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       const igst = Number(order.igst || 0);
       const roundOff = Number(order.roundOff || 0);
       const grandTotal = Number(order.grandTotal ?? order.totalAmount ?? 0);
-      const summaryY = finalY + 8;
+      const pageHeight = doc.internal.pageSize.getHeight();
+      // Summary needs about 36 mm; start a new page only when it does not fit.
+      let summaryY = finalY + 8;
+      if (summaryY + 36 > pageHeight - 12) { doc.addPage(); summaryY = 16; }
 
       doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
       doc.setTextColor(0);
       doc.text("Summary", 140, summaryY);
       drawMeta("Taxable Amount", formatMoney(taxableAmount), 140, summaryY + 6);
@@ -1171,25 +1175,26 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         drawMeta("Grand Total", formatMoney(grandTotal), 140, summaryY + 32);
       }
 
-      // PO Terms of the first item's material group (PO Terms view).
+      // PO Terms of the first item's material group (PO Terms view), in the space left of the
+      // Summary (x 14 to about 132 mm) so they stay on the same page; long terms continue on
+      // the next page.
       const terms = poTermsForOrder(lines, materialMap as any, poTerms);
       if (terms.text) {
-        const pageHeight = doc.internal.pageSize.getHeight();
-        let termsY = summaryY + 42;
-        const termLines: string[] = doc.splitTextToSize(terms.text, 182);
-        if (termsY + 12 > pageHeight - 12) { doc.addPage(); termsY = 16; }
+        let termsY = summaryY;
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
         doc.setTextColor(0);
         doc.text("Terms & Conditions", 14, termsY);
-        termsY += 6;
+        termsY += 5.5;
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
+        doc.setFontSize(8);
+        const termLines: string[] = doc.splitTextToSize(terms.text, 118);
         termLines.forEach((textLine) => {
           if (termsY > pageHeight - 12) { doc.addPage(); termsY = 16; }
           doc.text(textLine, 14, termsY);
-          termsY += 4.5;
+          termsY += 3.8;
         });
+        doc.setFontSize(10);
       }
 
       doc.save(`PO_${order.poNo || order.id}.pdf`);
