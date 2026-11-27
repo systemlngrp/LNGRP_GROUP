@@ -83,6 +83,18 @@ export function LiveStockReport() {
       .filter((row) => !q || row.erp.toLowerCase().includes(q) || row.itemName.toLowerCase().includes(q) || (view === "job" && jobParts(row).some((part) => part.label.toLowerCase().includes(q))))
       .sort((a, b) => (a.live < 0 ? -1 : 0) - (b.live < 0 ? -1 : 0) || a.itemName.localeCompare(b.itemName));
   }, [data, tab, query, onlyMoved, view]);
+  // Job-wise: one row per Opening / job, by ERP, Opening first then job numbers.
+  const jobRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return [...rows]
+      .sort((a, b) => a.erp.localeCompare(b.erp, undefined, { numeric: true }))
+      .flatMap((row) => {
+        const matchItem = !q || row.erp.toLowerCase().includes(q) || row.itemName.toLowerCase().includes(q);
+        return jobParts(row)
+          .filter((part) => matchItem || part.label.toLowerCase().includes(q))
+          .map((part, index) => ({ erp: row.erp, itemName: row.itemName, label: part.label, qty: part.qty, first: index === 0 }));
+      });
+  }, [rows, query]);
   const totals = useMemo(
     () =>
       rows.reduce(
@@ -148,35 +160,23 @@ export function LiveStockReport() {
             <tr>
               <th className="px-3 py-2">ERP</th>
               <th className="px-3 py-2">Item</th>
-              <th className="px-3 py-2">Stock by Opening / Job No.</th>
-              <th className="px-3 py-2 text-right">Live Stock</th>
+              <th className="px-3 py-2">Opening / Job No.</th>
+              <th className="px-3 py-2 text-right">Stock</th>
             </tr>
           </thead>
           <tbody>
             <tr className="border-b bg-indigo-50 font-semibold">
-              <td className="px-3 py-2" colSpan={3}>Total ({rows.length} items)</td>
+              <td className="px-3 py-2" colSpan={3}>Total ({jobRows.length} rows, {rows.length} items)</td>
               <td className="px-3 py-2 text-right">{fmt(totals.live)}</td>
             </tr>
-            {rows.map((row) => {
-              const parts = jobParts(row);
-              const negative = row.live < 0;
-              return (
-                <tr key={`${row.itemType}|${row.erp}`} className={`border-b align-top ${negative ? "bg-red-50" : ""}`}>
-                  <td className="px-3 py-1.5 font-mono">{row.erp || "(no ERP)"}</td>
-                  <td className="px-3 py-1.5">{row.itemName}</td>
-                  <td className="px-3 py-1.5">
-                    <div className="flex flex-wrap gap-1.5">
-                      {parts.length === 0 ? <span className="text-xs text-slate-400">-</span> : parts.map((part) => (
-                        <span key={part.label} className={`whitespace-nowrap rounded border px-2 py-0.5 text-xs font-semibold ${part.qty < 0 ? "border-red-300 bg-red-50 text-red-700" : part.label === "Opening" ? "border-amber-300 bg-amber-50 text-amber-800" : "border-emerald-300 bg-emerald-50 text-emerald-800"}`}>
-                          {part.label === "Opening" ? "Opening" : `Job ${part.label}`}: {part.qty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className={`px-3 py-1.5 text-right font-semibold ${negative ? "text-red-700" : "text-slate-800"}`}>{row.live.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</td>
-                </tr>
-              );
-            })}
+            {jobRows.map((line) => (
+              <tr key={`${line.erp}|${line.label}`} className={`border-b ${line.first ? "border-t-2 border-t-slate-300" : ""} ${line.qty < 0 ? "bg-red-50" : line.label === "Opening" ? "bg-amber-50/60" : ""}`}>
+                <td className="px-3 py-1.5 font-mono">{line.erp || "(no ERP)"}</td>
+                <td className="px-3 py-1.5">{line.itemName}</td>
+                <td className={`px-3 py-1.5 font-semibold ${line.label === "Opening" ? "text-amber-800" : "text-emerald-800"}`}>{line.label === "Opening" ? "Opening" : `Job ${line.label}`}</td>
+                <td className={`px-3 py-1.5 text-right font-semibold ${line.qty < 0 ? "text-red-700" : "text-slate-800"}`}>{line.qty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
