@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { computeLiveStock, } from "./liveStockCompute.js";
+import { computeLiveStock, countsAfterCutoff, } from "./liveStockCompute.js";
 const parse = (value) => {
     if (Array.isArray(value))
         return value;
@@ -22,6 +22,30 @@ const sourceOf = (value) => {
     const raw = s(value).toUpperCase();
     return raw === "PHP" || raw === "PLATE" ? raw : raw === "" || raw === "FG" ? "FG" : "";
 };
+// What one slip takes out of stock. Shared by the live stock report and the save check,
+// so both always agree. Linked PHP / Plate on an FG slip are counted from their own
+// php / plate slips, not from the FG slip's phpDetails.
+function slipMovements(entity, row, erpFor, jobErp) {
+    const out = [];
+    if (["cancelled", "canceled"].includes(s(row?.status).toLowerCase()))
+        return out;
+    if (entity === "loading_slips" && s(row?.slipNo).startsWith("LNCB-1/"))
+        return out;
+    const fallback = entity === "php_loading_slips" ? "PHP" : entity === "plate_loading_slips" ? "PLATE" : "FG";
+    for (const line of arr(row?.lines)) {
+        const type = entity === "loading_slips" ? sourceOf(line.itemSource) : sourceOf(line.itemSource || fallback) || fallback;
+        if (!type)
+            continue;
+        out.push({ entity, id: s(row.id), date: s(row.date), itemType: type, erp: erpFor(type, line.itemId, line.erpCode), itemName: s(line.itemName), kind: "dispatched", qty: n(line.loadedQty), ref: s(row.slipNo) });
+    }
+    if (entity === "loading_slips") {
+        for (const w of arr(row?.jobWastage)) {
+            const job = jobErp.get(s(w.jobId));
+            out.push({ entity, id: s(row.id), date: s(row.date), itemType: "FG", erp: job?.erp || "", itemName: job?.name, kind: "loadingWastage", qty: n(w.qty), ref: `${s(row.slipNo)} (${s(w.jobNo)})` });
+        }
+    }
+    return out;
+}
 let tablesReady = false;
 async function ensureTables(db) {
     if (tablesReady)
@@ -79,7 +103,7 @@ async function buildLiveStock(db) {
     await ensureTables(db);
     const cutoff = await loadCutoff(db);
     if (!cutoff)
-        return { cutoff: null, rows: [] };
+        return { cutoff: null, rows: [], context: null };
     const from = cutoff.cutoffDate;
     const unit2 = await unit2FirmId(db);
     const [openingRows] = await db.query("SELECT itemType, erp, itemName, qty FROM `physical_stock_openings` WHERE `asOn` = ?", [cutoff.asOn]);
@@ -152,26 +176,12 @@ async function buildLiveStock(db) {
             jobErp.set(s(job.id), { erp: s(job.masterErp) || npd?.erp || "", name: npd?.name || "" });
         }
     }
-    for (const row of slipRows) {
-        for (const line of arr(row.lines)) {
-            const type = sourceOf(line.itemSource);
-            if (!type)
-                continue;
-            movements.push({ entity: "loading_slips", id: s(row.id), date: s(row.date), itemType: type, erp: erpFor(type, line.itemId, line.erpCode), itemName: s(line.itemName), kind: "dispatched", qty: n(line.loadedQty), ref: s(row.slipNo) });
-        }
-        for (const w of arr(row.jobWastage)) {
-            const job = jobErp.get(s(w.jobId));
-            movements.push({ entity: "loading_slips", id: s(row.id), date: s(row.date), itemType: "FG", erp: job?.erp || "", itemName: job?.name, kind: "loadingWastage", qty: n(w.qty), ref: `${s(row.slipNo)} (${s(w.jobNo)})` });
-        }
-    }
+    for (const row of slipRows)
+        movements.push(...slipMovements("loading_slips", row, erpFor, jobErp));
     for (const [table, type] of [["php_loading_slips", "PHP"], ["plate_loading_slips", "PLATE"]]) {
         const [rows] = await db.query(`SELECT * FROM \`${table}\` WHERE date >= ? AND COALESCE(status, '') <> 'Cancelled'`, [from]);
-        for (const row of rows) {
-            for (const line of arr(row.lines)) {
-                const lineType = sourceOf(line.itemSource || type) || type;
-                movements.push({ entity: table, id: s(row.id), date: s(row.date), itemType: lineType, erp: erpFor(lineType, line.itemId, line.erpCode), itemName: s(line.itemName), kind: "dispatched", qty: n(line.loadedQty), ref: s(row.slipNo) });
-            }
-        }
+        for (const row of rows)
+            movements.push(...slipMovements(table, row, erpFor, jobErp));
     }
     // PHP / Plate production: job output since the cutoff.
     const jobOutputs = [];
@@ -184,7 +194,89 @@ async function buildLiveStock(db) {
             jobOutputs.push({ entity: table, id: s(row.id), date: s(row.date), itemType: type, erp: s(row.erpCode) || master?.erp || "", itemName: master?.name, output: n(row.productionOutputQty), ref: s(row.transactionNo) });
         }
     }
-    return { cutoff: { asOn: cutoff.asOn, cutoffDate: cutoff.cutoffDate }, rows: computeLiveStock({ cutoff, openings, movements, jobOutputs, itemNames }) };
+    const rows = computeLiveStock({ cutoff, openings, movements, jobOutputs, itemNames });
+    return { cutoff: { asOn: cutoff.asOn, cutoffDate: cutoff.cutoffDate }, rows, context: { cutoff, erpFor, npdById, jobErp } };
+}
+export const LIVE_STOCK_SLIP_ENTITIES = ["loading_slips", "php_loading_slips", "plate_loading_slips"];
+// Block a slip save that would take any item's live stock (physical count + movements
+// since the cutoff) below zero. Only the change made by this save is checked, so an
+// item that is already short can still be reduced or left as it is.
+export async function checkSlipsAgainstLiveStock(db, entity, incoming) {
+    const rowsIn = incoming.filter((row) => row && typeof row === "object" && s(row.id));
+    if (!rowsIn.length)
+        return [];
+    const live = await buildLiveStock(db);
+    if (!live.context)
+        return [];
+    const { cutoff, erpFor, jobErp } = live.context;
+    const ids = rowsIn.map((row) => s(row.id));
+    const [storedRows] = await db.query(`SELECT * FROM \`${entity}\` WHERE id IN (?)`, [ids]);
+    const storedById = new Map(storedRows.map((row) => [s(row.id), row]));
+    const missingJobs = new Set();
+    for (const row of rowsIn)
+        for (const w of arr(row.jobWastage))
+            if (s(w.jobId) && !jobErp.has(s(w.jobId)))
+                missingJobs.add(s(w.jobId));
+    if (missingJobs.size) {
+        const [jobRows] = await db.query("SELECT id, masterErp, npdId FROM `productions` WHERE id IN (?)", [[...missingJobs]]);
+        for (const job of jobRows) {
+            const npd = live.context.npdById.get(s(job.npdId));
+            jobErp.set(s(job.id), { erp: s(job.masterErp) || npd?.erp || "", name: npd?.name || "" });
+        }
+    }
+    const delta = new Map();
+    const names = new Map();
+    const add = (movements, sign, table) => {
+        for (const m of movements) {
+            if (!m.erp || !countsAfterCutoff(cutoff, table, m.id, m.date))
+                continue;
+            const key = `${m.itemType}|${m.erp}`;
+            delta.set(key, (delta.get(key) || 0) + sign * m.qty);
+            if (m.itemName && !names.has(key))
+                names.set(key, m.itemName);
+        }
+    };
+    for (const row of rowsIn) {
+        const stored = storedById.get(s(row.id));
+        const next = { ...(stored || {}), ...row };
+        add(slipMovements(entity, next, erpFor, jobErp), 1, entity);
+        if (stored)
+            add(slipMovements(entity, stored, erpFor, jobErp), -1, entity);
+        // An FG slip carries its linked PHP / Plate in phpDetails / plateDetails; their own
+        // slips are written right after it. Check them now so the FG slip is not saved alone.
+        if (entity !== "loading_slips")
+            continue;
+        for (const [field, table, type] of [["phpDetails", "php_loading_slips", "PHP"], ["plateDetails", "plate_loading_slips", "PLATE"]]) {
+            if (!Array.isArray(parse(row[field])))
+                continue;
+            const [childRows] = await db.query(`SELECT * FROM \`${table}\` WHERE fgLoadingId = ?`, [s(row.id)]);
+            const children = childRows.filter((child) => !["cancelled", "canceled"].includes(s(child.status).toLowerCase()));
+            for (const child of children)
+                add(slipMovements(table, child, erpFor, jobErp), -1, table);
+            const childId = s(children[0]?.id) || s(row.id);
+            const cancelled = ["cancelled", "canceled"].includes(s(next.status).toLowerCase());
+            const lines = cancelled ? [] : arr(row[field]).map((detail) => ({ itemId: detail.itemId, erpCode: detail.erpCode, itemName: detail.itemName, itemSource: type, loadedQty: detail.requiredQty }));
+            add(slipMovements(table, { id: childId, date: next.date, status: "Active", lines }, erpFor, jobErp), 1, table);
+        }
+    }
+    const liveByKey = new Map(live.rows.map((row) => [`${row.itemType}|${row.erp}`, row]));
+    const errors = [];
+    for (const [key, change] of delta) {
+        if (change <= 0.0001)
+            continue;
+        const row = liveByKey.get(key);
+        const current = row?.live || 0;
+        const after = Math.round((current - change) * 100) / 100;
+        if (after >= -0.0001)
+            continue;
+        const [type, erp] = key.split("|");
+        const label = type === "PLATE" ? "Plate" : type;
+        errors.push(`${label} ${erp} ${row?.itemName || names.get(key) || ""}: live stock ${current.toLocaleString("en-IN")}, this slip takes ${change.toLocaleString("en-IN")}, which leaves ${after.toLocaleString("en-IN")}.`);
+    }
+    return errors;
+}
+export function liveStockErrorMessage(errors) {
+    return `Not enough stock (physical count as on 26-Nov-2026 5 PM + production + receipts − loaded). Stock cannot go below zero:\n${errors.join("\n")}\nIf the stock is really there, ask Admin to add an adjustment row in the physical count.`;
 }
 export function registerLiveStock(app, getPool, getRequestUser, canView) {
     const isAdmin = (user) => s(user?.role) === "Admin";
@@ -198,11 +290,50 @@ export function registerLiveStock(app, getPool, getRequestUser, canView) {
             const db = await getPool();
             if (!db)
                 return res.status(503).json({ error: "DB connection not available" });
-            return res.json(await buildLiveStock(db));
+            const { cutoff, rows } = await buildLiveStock(db);
+            return res.json({ cutoff, rows });
         }
         catch (error) {
             console.error("[LIVE_STOCK] failed", error.message);
             return res.status(500).json({ error: isAdmin(user) ? `Failed to build live stock: ${error.message}` : "Failed to build live stock" });
+        }
+    });
+    // Any signed-in user: would saving these slips take any item below zero?
+    app.post("/api/live-stock/check", async (req, res) => {
+        const user = await getRequestUser(req);
+        if (!user)
+            return res.status(401).json({ error: "Unauthorized" });
+        const entity = s(req.body?.entity);
+        if (!LIVE_STOCK_SLIP_ENTITIES.includes(entity))
+            return res.status(400).json({ error: "Unknown entity" });
+        const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+        try {
+            const db = await getPool();
+            if (!db)
+                return res.status(503).json({ error: "DB connection not available" });
+            const errors = await checkSlipsAgainstLiveStock(db, entity, rows);
+            return res.json({ ok: errors.length === 0, errors, message: errors.length ? liveStockErrorMessage(errors) : "" });
+        }
+        catch (error) {
+            console.error("[LIVE_STOCK] check failed", error.message);
+            return res.status(500).json({ error: "Could not check live stock. Please try again." });
+        }
+    });
+    // Any signed-in user: live stock per item, for the loading screens.
+    app.get("/api/live-stock/levels", async (req, res) => {
+        const user = await getRequestUser(req);
+        if (!user)
+            return res.status(401).json({ error: "Unauthorized" });
+        try {
+            const db = await getPool();
+            if (!db)
+                return res.status(503).json({ error: "DB connection not available" });
+            const { cutoff, rows } = await buildLiveStock(db);
+            return res.json({ cutoff, levels: Object.fromEntries(rows.map((row) => [`${row.itemType}|${row.erp}`, row.live])) });
+        }
+        catch (error) {
+            console.error("[LIVE_STOCK] levels failed", error.message);
+            return res.status(500).json({ error: "Could not load live stock" });
         }
     });
     app.get("/api/live-stock/openings", async (req, res) => {

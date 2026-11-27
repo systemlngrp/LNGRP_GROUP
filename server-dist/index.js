@@ -16,7 +16,7 @@ import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { buildNpdIndexes, computeInvoicedByItem, computeInvoiceOutputs, computeProcessedOutputs, ck as npdCk, round2 as npdRound2 } from "./npdStockFast.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
-import { registerLiveStock } from "./liveStock.js";
+import { LIVE_STOCK_SLIP_ENTITIES, checkSlipsAgainstLiveStock, liveStockErrorMessage, registerLiveStock } from "./liveStock.js";
 import { ensurePerformanceIndexes } from "./performanceIndexes.js";
 import { getChangesSince, getTrackedChanges, instrumentPool, onSchemaChange, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
 import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappReportMessage, sendWhatsappTextMessage, sendWhatsappGateEntryMessage, resolveWhatsappGateEntryTemplate, DEFAULT_GATE_ENTRY_MESSAGE, WHATSAPP_GATE_ENTRY_MENU } from "./whatsappSender.js";
@@ -14128,6 +14128,12 @@ const createHandlers = (tableName) => {
                         }
                     }
                 }
+                // Loading slips: stock (physical count + movements since then) cannot go below zero.
+                if (LIVE_STOCK_SLIP_ENTITIES.includes(tableName) && data) {
+                    const stockErrors = await checkSlipsAgainstLiveStock(db, tableName, Array.isArray(data) ? data : [data]);
+                    if (stockErrors.length)
+                        return res.status(400).json({ error: liveStockErrorMessage(stockErrors), stockErrors });
+                }
                 if (tableName === "whatsapp_configs") {
                     const id = String(data.id || "").trim();
                     const loginId = String(data.loginId || "").trim();
@@ -20987,6 +20993,9 @@ app.post("/api/loading-slips/:id/wastage-confirmation", requireAuth, async (req,
             ...(confirm ? { wastage, pendingFg, confirmedBy: who, confirmedById: String(user.id || ""), confirmedAt: now } : {}),
         };
         const jobConfirmations = [...confirmations.filter((row) => String(row?.jobId || "").trim() !== jobId), next];
+        const stockErrors = await checkSlipsAgainstLiveStock(db, "loading_slips", [{ id: slipId, jobWastage }]);
+        if (stockErrors.length)
+            return res.status(400).json({ error: liveStockErrorMessage(stockErrors), stockErrors });
         await db.query("UPDATE `loading_slips` SET jobWastage = ?, jobConfirmations = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [JSON.stringify(jobWastage), JSON.stringify(jobConfirmations), who, now, slipId]);
         publishRealtimeDataChange(["loading_slips"]);
         return res.json({ ok: true, slipNo: slip.slipNo, jobNo, confirmed: confirm });
