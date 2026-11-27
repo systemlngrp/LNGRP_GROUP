@@ -22896,7 +22896,7 @@ app.post("/api/table-column-widths", async (req, res) => {
 });
 
 registerSalesOrderSync(app, getPool);
-registerLiveStock(app, getPool as any, getRequestUser, (user) => hasPermission(user, "/reports/live-stock"));
+registerLiveStock(app, getPool as any, getRequestUser, (user) => hasPermission(user, "/reports/live-stock") || hasPermission(user, "/reports/summary-sheet"));
 
 async function startServer() {
   // Resolves once database setup has succeeded. A failed attempt (database

@@ -426,6 +426,31 @@ export function SummarySheetReport() {
 
   const isTemporaryClosed = (production?: Production) => s((production as any)?.temporaryClosed).toLowerCase() === "yes";
   // Rows with the live status / closure applied (before the filters).
+  // FG Stock / FG LEFT follow Live Stock (same as Job-wise FG Stock): FG Stock = the item's
+  // live stock (Opening + all its jobs); FG LEFT = this job's printed − loaded − loading wastage.
+  const [liveFg, setLiveFg] = useState<{ item: Map<string, number>; job: Map<string, number> } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/live-stock", { headers: getDataAuthHeaders(false) as HeadersInit })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => {
+        if (!alive || !body?.rows) return;
+        const item = new Map<string, number>();
+        const job = new Map<string, number>();
+        for (const row of body.rows as any[]) {
+          if (row.itemType !== "FG") continue;
+          item.set(s(row.erp), n(row.live));
+          for (const m of row.movements || []) {
+            if (!m.bucket || m.bucket === "Opening") continue;
+            const sign = m.kind === "dispatched" || m.kind === "loadingWastage" ? -1 : 1;
+            job.set(s(m.bucket), (job.get(s(m.bucket)) || 0) + sign * n(m.qty));
+          }
+        }
+        setLiveFg({ item, job });
+      })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [baseRows]);
   const liveRows = useMemo<SummaryRow[]>(() => baseRows.map((baseRow) => {
       // Job status and closure come from the live jobs list, so Close / Unclose
       // shows at once without waiting for the report to refresh.
@@ -442,8 +467,13 @@ export function SummarySheetReport() {
         "Job Closed": s(production.closeBy).toLowerCase() === "yes" ? "Yes" : "",
         "Close Date": isoDateText(production.closeDate),
         Remarks: remarksOverrides[production.id] ?? s(production.remarks),
+        ...(liveFg ? (() => {
+          const itemStock = Math.round((liveFg.item.get(s(baseRow.ERP)) || 0) * 100) / 100;
+          const jobLeft = Math.round((liveFg.job.get(s(baseRow["Job No."]).split("/").pop() || "") || 0) * 100) / 100;
+          return { "FG Stock": itemStock, "App Stock": itemStock, "FG LEFT": jobLeft, "FINAL FG LEFT": jobLeft };
+        })() : {}),
       };
-    }), [baseRows, productionById, remarksOverrides]);
+    }), [baseRows, productionById, remarksOverrides, liveFg]);
   // Every filter but Status (the status tiles count over these rows).
   const rowsBeforeStatus = useMemo<SummaryRow[]>(() => liveRows.filter((row) => {
       const production = productionById.get(s(row.__productionId));
