@@ -143,7 +143,7 @@ export function resolveCoaSourceContext(production: Production, companies: Compa
   const invoice = jobInvoices[jobInvoices.length - 1];
   const invoiceLine = liveLines.filter((line) => id(line.invoiceId) === id(invoice?.id))[0];
   // The PDI that decided PASS (passed in by the form); else the job's latest PDI.
-  const pdi = latestPdi !== undefined ? latestPdi || undefined : pdis.filter((value) => id(value.productionId) === id(production.id) || text(value.jobNo) === text(production.transactionNo)).sort((a, b) => id(b.updateTimestamp || b.inspectionDate).localeCompare(id(a.updateTimestamp || a.inspectionDate)))[0];
+  const pdi = latestPdi !== undefined ? latestPdi || undefined : pdis.filter((value) => id(value.productionId) === id(production.id) || text(value.jobNo) === text(production.transactionNo)).sort((a, b) => `${id(b.inspectionDate || b.updateTimestamp)}|${id(b.updateTimestamp)}`.localeCompare(`${id(a.inspectionDate || a.updateTimestamp)}|${id(a.updateTimestamp)}`))[0];
   // QC checks by Transaction No. or Job Card No., ignoring spaces and capitals.
   const jobKey = (value: unknown) => text(value).toUpperCase().replace(/\s+/g, "");
   const jobKeys = new Set([production.transactionNo, production.jobCardNo].map(jobKey).filter(Boolean));

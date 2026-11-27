@@ -8,7 +8,9 @@ type InspectionLike = { productionId?: unknown; jobNo?: unknown; result?: unknow
 type ProductionLike = { id?: unknown; transactionNo?: unknown; jobCardNo?: unknown };
 
 const k = (value: unknown) => String(value ?? "").trim().toLowerCase();
-const at = (inspection: InspectionLike) => String(inspection.updateTimestamp || inspection.inspectionDate || "");
+// When the PDI was done (inspection date), then when it was last saved: a later edit of an
+// older PDI does not make it the latest.
+const at = (inspection: InspectionLike) => `${String(inspection.inspectionDate || inspection.updateTimestamp || "")}|${String(inspection.updateTimestamp || "")}`;
 
 export const pdiStatusOfResult = (result: unknown): JobPdiStatus => {
   const normalized = normalizeQcResult(result);

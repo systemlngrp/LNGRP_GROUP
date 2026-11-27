@@ -58,9 +58,9 @@ export function findLatestInspection(
     : jobNo
       ? inspections.filter((inspection) => normalized(inspection.jobNo) === normalized(jobNo))
       : [];
-  const latest = [...matches].sort((left, right) =>
-    text(left.updateTimestamp || left.inspectionDate).localeCompare(text(right.updateTimestamp || right.inspectionDate))
-  ).at(-1);
+  // Latest = the most recent inspection date (then last saved), so editing an older PDI does not make it the latest.
+  const when = (inspection: PreDispatchInspection) => `${text(inspection.inspectionDate || inspection.updateTimestamp)}|${text(inspection.updateTimestamp)}`;
+  const latest = [...matches].sort((left, right) => when(left).localeCompare(when(right))).at(-1);
   return latest ? { ...latest, result: normalizeQcResult(latest.result) } : undefined;
 }
 
