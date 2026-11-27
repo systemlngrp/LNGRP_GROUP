@@ -122,12 +122,17 @@ async function buildLiveStock(db) {
     const [openingRows] = await db.query("SELECT itemType, erp, itemName, qty FROM `physical_stock_openings` WHERE `asOn` = ?", [cutoff.asOn]);
     const openings = openingRows.map((row) => ({ itemType: s(row.itemType).toUpperCase(), erp: s(row.erp), itemName: s(row.itemName), qty: n(row.qty) }));
     // Item masters: ERP and names by id.
-    const [npdRows] = await db.query("SELECT id, erp, itemName FROM `npd`");
+    const [npdRows] = await db.query("SELECT * FROM `npd`");
     const [phpRows] = await db.query("SELECT id, itemId, erpItemCode, itemName FROM `php_item_master`");
     const [plateRows] = await db.query("SELECT id, itemId, erpItemCode, itemName FROM `plate_item_master`");
     const npdById = new Map();
-    for (const row of npdRows)
+    const companyByErp = new Map();
+    for (const row of npdRows) {
         npdById.set(s(row.id), { erp: s(row.erp), name: s(row.itemName) });
+        const company = s(row.customerName || row.companyName);
+        if (s(row.erp) && company && !companyByErp.has(s(row.erp)))
+            companyByErp.set(s(row.erp), company);
+    }
     const masterById = { PHP: new Map(), PLATE: new Map() };
     for (const [type, rows] of [["PHP", phpRows], ["PLATE", plateRows]]) {
         for (const row of rows) {
@@ -253,7 +258,8 @@ async function buildLiveStock(db) {
             jobOutputs.push({ entity: table, id: s(row.id), date: s(row.date), itemType: type, erp: master?.erp || s(row.erpCode) || "", itemName: master?.name, output: n(row.productionOutputQty), ref: s(row.transactionNo) });
         }
     }
-    const rows = computeLiveStock({ cutoff, openings, movements, jobOutputs, itemNames });
+    const rows = computeLiveStock({ cutoff, openings, movements, jobOutputs, itemNames })
+        .map((row) => (row.itemType === "FG" ? { ...row, company: companyByErp.get(row.erp) || "" } : row));
     return { cutoff: { asOn: cutoff.asOn, cutoffDate: cutoff.cutoffDate }, rows, context: { cutoff, erpFor, npdById, jobErp } };
 }
 export const LIVE_STOCK_SLIP_ENTITIES = ["loading_slips", "php_loading_slips", "plate_loading_slips"];
