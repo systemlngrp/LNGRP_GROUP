@@ -55,7 +55,10 @@ const MASTER_COLUMNS = ["Job No", "Date", "Firm", "Shift", "Category", "Main ERP
 export function StandaloneProductionMaster({ source }: StandaloneProductionMasterProps) {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
-  const [productions, setProductions] = useData<Production>(getJobMasterEntityName(source), []);
+  const [productions, setProductions, , { refresh: refreshProductions }] = useData<Production>(getJobMasterEntityName(source), []);
+  const isAdmin = user?.role === "Admin";
+  // Admin: correct a job's output after it was entered (logged with a reason).
+  const [outputEdit, setOutputEdit] = useState<{ id: string; jobNo: string; current: number; value: string; reason: string; saving: boolean; error: string } | null>(null);
   const [fgProductions] = useData<Production>("productions", []);
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
@@ -231,6 +234,36 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
     );
   };
 
+  const saveOutputEdit = async () => {
+    if (!outputEdit) return;
+    const next = Number(outputEdit.value);
+    if (outputEdit.value.trim() === "" || !Number.isFinite(next) || next < 0) { setOutputEdit({ ...outputEdit, error: "Enter the new output (0 or more)." }); return; }
+    if (outputEdit.reason.trim().length < 3) { setOutputEdit({ ...outputEdit, error: "Please give a reason." }); return; }
+    setOutputEdit({ ...outputEdit, saving: true, error: "" });
+    try {
+      const response = await fetch("/api/live-stock/job-output", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${window.localStorage.getItem("authToken") || ""}` },
+        body: JSON.stringify({ source, jobId: outputEdit.id, newOutput: next, reason: outputEdit.reason.trim() }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) { setOutputEdit({ ...outputEdit, saving: false, error: String(body.error || "Could not change the output.") }); return; }
+      setOutputEdit(null);
+      await refreshProductions();
+    } catch {
+      setOutputEdit({ ...outputEdit, saving: false, error: "Could not change the output. Please try again." });
+    }
+  };
+  const outputCorrectionsOf = (row: Production) => {
+    try {
+      const value = (row as any).outputCorrections;
+      const list = Array.isArray(value) ? value : JSON.parse(String(value || "[]"));
+      return Array.isArray(list) ? list as Array<{ at: string; by: string; from: number; to: number; reason: string }> : [];
+    } catch {
+      return [];
+    }
+  };
+
   const sourceLabel = getOrderItemSourceLabel(source);
 
   return (
@@ -374,12 +407,25 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
                     <td className="px-3 py-2 text-sm">{formatCell(row.jobType)}</td>
                     <td className="px-3 py-2 text-sm">{row.scheduledDate && row.shift && row.methodology && !String(row.sequence || "").trim() && row.status !== "Cancelled" && row.status !== "Completed" && !String(row.jobCompletionTimeOutput || "").trim() ? <Link to="/production/php-plate/sequencing" className="font-bold text-amber-700 underline">Needs sequencing</Link> : formatCell(row.sequence)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.jobCompletionTimeOutput)}</td>
-                    <td className="px-3 py-2 text-sm text-right">{formatNumber(row.productionOutputQty)}</td>
+                    <td className="px-3 py-2 text-sm text-right">
+                      {formatNumber(row.productionOutputQty)}
+                      {outputCorrectionsOf(row).length ? (
+                        <div className="text-[10px] font-bold text-amber-700" title={outputCorrectionsOf(row).map((c) => `${String(c.at || "").slice(0, 16).replace("T", " ")} ${c.by}: ${Number(c.from).toLocaleString()} → ${Number(c.to).toLocaleString()} (${c.reason})`).join("\n")}>corrected</div>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-2 text-sm text-right">{formatNumber(row.qty)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.uom || item?.uom)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.status)}</td>
                     <td className="px-3 py-2 text-sm max-w-[420px] truncate" title={String(row.cancelRemarks || row.remarks || "")}>{formatCell(row.cancelRemarks || row.remarks)}</td>
                     <td className="px-3 py-2 text-center text-sm">
+                      {isAdmin && row.status !== "Cancelled" && !fgState.requiresFgGate ? <button
+                        type="button"
+                        onClick={() => setOutputEdit({ id: row.id, jobNo: String(row.transactionNo || row.id), current: Number(row.productionOutputQty || 0), value: String(Number(row.productionOutputQty || 0)), reason: "", saving: false, error: "" })}
+                        className="mr-2 rounded border border-indigo-700 px-2 py-1 font-bold uppercase text-indigo-700"
+                        title="Admin: correct the output of this job (logged with a reason)"
+                      >
+                        Edit output
+                      </button> : null}
                       {canManage ? <button
                         type="button"
                         disabled={row.status === "Cancelled"}
@@ -396,6 +442,26 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
           </tbody>
         </table>
       </div>
+      {outputEdit ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded border-2 border-black bg-white p-4 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+            <div className="mb-3 text-sm font-black uppercase">Edit output: {outputEdit.jobNo}</div>
+            <div className="mb-2 text-xs text-slate-600">Current output: <span className="font-bold text-black">{outputEdit.current.toLocaleString()}</span></div>
+            <label className="mb-2 block text-xs font-bold">New output
+              <input type="number" min={0} value={outputEdit.value} onChange={(event) => setOutputEdit({ ...outputEdit, value: event.target.value, error: "" })} className="mt-1 w-full rounded border border-black px-2 py-1.5 text-sm" />
+            </label>
+            <label className="mb-2 block text-xs font-bold">Reason
+              <textarea value={outputEdit.reason} onChange={(event) => setOutputEdit({ ...outputEdit, reason: event.target.value, error: "" })} rows={2} className="mt-1 w-full rounded border border-black px-2 py-1.5 text-sm" placeholder="e.g. 140 more plates made for the 35 extra boxes" />
+            </label>
+            <div className="mb-3 text-[11px] text-slate-500">The change is logged with your name. Live stock uses the new figure at once. A reduction is refused if those pieces are already loaded.</div>
+            {outputEdit.error ? <div className="mb-3 rounded bg-red-50 p-2 text-xs font-bold text-red-700">{outputEdit.error}</div> : null}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setOutputEdit(null)} disabled={outputEdit.saving} className="rounded border border-black px-3 py-1.5 text-xs font-bold uppercase">Cancel</button>
+              <button type="button" onClick={() => void saveOutputEdit()} disabled={outputEdit.saving} className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-bold uppercase text-white disabled:opacity-50">{outputEdit.saving ? "Saving…" : "Save"}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <ClientPagination
         page={page}
         pageSize={pageSize}
