@@ -7,7 +7,7 @@ import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useData } from "../hooks/useData";
 import { Firm, Machine, OrderSchedule, Production, ProductionProcessing } from "../types";
-import { Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
+import { Pencil, Save, Search, Trash2, X } from "lucide-react";
 import { TableControls } from "../components/TableControls";
 import { useNavigate } from "react-router-dom";
 import { formatDate } from "../lib/serial";
@@ -275,13 +275,9 @@ export function ProductionProcessingMaster() {
     <div className="space-y-4">
       <div className="grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-3 border-b border-black pb-3">
         <h2 className="min-w-0 text-xl font-bold text-black uppercase tracking-tight">Production Reporting Master</h2>
-        <button 
-          onClick={() => navigate("/production-processing/form")} 
-          className="inline-flex w-auto max-w-max items-center gap-1.5 whitespace-nowrap rounded bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-indigo-700"
-          style={{ width: "max-content" }}
-        >
-          <Plus size={15} /> New Report
-        </button>
+        {/* No "New Report" here (27-Nov-2026): reports are entered from Pending Machine
+            Processing, which shows only open jobs, so no new FG goes on old / closed jobs. */}
+        <span />
       </div>
 
       <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">

@@ -6,6 +6,7 @@ import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { normalizeMachineName } from "../lib/productionMachineNames";
+import { isProductionClosed } from "../lib/productionStageFilters";
 import { MandatoryLabel } from "../components/Mandatory";
 import { ProcessingQtyFields } from "../components/ProcessingQtyFields";
 import { isMandatoryField } from "../lib/mandatoryFields";
@@ -459,13 +460,16 @@ function FullReportForm() {
   }, [plateJobs, phpJobs, productions]);
 
   const jobOptions = useMemo(() => {
+    // Closed jobs (incl. every job dated before 17-Nov-2026, bulk-closed on 21-Nov) are
+    // not offered, so no new FG is reported on them. The job this form was opened for
+    // stays in the list.
     return allProductions
-      .filter(p => p.status !== "Cancelled")
+      .filter(p => p.status !== "Cancelled" && (!isProductionClosed(p as any) || p.id === initialProductionId))
       .map(p => ({
         value: p.id,
         label: `Job: ${displayJobNo(String(p.jobCardNo || "").trim() || p.transactionNo)} (Qty: ${p.qty})`
       }));
-  }, [allProductions]);
+  }, [allProductions, initialProductionId]);
 
   const machineOptions = useMemo(() => {
     return [...machines]
