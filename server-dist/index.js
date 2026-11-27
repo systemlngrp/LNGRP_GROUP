@@ -1407,6 +1407,34 @@ function readNpdSort(query) {
 // to the Balance shown.
 // Job Wise Tracker corrections: every Admin correction of a job's corrugation,
 // printed, loaded or loading wastage is logged with old/new value and reason.
+// Summary Sheet "Temporary Close" (Admin only): hides an open job from the Summary Sheet.
+// It does not close the job (Closer / Close Date are not touched).
+app.post("/api/productions/:id/temporary-close", requireAuth, async (req, res) => {
+    const db = await getPool();
+    if (!db)
+        return res.status(503).json({ error: "Database unavailable" });
+    const user = await getRequestUser(req).catch(() => null);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (user.role !== "Admin")
+        return res.status(403).json({ error: "Only Admin can temporarily close a job." });
+    try {
+        const id = String(req.params.id || "").trim();
+        const value = req.body?.temporaryClosed === true ? "Yes" : "";
+        const [columnRows] = await db.query("SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productions' AND COLUMN_NAME = 'temporaryClosed'");
+        if (!Number(columnRows[0]?.n))
+            await db.query("ALTER TABLE `productions` ADD COLUMN `temporaryClosed` VARCHAR(5)");
+        const [result] = await db.query("UPDATE `productions` SET temporaryClosed = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [value, String(user.name || user.id || ""), new Date().toISOString(), id]);
+        if (!result.affectedRows)
+            return res.status(404).json({ error: "Job not found." });
+        publishRealtimeDataChange(["productions"]);
+        return res.json({ ok: true, id, temporaryClosed: value });
+    }
+    catch (error) {
+        console.error("[TEMPORARY CLOSE] failed:", error);
+        return res.status(500).json({ error: error.message || "Failed to save." });
+    }
+});
 app.get("/api/job-corrections", requireAuth, async (_req, res) => {
     const db = await getPool();
     if (!db)
@@ -10577,6 +10605,7 @@ async function initDb(retries = 5) {
                 { table: "productions", column: "tallyPostingAttemptCount", type: "INT NOT NULL DEFAULT 0" },
                 { table: "productions", column: "closeBy", type: "VARCHAR(255)" },
                 { table: "productions", column: "closeDate", type: "VARCHAR(50)" },
+                { table: "productions", column: "temporaryClosed", type: "VARCHAR(5)" },
                 { table: "productions", column: "cancelTimestamp", type: "VARCHAR(255)" },
                 { table: "productions", column: "cancelEmailId", type: "VARCHAR(255)" },
                 { table: "productions", column: "cancelRemarks", type: "TEXT" },
@@ -14070,11 +14099,11 @@ const createHandlers = (tableName) => {
                 // Closing / unclosing a job (Closer + Close Date) is for Admin only.
                 if (tableName === "productions" && requestUser?.role !== "Admin") {
                     const incoming = (Array.isArray(data) ? data : [data]).filter((row) => row && typeof row === "object");
-                    const touching = incoming.filter((row) => "closeBy" in row || "closeDate" in row);
+                    const touching = incoming.filter((row) => "closeBy" in row || "closeDate" in row || "temporaryClosed" in row);
                     const ids = touching.map((row) => String(row.id || "").trim()).filter(Boolean);
                     const storedById = new Map();
                     if (ids.length) {
-                        const [storedRows] = await db.query("SELECT id, closeBy, closeDate FROM `productions` WHERE id IN (?)", [ids]);
+                        const [storedRows] = await db.query("SELECT * FROM `productions` WHERE id IN (?)", [ids]);
                         storedRows.forEach((row) => storedById.set(String(row.id), row));
                     }
                     const norm = (value) => String(value ?? "").trim().toLowerCase();
@@ -14084,6 +14113,8 @@ const createHandlers = (tableName) => {
                         if ("closeBy" in row && norm(row.closeBy) !== norm(stored.closeBy))
                             return true;
                         if ("closeDate" in row && day(row.closeDate) !== day(stored.closeDate))
+                            return true;
+                        if ("temporaryClosed" in row && norm(row.temporaryClosed) !== norm(stored.temporaryClosed))
                             return true;
                         return false;
                     });
