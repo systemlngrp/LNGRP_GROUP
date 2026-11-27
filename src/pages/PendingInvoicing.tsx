@@ -142,21 +142,7 @@ export function PendingInvoicing() {
   const [materialIns] = useData<MaterialIn>("material_in", [], { firmScope: "all" });
   const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", storageKey: "production-processing-all-firms", fields: ["id", "productionId", "machineName", "qty", "completionStatus"] });
   const printedJobIds = useMemo(() => jobIdsWithPrintingEntry(processing), [processing]);
-  // Printed qty per order: printing entries of every job made for the order's schedules.
   const [jobRefs] = useData<any>("productions", [], { firmScope: "all", storageKey: "productions-schedule-refs", fields: ["id", "scheduleId", "status", "date", "transactionNo"] });
-  const [scheduleRefs] = useData<any>("orders_schedule", [], { firmScope: "all", storageKey: "schedules-order-refs", fields: ["id", "orderId"] });
-  const printedByOrderId = useMemo(() => {
-    const orderBySchedule = new Map<string, string>(scheduleRefs.map((row: any) => [String(row.id), String(row.orderId || "")]));
-    const orderByJob = new Map<string, string>();
-    jobRefs.forEach((job: any) => { if (job.status !== "Cancelled" && job.scheduleId) orderByJob.set(String(job.id), orderBySchedule.get(String(job.scheduleId)) || ""); });
-    const totals = new Map<string, number>();
-    processing.forEach((row: any) => {
-      if (!/print/i.test(String(row.machineName || ""))) return;
-      const orderId = orderByJob.get(String(row.productionId || ""));
-      if (orderId) totals.set(orderId, (totals.get(orderId) || 0) + (Number(row.qty) || 0));
-    });
-    return totals;
-  }, [jobRefs, scheduleRefs, processing]);
 
   // Ready for invoice (owner's rule, 27-Nov-2026): a slip dated from 17-Nov can be invoiced only when
   // (1) no app job on it has loaded + loading wastage above its printed qty, (2) the item's Opening is
@@ -1616,7 +1602,6 @@ export function PendingInvoicing() {
                       <th className="px-3 py-2 text-left text-[10px] font-black uppercase">Item Name</th>
                       <th className="px-3 py-2 text-left text-[10px] font-black uppercase min-w-[200px]">Order No / PO No</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Order Qty</th>
-                      <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Printed</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Dispatched</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Pending</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Rate</th>
@@ -1639,7 +1624,7 @@ export function PendingInvoicing() {
 
                       const parentRow = (
                         <tr key={itemRow.id} className="bg-slate-50 border-t-2 border-black">
-                          <td colSpan={11} className="px-3 py-2">
+                          <td colSpan={10} className="px-3 py-2">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               {(() => {
                                 const allocatedTotal = itemRow.allocations.reduce((s, a) => s + Number(a.qty || 0), 0);
@@ -1724,7 +1709,6 @@ export function PendingInvoicing() {
                               </select>
                             </td>
                             <td className="px-2 py-2 text-right text-[11px] font-medium">{isDirectAlloc ? "-" : order ? orderQty.toLocaleString() : "-"}</td>
-                            <td className="px-2 py-2 text-right text-[11px] font-medium">{isDirectAlloc ? "-" : order ? (printedByOrderId.get(order.id) || 0).toLocaleString() : "-"}</td>
                             <td className="px-2 py-2 text-right text-[11px] font-medium text-slate-500">{isDirectAlloc ? "-" : order ? dispatched.toLocaleString() : "-"}</td>
                             <td className="px-2 py-2 text-right text-[11px] font-black text-indigo-700">{isDirectAlloc ? "Direct" : order ? pending.toLocaleString() : "-"}</td>
                             <td className="px-2 py-2 text-right text-[11px] font-bold">{rate || "-"}</td>
