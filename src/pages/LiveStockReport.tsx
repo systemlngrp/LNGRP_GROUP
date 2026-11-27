@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 import { getDataAuthHeaders } from "../hooks/useData";
 
-type Movement = { entity: string; id: string; date: string; kind: string; qty: number; ref?: string };
+type Movement = { entity: string; id: string; date: string; kind: string; qty: number; ref?: string; bucket?: string };
 type LiveRow = {
   itemType: "FG" | "PHP" | "PLATE";
   erp: string;
@@ -32,6 +32,20 @@ const KIND_LABEL: Record<string, string> = {
 };
 const fmt = (value: number) => (value ? value.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "-");
 
+/** FG stock split into Opening (old stock) and each job's balance; zero parts left out. */
+function jobParts(row: LiveRow): Array<{ label: string; qty: number }> {
+  const parts = new Map<string, number>([["Opening", row.opening]]);
+  for (const m of row.movements) {
+    const bucket = m.bucket || "Opening";
+    const sign = m.kind === "dispatched" || m.kind === "loadingWastage" ? -1 : 1;
+    parts.set(bucket, (parts.get(bucket) || 0) + sign * m.qty);
+  }
+  return [...parts.entries()]
+    .map(([label, qty]) => ({ label, qty: Math.round(qty * 100) / 100 }))
+    .filter((part) => Math.abs(part.qty) > 0.001)
+    .sort((a, b) => (a.label === "Opening" ? -1 : b.label === "Opening" ? 1 : a.label.localeCompare(b.label, undefined, { numeric: true })));
+}
+
 export function LiveStockReport() {
   const [data, setData] = useState<LiveResponse | null>(null);
   const [error, setError] = useState("");
@@ -40,6 +54,8 @@ export function LiveStockReport() {
   const [query, setQuery] = useState("");
   const [onlyMoved, setOnlyMoved] = useState(false);
   const [open, setOpen] = useState<string>("");
+  // FG: Item-wise (default) or Job-wise (stock split into Opening and each job).
+  const [view, setView] = useState<"item" | "job">("item");
 
   const load = async () => {
     setLoading(true);
@@ -64,9 +80,9 @@ export function LiveStockReport() {
     return (data?.rows || [])
       .filter((row) => row.itemType === tab)
       .filter((row) => !onlyMoved || row.movements.length > 0)
-      .filter((row) => !q || row.erp.toLowerCase().includes(q) || row.itemName.toLowerCase().includes(q))
+      .filter((row) => !q || row.erp.toLowerCase().includes(q) || row.itemName.toLowerCase().includes(q) || (view === "job" && jobParts(row).some((part) => part.label.toLowerCase().includes(q))))
       .sort((a, b) => (a.live < 0 ? -1 : 0) - (b.live < 0 ? -1 : 0) || a.itemName.localeCompare(b.itemName));
-  }, [data, tab, query, onlyMoved]);
+  }, [data, tab, query, onlyMoved, view]);
   const totals = useMemo(
     () =>
       rows.reduce(
@@ -90,7 +106,7 @@ export function LiveStockReport() {
         <div>
           <h1 className="text-xl font-semibold text-slate-800">Live FG / PHP / Plate Stock</h1>
           <p className="text-sm text-slate-500">
-            {data?.cutoff ? `Opening = physical count as on ${data.cutoff.asOn}. Live = opening + production + receipts − loaded − loading wastage.` : "No physical count cutoff has been set yet."}
+            {data?.cutoff ? `FG: jobs from 17-Nov = printed − loaded − loading wastage; Opening = older stock from the physical count as on ${data.cutoff.asOn}, less what is loaded from it since.` : "No physical count cutoff has been set yet."}
           </p>
         </div>
         <button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" disabled={loading}>
@@ -104,6 +120,15 @@ export function LiveStockReport() {
             {item.label}
           </button>
         ))}
+        {tab === "FG" && (
+          <div className="ml-2 inline-flex overflow-hidden rounded-md border border-slate-300">
+            {(["item", "job"] as const).map((key) => (
+              <button key={key} onClick={() => setView(key)} className={`px-3 py-1.5 text-sm font-medium ${view === key ? "bg-emerald-600 text-white" : "bg-white text-slate-700 hover:bg-slate-50"}`}>
+                {key === "item" ? "Item-wise" : "Job-wise"}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="relative ml-auto">
           <Search className="absolute left-2 top-2 h-4 w-4 text-slate-400" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ERP or item" className="rounded-md border border-slate-300 py-1.5 pl-8 pr-3 text-sm" />
@@ -116,6 +141,46 @@ export function LiveStockReport() {
       {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {totals.negative > 0 && <div className="rounded-md bg-red-50 p-2 text-sm text-red-700">{totals.negative} item(s) below zero — needs reconciliation (add an adjustment row in the physical count).</div>}
 
+      {tab === "FG" && view === "job" ? (
+      <div className="overflow-auto rounded-lg border border-slate-200 bg-white">
+        <table className="min-w-full text-sm">
+          <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase text-slate-500">
+            <tr>
+              <th className="px-3 py-2">ERP</th>
+              <th className="px-3 py-2">Item</th>
+              <th className="px-3 py-2">Stock by Opening / Job No.</th>
+              <th className="px-3 py-2 text-right">Live Stock</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b bg-indigo-50 font-semibold">
+              <td className="px-3 py-2" colSpan={3}>Total ({rows.length} items)</td>
+              <td className="px-3 py-2 text-right">{fmt(totals.live)}</td>
+            </tr>
+            {rows.map((row) => {
+              const parts = jobParts(row);
+              const negative = row.live < 0;
+              return (
+                <tr key={`${row.itemType}|${row.erp}`} className={`border-b align-top ${negative ? "bg-red-50" : ""}`}>
+                  <td className="px-3 py-1.5 font-mono">{row.erp || "(no ERP)"}</td>
+                  <td className="px-3 py-1.5">{row.itemName}</td>
+                  <td className="px-3 py-1.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      {parts.length === 0 ? <span className="text-xs text-slate-400">-</span> : parts.map((part) => (
+                        <span key={part.label} className={`whitespace-nowrap rounded border px-2 py-0.5 text-xs font-semibold ${part.qty < 0 ? "border-red-300 bg-red-50 text-red-700" : part.label === "Opening" ? "border-amber-300 bg-amber-50 text-amber-800" : "border-emerald-300 bg-emerald-50 text-emerald-800"}`}>
+                          {part.label === "Opening" ? "Opening" : `Job ${part.label}`}: {part.qty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className={`px-3 py-1.5 text-right font-semibold ${negative ? "text-red-700" : "text-slate-800"}`}>{row.live.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      ) : (
       <div className="overflow-auto rounded-lg border border-slate-200 bg-white">
         <table className="min-w-full text-sm">
           <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase text-slate-500">
@@ -186,6 +251,7 @@ export function LiveStockReport() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

@@ -31,6 +31,8 @@ export type LiveStockMovement = {
   ref?: string;
   /** Counts whatever its date (FG jobs started in the app: their whole record counts). */
   always?: boolean;
+  /** FG: which stock it belongs to - a job number, or "Opening" (old stock / receipts). */
+  bucket?: string;
 };
 
 export type LiveStockJobOutput = {
