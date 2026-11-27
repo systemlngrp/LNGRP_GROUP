@@ -33,11 +33,13 @@ const COLUMNS = [
   "Total Dispatch", "Dispatch Qty 1", "Dispatch Date 1", "Dispatch Qty 2", "Dispatch Date 2", "Dispatch Qty 3", "Dispatch Date 3", "Dispatch Qty 4", "Dispatch Date 4", "Dispatch Qty 5", "Dispatch Date 5", "Dispatch Qty 6", "Dispatch Date 6",
   "Total Loading", "Loading No 1", "Loading Date 1", "Loading Qty 1", "Vehicle 1", "Loading No 2", "Loading Date 2", "Loading Qty 2", "Vehicle 2", "Loading No 3", "Loading Date 3", "Loading Qty 3", "Vehicle 3", "Loading No 4", "Loading Date 4", "Loading Qty 4", "Vehicle 4", "Loading No 5", "Loading Date 5", "Loading Qty 5", "Vehicle 5", "Loading No 6", "Loading Date 6", "Loading Qty 6", "Vehicle 6",
   "Total Invoice Value", "Invoice No. 1", "Invoice Value 1", "Invoice No. 2", "Invoice Value 2", "Invoice No. 3", "Invoice Value 3", "Invoice No. 4", "Invoice Value 4", "Invoice No. 5", "Invoice Value 5", "Invoice No. 6", "Invoice Value 6",
-  "FG Stock", "FG LEFT", "Status", "Close Date", "Job Closed", "Remarks",
+  "FG Stock", "FG LEFT", "Status", "Temporary Close", "Close Date", "Job Closed", "Remarks",
   "Board QC", "Print QC", "PDI REPORT", "COA",
   "Rate", "Sale Value", "wip value",
   "Customer Complaint", "Timestamp",
 ] as const;
+// Columns only Admin sees (never offered to other users).
+const ADMIN_ONLY_COLUMNS = new Set<string>(["Temporary Close"]);
 const SUMMARY_SECTIONS = [
   { label: "JOB & PRODUCTION", start: "Sl No", end: "Actual Realization / kg" },
   { label: "DISPATCH & LOADING", start: "Total Dispatch", end: "Invoice Value 6" },
@@ -190,7 +192,7 @@ export function SummarySheetReport() {
   const [jobStatuses] = useData<Production>("productions", [], {
     firmScope: "all",
     storageKey: "summary-sheet-job-status",
-    fields: ["status", "closeBy", "closeDate", "remarks", "date", "firmId", "firmName", "companyName", "transactionNo", "jobCardNo", "ffgTimestamp", "qty"],
+    fields: ["status", "closeBy", "closeDate", "temporaryClosed", "remarks", "date", "firmId", "firmName", "companyName", "transactionNo", "jobCardNo", "ffgTimestamp", "qty"],
     enabled: !browserFallback,
   });
   const [needFullJobs, setNeedFullJobs] = useState(false);
@@ -201,11 +203,30 @@ export function SummarySheetReport() {
   const [remarksOverrides, setRemarksOverrides] = useState<Record<string, string>>({});
   // The refreshed job list already has saved remarks (and later edits by others).
   useEffect(() => { setRemarksOverrides({}); }, [jobStatuses]);
+  // Temporary Close ticks saved here: shown at once (the refreshed job list brings them too).
+  const [tempOverrides, setTempOverrides] = useState<Record<string, string>>({});
+  useEffect(() => { setTempOverrides({}); }, [jobStatuses]);
   const productions = useMemo(() => {
     const list = browserFallback ? fullProductions : jobStatuses;
-    if (!Object.keys(closeOverrides).length) return list;
-    return list.map((p) => closeOverrides[p.id] ? { ...p, ...closeOverrides[p.id] } : p);
-  }, [browserFallback, closeOverrides, fullProductions, jobStatuses]);
+    if (!Object.keys(closeOverrides).length && !Object.keys(tempOverrides).length) return list;
+    return list.map((p) => {
+      const next = closeOverrides[p.id] ? { ...p, ...closeOverrides[p.id] } : p;
+      return p.id in tempOverrides ? { ...next, temporaryClosed: tempOverrides[p.id] } as Production : next;
+    });
+  }, [browserFallback, closeOverrides, tempOverrides, fullProductions, jobStatuses]);
+  // Admin ticks / unticks Temporary Close: the job is hidden from the Summary Sheet only (not closed).
+  const setTemporaryClose = async (id: string, value: boolean) => {
+    if (!isAdmin || !id) return;
+    setTempOverrides((current) => ({ ...current, [id]: value ? "Yes" : "" }));
+    try {
+      const token = localStorage.getItem("authToken") || "";
+      const response = await fetch(`/api/productions/${encodeURIComponent(id)}/temporary-close`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ temporaryClosed: value }) });
+      if (!response.ok) throw new Error(String((await response.json().catch(() => ({})))?.error || response.statusText));
+    } catch (error) {
+      setTempOverrides((current) => ({ ...current, [id]: value ? "" : "Yes" }));
+      alert(`Temporary Close could not be saved: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
   const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", enabled: browserFallback });
   const [orders] = useData<Order>("orders", [], { firmScope: "all", enabled: browserFallback });
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", enabled: browserFallback });
@@ -282,6 +303,7 @@ export function SummarySheetReport() {
   const [partyFilter, setPartyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [erpFilter, setErpFilter] = useState("");
+  const [fgRangeFilter, setFgRangeFilter] = useState(""); // FG Stock: Negative / 0 / Up to 100 / More than 100
   // Hidden columns are remembered in this browser by column name, so a new
   // column added later shows by default and the others stay as chosen.
   const [visibleColumns, setVisibleColumns] = useState<number[]>(() => {
@@ -396,8 +418,9 @@ export function SummarySheetReport() {
   const allBaseRows = browserFallback ? clientBaseRows : (serverReport.result || []);
   const baseRows = useMemo(() => allBaseRows.filter((row) => s(row.Date) >= SUMMARY_SHEET_FIRST_JOB_DATE), [allBaseRows]);
 
-  const filteredRows = useMemo<SummaryRow[]>(() => {
-    return baseRows.map((baseRow) => {
+  const isTemporaryClosed = (production?: Production) => s((production as any)?.temporaryClosed).toLowerCase() === "yes";
+  // Rows with the live status / closure applied (before the filters).
+  const liveRows = useMemo<SummaryRow[]>(() => baseRows.map((baseRow) => {
       // Job status and closure come from the live jobs list, so Close / Unclose
       // shows at once without waiting for the report to refresh.
       const production = productionById.get(s(baseRow.__productionId));
@@ -409,14 +432,20 @@ export function SummarySheetReport() {
         Status: s(production.closeBy).toLowerCase() === "yes" && s(production.closeDate)
           ? "Job Closed"
           : s(baseRow.Status) === "Job Closed" ? "Pending Loading" : s(baseRow.Status),
+        "Temporary Close": isTemporaryClosed(production) ? "Yes" : "",
         "Job Closed": s(production.closeBy).toLowerCase() === "yes" ? "Yes" : "",
         "Close Date": isoDateText(production.closeDate),
         Remarks: remarksOverrides[production.id] ?? s(production.remarks),
       };
-    }).filter((row) => {
+    }), [baseRows, productionById, remarksOverrides]);
+  // Every filter but Status (the status tiles count over these rows).
+  const rowsBeforeStatus = useMemo<SummaryRow[]>(() => liveRows.filter((row) => {
       const production = productionById.get(s(row.__productionId));
       if (production?.status === "Cancelled") return false;
-      if (statusFilter && s(row.Status) !== statusFilter) return false;
+      // Temporary Close: hidden from everyone; Admin sees them only under Closure = Temporary Closed.
+      const temporary = isTemporaryClosed(production);
+      if (closedFilter === "Temporary Closed") { if (!isAdmin || !temporary) return false; }
+      else if (temporary) return false;
       const closed = s(production?.closeBy).toLowerCase() === "yes" && s(production?.closeDate);
       if (closedFilter === "Closed" && !closed) return false;
       if (closedFilter === "Open" && closed) return false;
@@ -427,15 +456,24 @@ export function SummarySheetReport() {
       if (partyFilter && s(row["Party Name"]) !== partyFilter) return false;
       if (itemFilter && s(row["Item Name"]) !== itemFilter) return false;
       if (erpFilter && s(row.ERP) !== erpFilter) return false;
+      if (fgRangeFilter) {
+        const fg = n(row["FG Stock"]);
+        if (fgRangeFilter === "Negative" && !(fg < 0)) return false;
+        if (fgRangeFilter === "Zero" && fg !== 0) return false;
+        if (fgRangeFilter === "UpTo100" && !(fg > 0 && fg <= 100)) return false;
+        if (fgRangeFilter === "Over100" && !(fg > 100)) return false;
+      }
       return true;
-    });
-  }, [baseRows, closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, productionById, statusFilter, to, remarksOverrides]);
+    }), [liveRows, closedFilter, erpFilter, fgRangeFilter, firmFilter, from, isAdmin, itemFilter, partyFilter, productionById, to]);
+  const filteredRows = useMemo<SummaryRow[]>(() => statusFilter ? rowsBeforeStatus.filter((row) => s(row.Status) === statusFilter) : rowsBeforeStatus, [rowsBeforeStatus, statusFilter]);
+  // Status tiles: jobs per status over the filters above (Status filter not applied), searched like the table.
+  const STATUS_TILES = ["Pending Corrugation", "Pending Printing", "Printed but Not Loaded", "Printed but Never Dispatched", "Pending Loading", "Pending Job Closure"] as const;
 
   const selectedColumns = useMemo(() => {
     if (!isAdmin) {
       const allowed = new Set(userColumnNames || []);
       const shown = new Set(visibleColumns);
-      return COLUMNS.map((_, index) => index).filter((index) => index > 0 && allowed.has(COLUMNS[index]) && shown.has(index));
+      return COLUMNS.map((_, index) => index).filter((index) => index > 0 && !ADMIN_ONLY_COLUMNS.has(COLUMNS[index]) && allowed.has(COLUMNS[index]) && shown.has(index));
     }
     // Sl No (index 0) is not shown. It stays in COLUMNS so saved column choices keep their positions.
     return visibleColumns.filter((index) => index > 0 && index < COLUMNS.length);
@@ -443,7 +481,7 @@ export function SummarySheetReport() {
   // Columns this person can show / hide (Admin: all; others: the ones Admin gave them).
   const pickableColumns = useMemo(() => {
     const allowed = isAdmin ? null : new Set(userColumnNames || []);
-    return COLUMNS.map((_, index) => index).filter((index) => index > 0 && (!allowed || allowed.has(COLUMNS[index])));
+    return COLUMNS.map((_, index) => index).filter((index) => index > 0 && (!allowed || (allowed.has(COLUMNS[index]) && !ADMIN_ONLY_COLUMNS.has(COLUMNS[index]))));
   }, [isAdmin, userColumnNames]);
   const [userColumnsOpen, setUserColumnsOpen] = useState(false);
   // Search matches the shown columns as the cells display them (Sl No skipped;
@@ -456,6 +494,19 @@ export function SummarySheetReport() {
     if (column === "Job No.") return `${jobSerial(value)} ${s(value)}`;
     return DATE_COLUMNS.has(column) ? displayDate(value) : value;
   }), [selectedColumns]);
+  const statusTileRows = useTableSearch(rowsBeforeStatus, search, (row) => selectedColumns.map((columnIndex) => {
+    if (columnIndex === 0) return "";
+    const column = COLUMNS[columnIndex];
+    if (column === "Job Closed") return s(row["Job Closed"]) === "Yes" ? "Closed" : "";
+    const value = row[column] ?? "";
+    if (column === "Job No.") return `${jobSerial(value)} ${s(value)}`;
+    return DATE_COLUMNS.has(column) ? displayDate(value) : value;
+  }), [selectedColumns]);
+  const statusTileCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    statusTileRows.forEach((row) => counts.set(s(row.Status), (counts.get(s(row.Status)) || 0) + 1));
+    return STATUS_TILES.map((status) => ({ status, count: counts.get(status) || 0 }));
+  }, [statusTileRows]);
   const selectedSections = useMemo(() => SUMMARY_SECTIONS.map((section) => {
     const start = COLUMNS.indexOf(section.start);
     const end = COLUMNS.indexOf(section.end);
@@ -503,6 +554,7 @@ export function SummarySheetReport() {
       // Same filters as the table except the dates (they set the tiles' range).
       const production = productionById.get(s(row.__productionId));
       if (production?.status === "Cancelled") return false;
+      if (isTemporaryClosed(production) !== (closedFilter === "Temporary Closed")) return false;
       if (firmFilter && s(row.__firmName).toLowerCase() !== firmFilter.toLowerCase()) return false;
       if (statusFilter && s(row.Status) !== statusFilter) return false;
       // Tiles ignore the Open/Closed filter (it now opens on "Open"), so they show what they showed before.
@@ -524,8 +576,8 @@ export function SummarySheetReport() {
     });
     const wip = productions.length ? { qty: wipJobs.reduce((sum, row) => sum + n(row["Planned Qty"]), 0), jobs: wipJobs.length } : null;
     return computeSummarySheetSections(tileRows, cancelledDates, tileRange, extrasReport.result || null, filters, Boolean(from || to), wip, new Date(), salesTargets);
-  }, [salesTargets, baseRows, erpFilter, extrasReport.result, firmFilter, firms, from, itemFilter, partyFilter, productionById, productions, statusFilter, tileRange, to]);
-  useEffect(() => setPage(1), [closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, search, statusFilter, to, pageSize]);
+  }, [salesTargets, baseRows, closedFilter, erpFilter, extrasReport.result, firmFilter, firms, from, itemFilter, partyFilter, productionById, productions, statusFilter, tileRange, to]);
+  useEffect(() => setPage(1), [closedFilter, erpFilter, fgRangeFilter, firmFilter, from, itemFilter, partyFilter, search, statusFilter, to, pageSize]);
   // Column sort over every searched row before paging (keys are column names); Sl No is not sortable.
   // Opens sorted by Date (oldest first), and by Job No. (lowest first) within a date.
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => {
@@ -545,7 +597,7 @@ export function SummarySheetReport() {
   // (drawing every row at once froze the browser for over a minute).
   const ROW_BATCH = 100;
   const [visibleCount, setVisibleCount] = useState(ROW_BATCH);
-  useEffect(() => setVisibleCount(ROW_BATCH), [closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, search, statusFilter, to, sort?.key, sort?.direction]);
+  useEffect(() => setVisibleCount(ROW_BATCH), [closedFilter, erpFilter, fgRangeFilter, firmFilter, from, itemFilter, partyFilter, search, statusFilter, to, sort?.key, sort?.direction]);
   const moreSentinel = useRef<HTMLDivElement | null>(null);
   const hasMoreRows = showAllRows && visibleCount < sortedRows.length;
   useEffect(() => {
@@ -616,7 +668,7 @@ export function SummarySheetReport() {
       setExporting("");
     }
   };
-  const clearFilters = () => { setSearch(""); setFrom(""); setTo(""); setFirmFilter(""); setStatusFilter(""); setClosedFilter(""); setPartyFilter(""); setItemFilter(""); setErpFilter(""); };
+  const clearFilters = () => { setSearch(""); setFrom(""); setTo(""); setFirmFilter(""); setStatusFilter(""); setClosedFilter(""); setPartyFilter(""); setItemFilter(""); setErpFilter(""); setFgRangeFilter(""); };
   const toggleColumn = (columnIndex: number) => setVisibleColumns((current) => current.includes(columnIndex) ? current.filter((index) => index !== columnIndex) : [...current, columnIndex].sort((a, b) => a - b));
   // Freeze: sticky-left for the first shown columns up to the chosen one (header and rows).
   const tableWrapRef = useRef<HTMLDivElement>(null);
@@ -713,7 +765,8 @@ export function SummarySheetReport() {
       headerSlot,
     ) : null}
     {isAdmin && showTiles && !isPhone ? <div className="grid grid-cols-1 items-start gap-2 lg:grid-cols-2">{tiles.map((section) => <SummaryTileGroup key={section.id} section={section} />)}</div> : null}
-    <div data-mf-panel="true" className="relative z-40 grid grid-cols-2 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative col-span-2 xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option><option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button>{isAdmin ? <button type="button" onClick={() => setUserColumnsOpen(true)} className="rounded border border-black bg-indigo-700 px-3 py-2 font-bold text-white hover:bg-indigo-800">User Columns</button> : null}<details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{pickableColumns.length})</summary><div className="absolute right-0 z-50 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg"><div className="sticky -top-3 z-10 -mx-3 -mt-3 mb-2 flex gap-2 border-b border-black bg-white px-3 py-2"><button type="button" onClick={() => setVisibleColumns(COLUMNS.map((_, index) => index))} className="flex-1 rounded border-2 border-black bg-indigo-700 px-2 py-1 text-xs font-bold text-white hover:bg-indigo-800">Reset Columns</button><button type="button" onClick={() => setVisibleColumns([0, 1])} className="flex-1 rounded border-2 border-black bg-white px-2 py-1 text-xs font-bold hover:bg-slate-100">Hide All</button></div>{pickableColumns.map((index) => <label key={`${COLUMNS[index]}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{columnTitle(COLUMNS[index])}</span></label>)}</div></details>
+    <StatusTiles counts={statusTileCounts} active={statusFilter} onPick={(status) => setStatusFilter((current) => current === status ? "" : status)} />
+    <div data-mf-panel="true" className="relative z-40 grid grid-cols-2 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative col-span-2 xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option>{isAdmin ? <option value="Temporary Closed">Temporary Closed</option> : null}<option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={fgRangeFilter} onChange={(event) => setFgRangeFilter(event.target.value)} title="FG Stock range"><option value="">All FG</option><option value="Negative">FG: Negative</option><option value="Zero">FG: 0</option><option value="UpTo100">FG: Up to 100</option><option value="Over100">FG: More than 100</option></select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button>{isAdmin ? <button type="button" onClick={() => setUserColumnsOpen(true)} className="rounded border border-black bg-indigo-700 px-3 py-2 font-bold text-white hover:bg-indigo-800">User Columns</button> : null}<details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{pickableColumns.length})</summary><div className="absolute right-0 z-50 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg"><div className="sticky -top-3 z-10 -mx-3 -mt-3 mb-2 flex gap-2 border-b border-black bg-white px-3 py-2"><button type="button" onClick={() => setVisibleColumns(COLUMNS.map((_, index) => index))} className="flex-1 rounded border-2 border-black bg-indigo-700 px-2 py-1 text-xs font-bold text-white hover:bg-indigo-800">Reset Columns</button><button type="button" onClick={() => setVisibleColumns([0, 1])} className="flex-1 rounded border-2 border-black bg-white px-2 py-1 text-xs font-bold hover:bg-slate-100">Hide All</button></div>{pickableColumns.map((index) => <label key={`${COLUMNS[index]}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{columnTitle(COLUMNS[index])}</span></label>)}</div></details>
 <label className="flex items-center gap-2 rounded border border-black bg-white px-2 py-1 text-xs font-bold" title="Keep the first columns fixed while scrolling sideways">Freeze<select value={freezeColumn} onChange={(event) => setFreezeColumn(event.target.value)} className="min-w-0 flex-1 bg-transparent py-1 text-xs font-bold outline-none"><option value="">None</option>{FREEZE_OPTIONS.map((column) => <option key={column} value={column}>Up to {columnTitle(column)}</option>)}</select></label></div>
     {isAdmin && userColumnsOpen ? <SummaryUserColumnsDialog onClose={() => setUserColumnsOpen(false)} /> : null}
 {isPhone && isAdmin ? <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-slate-700">{rows.length.toLocaleString("en-IN")} jobs</span><div className="flex items-center gap-2"><button type="button" onClick={() => setPhoneTiles((value) => !value)} title={phoneTiles ? "Hide tiles" : "Show tiles"} aria-label={phoneTiles ? "Hide tiles" : "Show tiles"} aria-pressed={phoneTiles} className={`inline-flex h-8 w-8 items-center justify-center rounded border-2 border-black ${phoneTiles ? "bg-indigo-700 text-white" : "bg-white text-black"}`}>{phoneTiles ? <Eye size={16} /> : <EyeOff size={16} />}</button><button type="button" onClick={() => setPhoneTable((value) => !value)} className="rounded border-2 border-black bg-white px-3 py-1.5 text-xs font-bold">{phoneTable ? "Short table" : "Show full table"}</button></div></div> : null}
@@ -732,9 +785,41 @@ export function SummarySheetReport() {
   <div className="max-h-[66vh] overflow-y-auto"><table className="w-full border-collapse text-xs"><tbody>{selectedColumns.filter((columnIndex) => columnIndex > 0 && COLUMNS[columnIndex] !== "Job Closed").map((columnIndex) => { const column = COLUMNS[columnIndex]; const value = s(valueForColumn(detailRow, columnIndex, 0)); return <tr key={column}><th className="w-[45%] border border-slate-300 bg-slate-50 px-2 py-1 text-left text-[10px] font-black uppercase text-slate-600">{columnTitle(column)}</th><td className={`border border-slate-300 px-2 py-1 font-semibold ${summarySheetCellClass(column, detailRow)}`}>{DOCUMENT_COLUMNS.has(column) && s(detailRow.__productionId) ? documentLink(column, detailRow) : value || "—"}</td></tr>; })}</tbody></table></div>
   {production && isAdmin ? <div className="flex justify-end gap-2 border-t-2 border-black px-3 py-2">{closed ? <button type="button" onClick={() => { uncloseJob(production.id); setDetailRow(null); }} className="rounded bg-amber-600 px-3 py-1.5 text-xs font-bold text-white">Unclose Job</button> : <button type="button" onClick={() => { closeJob(production.id); setDetailRow(null); }} className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white">Close Job</button>}</div> : null}
 </div></div>; })() : null}
-{showCards ? null : <div ref={tableWrapRef} className="overflow-auto rounded border-2 border-black bg-white" {...(showAllRows ? { "data-disable-table-pagination": "true" } : {})}><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr>{selectedSections.map((section) => <th key={section.label} colSpan={section.columns.length} className="whitespace-nowrap border border-black bg-[#24165f] px-2 py-2 text-center font-black text-white">{section.label}</th>)}</tr><tr className="bg-[#0b4773] text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 font-black ${columnAlignment(COLUMNS[columnIndex])}`}>{columnIndex === 0 ? COLUMNS[columnIndex] : <SortHeader label={columnTitle(COLUMNS[columnIndex])} sortKey={COLUMNS[columnIndex]} sort={sort} onToggle={toggleSort} align={NUMERIC_COLUMNS.has(COLUMNS[columnIndex]) ? "right" : CENTER_COLUMNS.has(COLUMNS[columnIndex]) ? "center" : "left"} />}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => { const target = findRealizationTargetForDate(realizationTargets, row.Date)?.value; return <tr key={s(row.__productionId) || `${row["Job No."]}-${index}`}>{selectedColumns.map((columnIndex) => { const column = COLUMNS[columnIndex]; const rowColorClass = column === "Realization / kg" ? realizationCellClass(row[column], target) : summarySheetCellClass(column, row); return <td key={`${column}-${columnIndex}`} className={`${column === "Remarks" ? "min-w-[180px] max-w-[280px] whitespace-normal break-words" : "whitespace-nowrap"} border border-black px-2 py-2 ${columnAlignment(column)} ${rowColorClass}`}>{column === "Remarks" && isAdmin && s(row.__productionId) ? <RemarksCell productionId={s(row.__productionId)} value={s(row.Remarks)} onSaved={(id, text) => setRemarksOverrides((current) => ({ ...current, [id]: text }))} /> : column === "Job Closed" && !isAdmin ? (s(row["Job Closed"]) === "Yes" ? `Yes${s(row["Close Date"]) ? ` (${displayDate(row["Close Date"])})` : ""}` : "") : column === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <div><button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) uncloseJob(production.id); }} className="rounded bg-amber-600 px-2 py-1 font-bold text-white">Unclose Job</button></div> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : DOCUMENT_COLUMNS.has(column) && s(row.__productionId) ? documentLink(column, row) : column === "Total Dispatch" && s(valueForColumn(row, columnIndex, rowOffset + index)) ? <a href={`#/quality/pdi-report?job=${encodeURIComponent(s(row["Job No."]))}`} target="_blank" rel="noopener noreferrer" title="Open PDI report for this job" className="font-bold underline decoration-dotted underline-offset-2">{valueForColumn(row, columnIndex, rowOffset + index)}</a> : valueForColumn(row, columnIndex, rowOffset + index)}</td>; })}</tr>; }) : <tr><td colSpan={selectedColumns.length || 1} className="bg-[#eaf2f8] p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div>}
+{showCards ? null : <div ref={tableWrapRef} className="overflow-auto rounded border-2 border-black bg-white" {...(showAllRows ? { "data-disable-table-pagination": "true" } : {})}><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr>{selectedSections.map((section) => <th key={section.label} colSpan={section.columns.length} className="whitespace-nowrap border border-black bg-[#24165f] px-2 py-2 text-center font-black text-white">{section.label}</th>)}</tr><tr className="bg-[#0b4773] text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 font-black ${columnAlignment(COLUMNS[columnIndex])}`}>{columnIndex === 0 ? COLUMNS[columnIndex] : <SortHeader label={columnTitle(COLUMNS[columnIndex])} sortKey={COLUMNS[columnIndex]} sort={sort} onToggle={toggleSort} align={NUMERIC_COLUMNS.has(COLUMNS[columnIndex]) ? "right" : CENTER_COLUMNS.has(COLUMNS[columnIndex]) ? "center" : "left"} />}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => { const target = findRealizationTargetForDate(realizationTargets, row.Date)?.value; return <tr key={s(row.__productionId) || `${row["Job No."]}-${index}`}>{selectedColumns.map((columnIndex) => { const column = COLUMNS[columnIndex]; const rowColorClass = column === "Realization / kg" ? realizationCellClass(row[column], target) : summarySheetCellClass(column, row); return <td key={`${column}-${columnIndex}`} className={`${column === "Remarks" ? "min-w-[180px] max-w-[280px] whitespace-normal break-words" : "whitespace-nowrap"} border border-black px-2 py-2 ${columnAlignment(column)} ${rowColorClass}`}>{column === "Remarks" && isAdmin && s(row.__productionId) ? <RemarksCell productionId={s(row.__productionId)} value={s(row.Remarks)} onSaved={(id, text) => setRemarksOverrides((current) => ({ ...current, [id]: text }))} /> : column === "Temporary Close" ? (isAdmin && s(row.__productionId) ? <label className="inline-flex cursor-pointer items-center justify-center" title="Temporary Close: hide this job from the Summary Sheet (the job stays open)"><input type="checkbox" className="h-5 w-5 cursor-pointer accent-purple-700" checked={s(row["Temporary Close"]) === "Yes"} onChange={(event) => void setTemporaryClose(s(row.__productionId), event.target.checked)} /></label> : "") : column === "Job Closed" && !isAdmin ? (s(row["Job Closed"]) === "Yes" ? `Yes${s(row["Close Date"]) ? ` (${displayDate(row["Close Date"])})` : ""}` : "") : column === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <div><button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) uncloseJob(production.id); }} className="rounded bg-amber-600 px-2 py-1 font-bold text-white">Unclose Job</button></div> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : DOCUMENT_COLUMNS.has(column) && s(row.__productionId) ? documentLink(column, row) : column === "Total Dispatch" && s(valueForColumn(row, columnIndex, rowOffset + index)) ? <a href={`#/quality/pdi-report?job=${encodeURIComponent(s(row["Job No."]))}`} target="_blank" rel="noopener noreferrer" title="Open PDI report for this job" className="font-bold underline decoration-dotted underline-offset-2">{valueForColumn(row, columnIndex, rowOffset + index)}</a> : valueForColumn(row, columnIndex, rowOffset + index)}</td>; })}</tr>; }) : <tr><td colSpan={selectedColumns.length || 1} className="bg-[#eaf2f8] p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div>}
 {showAllRows && sortedRows.length ? <div ref={moreSentinel} className="flex items-center justify-center gap-3 py-2 text-xs font-bold text-slate-600"><span>Showing {Math.min(visibleCount, sortedRows.length).toLocaleString("en-IN")} of {sortedRows.length.toLocaleString("en-IN")} jobs</span>{hasMoreRows ? <button type="button" onClick={() => setVisibleCount((count) => count + 500)} className="rounded border-2 border-black bg-white px-3 py-1 text-xs font-bold text-black hover:bg-slate-100">Show more</button> : null}</div> : null}{showAllRows ? null : <ClientPagination page={page} pageSize={pageSize} totalItems={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
   </div>;
+}
+
+// Status tiles: one colourful tile per status (name top-left, job count below); click filters by it.
+const STATUS_TILE_TONES = [
+  "from-sky-500 to-blue-700",
+  "from-violet-500 to-purple-700",
+  "from-amber-400 to-orange-600",
+  "from-rose-500 to-red-700",
+  "from-emerald-500 to-teal-700",
+  "from-fuchsia-500 to-pink-700",
+];
+function StatusTiles({ counts, active, onPick }: { counts: Array<{ status: string; count: number }>; active: string; onPick: (status: string) => void }) {
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+      {counts.map(({ status, count }, index) => {
+        const selected = active === status;
+        return (
+          <button
+            key={status}
+            type="button"
+            onClick={() => onPick(status)}
+            aria-pressed={selected}
+            title={selected ? `Showing ${status} – click again to show all statuses` : `Show only ${status}`}
+            className={`flex min-h-[72px] flex-col items-start justify-between rounded-lg bg-gradient-to-br px-3 py-2 text-left text-white shadow-[2px_2px_0_0_rgba(15,23,42,1)] transition hover:-translate-y-0.5 hover:brightness-110 ${STATUS_TILE_TONES[index % STATUS_TILE_TONES.length]} ${selected ? "ring-4 ring-black ring-offset-2" : active ? "opacity-60" : ""}`}
+          >
+            <span className="text-[11px] font-black uppercase leading-tight tracking-wide">{status}</span>
+            <span className="mt-1 text-2xl font-black leading-none">{count.toLocaleString("en-IN")}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 const formatTileValue = (tile: SummaryTile) => {
@@ -779,7 +864,7 @@ function SummaryUserColumnsDialog({ onClose }: { onClose: () => void }) {
   // "Copy" on a user with a Dashboard fills the columns from them without selecting them,
   // so the copy can be changed and saved for other users while theirs stays as it is.
   const [copiedFrom, setCopiedFrom] = useState<string | null>(null);
-  const choosable = COLUMNS.slice(1); // Sl No is always shown
+  const choosable = COLUMNS.slice(1).filter((column) => !ADMIN_ONLY_COLUMNS.has(column)); // Sl No is always shown; Temporary Close is Admin's
   const userOptions = useMemo(() => users
     .filter((entry: any) => entry?.id && entry.role !== "Admin" && entry.role !== "TruckDriver")
     .map((entry: any) => ({ value: String(entry.id), label: `${entry.name || entry.userId || entry.id}${entry.userId && entry.name ? ` (${entry.userId})` : ""}${entry.status === "Inactive" ? " – Inactive" : ""}`, searchText: `${entry.name || ""} ${entry.userId || ""} ${entry.mobile || ""}` }))
