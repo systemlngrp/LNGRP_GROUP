@@ -312,6 +312,78 @@ export function registerLiveStock(app, getPool, getRequestUser, canView) {
             return res.status(500).json({ error: "Could not check live stock. Please try again." });
         }
     });
+    // Admin: correct the output of a PHP / Plate job after it was entered, with a reason.
+    // Each change is logged on the job (outputCorrections). A reduction may not take the
+    // item's live stock below zero. Jobs made on the corrugator get their output from the
+    // FG job's printing, so they are corrected there, not here.
+    app.post("/api/live-stock/job-output", async (req, res) => {
+        const user = await getRequestUser(req);
+        if (!user)
+            return res.status(401).json({ error: "Unauthorized" });
+        if (!isAdmin(user))
+            return res.status(403).json({ error: "Admin only" });
+        const source = s(req.body?.source).toUpperCase();
+        const jobId = s(req.body?.jobId);
+        const reason = s(req.body?.reason);
+        const newOutput = Number(req.body?.newOutput);
+        if (!["PHP", "PLATE"].includes(source) || !jobId)
+            return res.status(400).json({ error: "source (PHP / PLATE) and jobId are required" });
+        if (!Number.isFinite(newOutput) || newOutput < 0)
+            return res.status(400).json({ error: "New output must be 0 or more" });
+        if (reason.length < 3)
+            return res.status(400).json({ error: "Please give a reason" });
+        const table = source === "PHP" ? "php_job_master" : "plate_job_master";
+        try {
+            const db = await getPool();
+            if (!db)
+                return res.status(503).json({ error: "DB connection not available" });
+            const [jobRows] = await db.query(`SELECT * FROM \`${table}\` WHERE id = ? LIMIT 1`, [jobId]);
+            const job = jobRows[0];
+            if (!job)
+                return res.status(404).json({ error: "Job not found" });
+            if (s(job.status) === "Cancelled" || s(job.cancelTimestamp))
+                return res.status(400).json({ error: "This job is cancelled" });
+            const linkColumn = source === "PHP" ? "phpScheduledJobId" : "plateScheduledJobId";
+            const [linkRows] = await db.query(`SELECT transactionNo FROM \`productions\` WHERE ${linkColumn} = ? AND COALESCE(status, '') <> 'Cancelled' LIMIT 1`, [jobId]);
+            if (linkRows.length && s(job.methodology).toUpperCase() === "CORRUGATION") {
+                return res.status(400).json({ error: `This job is made on the corrugator: its output comes from the printing of FG job ${s(linkRows[0].transactionNo)}. Correct the printing entry instead.` });
+            }
+            const oldOutput = n(job.productionOutputQty);
+            const round = (value) => Math.round(value * 100) / 100;
+            if (round(newOutput) === round(oldOutput))
+                return res.status(400).json({ error: "The output is already " + oldOutput });
+            // Stock check for a reduction: does this job's output count in live stock?
+            if (newOutput < oldOutput) {
+                const live = await buildLiveStock(db);
+                if (live.context) {
+                    const { cutoff } = live.context;
+                    const counts = jobId in cutoff.jobBaselines || !s(job.date) || s(job.date).slice(0, 10) > cutoff.cutoffDate;
+                    if (counts) {
+                        const [masterRows] = await db.query(`SELECT erpItemCode, itemName FROM \`${source === "PHP" ? "php_item_master" : "plate_item_master"}\` WHERE id = ? OR itemId = ? LIMIT 1`, [s(job.itemId), s(job.itemId)]);
+                        const erp = s(masterRows[0]?.erpItemCode) || s(job.erpCode);
+                        const row = live.rows.find((item) => item.itemType === source && item.erp === erp);
+                        const after = round((row?.live || 0) - (oldOutput - newOutput));
+                        if (after < -0.0001) {
+                            return res.status(400).json({ error: `Live stock of ${erp} ${row?.itemName || ""} is ${(row?.live || 0).toLocaleString("en-IN")}. Reducing this output by ${(oldOutput - newOutput).toLocaleString("en-IN")} would leave ${after.toLocaleString("en-IN")}: some of it has already been loaded.` });
+                        }
+                    }
+                }
+            }
+            const [columnRows] = await db.query("SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'outputCorrections'", [table]);
+            if (!Number(columnRows[0]?.n || 0))
+                await db.query(`ALTER TABLE \`${table}\` ADD COLUMN \`outputCorrections\` LONGTEXT NULL`);
+            const now = new Date().toISOString();
+            const who = s(user.name || user.userId);
+            const log = arr(job.outputCorrections);
+            log.push({ at: now, by: who, from: oldOutput, to: round(newOutput), reason: reason.slice(0, 500) });
+            await db.query(`UPDATE \`${table}\` SET productionOutputQty = ?, outputCorrections = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?`, [round(newOutput), JSON.stringify(log), who, now, jobId]);
+            return res.json({ success: true, from: oldOutput, to: round(newOutput) });
+        }
+        catch (error) {
+            console.error("[LIVE_STOCK] job output change failed", error.message);
+            return res.status(500).json({ error: "Could not change the output" });
+        }
+    });
     // Any signed-in user: one item's live stock with its parts (Production Form).
     app.get("/api/live-stock/item", async (req, res) => {
         const user = await getRequestUser(req);
