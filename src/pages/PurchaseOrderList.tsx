@@ -18,6 +18,7 @@ import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
 import { PageHeader } from "../components/PageHeader";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { computePurchaseOrderTaxes, summarizePurchaseOrderLines } from "../lib/purchaseOrderTaxes";
@@ -53,6 +54,7 @@ type EditingHeader = {
   poDate: string;
   requiredDate: string;
   roundOff: string;
+  supplierId: string;
 };
 
 type EditingLineDraft = {
@@ -151,6 +153,19 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   const [editingLines, setEditingLines] = useState<Record<string, EditingLineDraft>>({});
 
   const currentSetting = settings[0];
+  // Changing the supplier: users picked in Settings > Edit Settings, and the System Admin.
+  const { user: authUser } = useAuth();
+  const canEditPoSupplier = useMemo(() => {
+    const email = String((authUser as any)?.email || authUser?.userId || "").trim().toLowerCase();
+    const isSystemAdmin = authUser?.role === "Admin" && [authUser?.userId, (authUser as any)?.email].some((value) => String(value || "").trim().toLowerCase() === "system.lngrp.in");
+    if (isSystemAdmin) return true;
+    try {
+      const parsed = JSON.parse(currentSetting?.allowPoSupplierEditUsers || "[]");
+      return Array.isArray(parsed) && parsed.map((value) => String(value || "").trim().toLowerCase()).includes(email);
+    } catch {
+      return false;
+    }
+  }, [authUser, currentSetting?.allowPoSupplierEditUsers]);
   const materialMap = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
   const [poTerms] = useData<PoTerms>("po-terms", [], { firmScope: "all" });
   const supplierMap = useMemo(() => new Map(suppliers.map((s) => [s.id, s])), [suppliers]);
@@ -562,6 +577,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       poDate: order.poDate || "",
       requiredDate: order.requiredDate || "",
       roundOff: String(Number(order.roundOff || 0)),
+      supplierId: order.supplierId || "",
     });
     setEditingLines(
       Object.fromEntries(
@@ -584,7 +600,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
 
   const getRenderedLines = useCallback((order: PurchaseOrder, lines: PurchaseOrderLine[]) => {
     if (editingOrderId !== order.id) return lines;
-    const supplyType = supplierMap.get(order.supplierId)?.gstSupplyType;
+    const supplyType = supplierMap.get(editingHeader?.supplierId || order.supplierId)?.gstSupplyType;
 
     return lines.map((line) => {
       const draft = editingLines[line.id];
@@ -612,7 +628,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         targetDeliveryDate: draft.targetDeliveryDate || undefined,
       };
     });
-  }, [editingLines, editingOrderId, getLineCancelledQty, supplierMap]);
+  }, [editingLines, editingOrderId, editingHeader?.supplierId, getLineCancelledQty, supplierMap]);
 
   const getRenderedTotals = useCallback((order: PurchaseOrder, lines: PurchaseOrderLine[]) => {
     const previewLines = getLinesForTotals(order, getRenderedLines(order, lines));
@@ -638,7 +654,20 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
     }
 
     const timestamp = new Date().toISOString();
-    const supplyType = supplierMap.get(order.supplierId)?.gstSupplyType;
+    const nextSupplierId = String(editingHeader.supplierId || order.supplierId || "");
+    const supplierChanged = nextSupplierId !== String(order.supplierId || "");
+    if (supplierChanged) {
+      if (!canEditPoSupplier) {
+        alert("You are not allowed to change the supplier on a PO.");
+        return;
+      }
+      const received = lines.reduce((sum, line) => sum + getLineReceivedQty(line.id), 0);
+      if (received > 0) {
+        alert("Supplier cannot be changed: material is already received against this PO.");
+        return;
+      }
+    }
+    const supplyType = supplierMap.get(nextSupplierId)?.gstSupplyType;
 
     try {
       const updatedLines = lines.map((line) => {
@@ -686,6 +715,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         ...order,
         poDate: editingHeader.poDate || order.poDate,
         requiredDate: editingHeader.requiredDate || order.requiredDate,
+        supplierId: nextSupplierId || order.supplierId,
         totalQty: totals.totalQty,
         totalAmount: totals.taxableAmount,
         taxableAmount: totals.taxableAmount,
@@ -1443,7 +1473,25 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
                           formatDate(order.requiredDate)
                         )}
                       </td>
-                      <td className="px-4 py-4 text-sm text-black font-medium">{supplierNameMap.get(order.supplierId) || "Unknown"}</td>
+                      <td className="px-4 py-4 text-sm text-black font-medium">
+                        {isEditing && canEditPoSupplier ? (
+                          qtySummary.totalReceived > 0 ? (
+                            <span title="Material is received against this PO, so its supplier cannot be changed.">{supplierNameMap.get(order.supplierId) || "Unknown"}</span>
+                          ) : (
+                            <div className="min-w-[220px]">
+                              <FirmSelect
+                                compact
+                                value={editingHeader?.supplierId || order.supplierId || ""}
+                                onChange={(value) => setEditingHeader((prev) => (prev ? { ...prev, supplierId: String(value || "") } : prev))}
+                                options={[...suppliers].sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""))).map((supplier) => ({ value: supplier.id, label: supplier.name || supplier.id }))}
+                                placeholder="Select supplier"
+                              />
+                            </div>
+                          )
+                        ) : (
+                          supplierNameMap.get(order.supplierId) || "Unknown"
+                        )}
+                      </td>
                       <td className="px-4 py-4 text-sm text-black text-right font-bold">
                         {qtySummary.totalQty.toLocaleString()}
                       </td>

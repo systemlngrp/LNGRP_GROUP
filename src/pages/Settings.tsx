@@ -422,6 +422,16 @@ export function SettingsPage() {
   const saveSamplingPlanQty = async () => { const divisor=Number(samplingPlanQtyDraft.divisor), minimum=Number(samplingPlanQtyDraft.minimum), maximum=Number(samplingPlanQtyDraft.maximum); if (!Number.isFinite(divisor)||divisor<=0) return setSamplingPlanQtyError("Divisor must be greater than zero."); if (!Number.isInteger(minimum)||minimum<=0) return setSamplingPlanQtyError("Minimum must be a positive whole number."); if (!Number.isInteger(maximum)||maximum<minimum) return setSamplingPlanQtyError("Maximum must be a whole number greater than or equal to minimum."); setSamplingPlanQtyError(""); await handleChange({ samplingPlanQtyDivisor: divisor, samplingPlanQtyMin: minimum, samplingPlanQtyMax: maximum }); };
   const saveQcBgsmTolerance = async () => { const value = Number(qcBgsmToleranceDraft); if (!Number.isFinite(value) || value < 0) return setQcBgsmToleranceError("Tolerance must be zero or greater."); setQcBgsmToleranceError(""); await handleChange({ qcBgsmTolerancePercent: value }); };
   const isPankajUser = String(user?.email || "").trim().toLowerCase() === GLOBAL_ITEM_RENAME_ALLOWED_EMAIL;
+  // Edit Settings: shown only to the System Admin (and the developer account).
+  const isSystemAdminUser = isPankajUser || (user?.role === "Admin" && [user?.userId, user?.email].some((value) => String(value || "").trim().toLowerCase() === "system.lngrp.in"));
+  const allowedPoSupplierEditUsers = useMemo(() => {
+    try {
+      const parsed = JSON.parse(currentSetting?.allowPoSupplierEditUsers || "[]");
+      return Array.isArray(parsed) ? Array.from(new Set(parsed.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean))) : [];
+    } catch {
+      return [] as string[];
+    }
+  }, [currentSetting?.allowPoSupplierEditUsers]);
   const allowInvoiceTallyEdit = currentSetting?.allowInvoiceTallyEdit === "Yes";
 
   useEffect(() => {
@@ -1159,6 +1169,49 @@ export function SettingsPage() {
 
       {/* The "Clear Core Job Data" and "Delete All Transactional Data" tools were
           removed from the live app on 18-Nov-2026 (their server routes are off too). */}
+
+      {isSystemAdminUser && (
+        <div className="bg-white p-6 rounded shadow-sm border border-black max-w-3xl space-y-4">
+          <div>
+            <h3 className="text-sm font-black uppercase text-slate-600 mb-2">Edit Settings</h3>
+            <p className="text-sm text-black leading-6">
+              Visible to the System Admin only. Choose who may <span className="font-bold">change the supplier on a Purchase Order</span> (in the PO's Edit). A supplier can never be changed once material is received against the PO.
+            </p>
+          </div>
+          <div className="space-y-3">
+            <div className="text-xs font-black uppercase tracking-wide text-slate-600">Users allowed to edit PO supplier</div>
+            <div className="rounded border border-black bg-slate-50 p-3 max-h-56 overflow-y-auto space-y-2">
+              {selectableInvoiceEditUsers.length === 0 ? (
+                <div className="text-sm text-slate-500">No users with email found.</div>
+              ) : (
+                selectableInvoiceEditUsers.map((row) => {
+                  const email = String(row.email || "").trim().toLowerCase();
+                  const checked = allowedPoSupplierEditUsers.includes(email);
+                  return (
+                    <label key={row.id} className="flex items-center gap-3 text-sm text-black">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={loading || saving}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? Array.from(new Set([...allowedPoSupplierEditUsers, email]))
+                            : allowedPoSupplierEditUsers.filter((value) => value !== email);
+                          void handleChange({ allowPoSupplierEditUsers: JSON.stringify(next) });
+                        }}
+                        className="h-4 w-4 border-black"
+                      />
+                      <span className="font-semibold">{row.name}</span>
+                      <span className="text-slate-500">({email})</span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-slate-500">Allowed users: {allowedPoSupplierEditUsers.length}. The System Admin can always change it.</p>
+        </div>
+      )}
 
       {isPankajUser && (
         <div className="bg-white p-6 rounded shadow-sm border border-black max-w-3xl space-y-4">
