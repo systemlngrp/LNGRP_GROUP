@@ -175,7 +175,8 @@ export function MaterialInForm({ directService = false }: { directService?: bool
 
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", []);
   const [packingSlips, setPackingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
-  const [gateEntries, setGateEntries] = useData<GateEntry>("gate-entries", []);
+  // All firms: Pending Material Receipt lists every firm's gate entries, so the one opened here may not be the active firm's.
+  const [gateEntries, setGateEntries] = useData<GateEntry>("gate-entries", [], { firmScope: "all" });
   const [gatePasses] = useData<GatePass>("gate_passes", []);
   const [materials, setMaterials, , materialsMeta] = useData<Material>("materials", []);
   // FG / PHP / Plate lines take GST % from their own master (NPD, PHP or Plate Item Master).
