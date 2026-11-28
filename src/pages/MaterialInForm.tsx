@@ -44,7 +44,7 @@ import { buildMaterialInPdf, downloadMaterialInPdf } from "../lib/materialInPdf"
 import { formatOurReelNo as formatReelNo, getNextReelNumber } from "../lib/materialNumbering";
 import { findUnitOneFirm } from "../lib/unitOneFirm";
 import { CREATED_MATERIAL_STORAGE_KEY } from "../lib/createdMaterialSignal";
-import { MATERIAL_IN_SUB_TYPES, getMaterialInSubTypeLedger, isValidMaterialInSubType, normalizeMaterialInSubType } from "../lib/materialInSubTypes";
+import { MATERIAL_IN_SUB_TYPES, mrrTypeLabel, getMaterialInSubTypeLedger, isValidMaterialInSubType, normalizeMaterialInSubType } from "../lib/materialInSubTypes";
 
 type PackingSlipDraft = {
   id: string;
@@ -3945,7 +3945,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                 <div className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
                   {[
                     ["Firm", selectedFirm?.firmName || "-"],
-                    ["MRR Type", `${mrrType || "-"}${mrrSubType ? ` / ${mrrSubType}` : ""}`],
+                    ["MRR Type", `${mrrTypeLabel(mrrType) || "-"}${mrrSubType ? ` / ${mrrSubType}` : ""}`],
                     ["MRR Date", date ? formatDate(date) : "-"],
                     ["Supplier", getPartyName(supplierId) || "-"],
                     ["Invoice No", invoiceNo || "-"],

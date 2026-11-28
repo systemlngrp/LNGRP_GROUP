@@ -373,6 +373,7 @@ def get_pending_direct_service_mrrs(conn, firm_id: str):
         FROM `material_in`
         WHERE `mrrType` = 'Direct Service'
           AND (`tallyTimestamp` IS NULL OR `tallyTimestamp` = '')
+          AND LOWER(TRIM(COALESCE(`status`, ''))) = 'pending tally'
           AND `firmId` = %s
         ORDER BY `timestamp` ASC, `transactionNo` ASC
         """,

@@ -20,3 +20,9 @@ export function getMaterialInSubTypeLedger(value: unknown): string {
   const normalized = normalizeMaterialInSubType(value) as MaterialInSubType;
   return MATERIAL_IN_SUB_TYPE_LEDGER[normalized] || MATERIAL_IN_SUB_TYPE_LEDGER["Other RM"];
 }
+
+/** Display name of an MRR type: "Direct Service" MRRs are shown as "Expense" (stored value unchanged). */
+export function mrrTypeLabel(mrrType?: string | null): string {
+  const value = String(mrrType || "").trim();
+  return value === "Direct Service" ? "Expense" : value;
+}

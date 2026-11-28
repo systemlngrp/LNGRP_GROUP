@@ -16,6 +16,7 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
+import { mrrTypeLabel } from "../lib/materialInSubTypes";
 
 function makeOptions(values: Array<string | number>) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)))
@@ -212,7 +213,7 @@ export function MaterialInMaster() {
     normalizedMaterialIn.forEach((entry) => {
       map.set(entry.id, rowSearchText([
         entry.transactionNo,
-        formatText(entry.mrrType),
+        formatText(mrrTypeLabel(entry.mrrType)),
         entry.date,
         getFirmName(entry),
         formatText(entry.gateEntryNo),
@@ -336,7 +337,7 @@ export function MaterialInMaster() {
 
   const excelRows = useMemo(() => filteredMaterialIn.map((entry) => ({
     "MRR No": entry.transactionNo,
-    "MRR Type": formatText(entry.mrrType),
+    "MRR Type": formatText(mrrTypeLabel(entry.mrrType)),
     Date: formatDate(entry.date),
     "Gate Entry No": formatText(entry.gateEntryNo),
     Supplier: getSupplierName(entry.supplierId),
@@ -568,7 +569,7 @@ export function MaterialInMaster() {
                   <React.Fragment key={entry.id}>
                   <tr className="hover:bg-slate-50 divide-x divide-black transition-colors">
                     <td className="px-4 py-3 text-sm font-bold text-black border border-black whitespace-nowrap">{getMrrNoElement(entry)}</td>
-                    <td className="px-4 py-3 text-xs text-black border border-black whitespace-nowrap">{formatText(entry.mrrType)}</td>
+                    <td className="px-4 py-3 text-xs text-black border border-black whitespace-nowrap">{formatText(mrrTypeLabel(entry.mrrType))}</td>
                     <td className="px-4 py-3 text-xs text-black border border-black whitespace-nowrap">{formatDate(entry.date)}</td>
                     <td className="px-4 py-3 text-xs text-black border border-black whitespace-nowrap">{getFirmName(entry)}</td>
                     <td className="px-4 py-3 text-xs text-black border border-black whitespace-nowrap">{formatText(entry.gateEntryNo)}</td>

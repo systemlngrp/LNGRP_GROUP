@@ -16,6 +16,7 @@ import { buildMrrReelLabelData } from "../lib/mrrReelLabelData";
 import { useConfirm } from "../components/ConfirmDialog";
 import { Select as FirmSelect } from "../components/Select";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
+import { mrrTypeLabel } from "../lib/materialInSubTypes";
 
 type Stage = "All Approval" | "Pending PH" | "Pending Accounts" | "Pending MD";
 type SortField = "timestamp" | "gateEntryNo" | "transactionNo" | "date" | "value" | "firm" | "party" | "type" | "status" | "mrrQty" | "invQty";
@@ -115,7 +116,7 @@ export function MrrApprovals() {
         // Search box: the table columns (MRR No, GE No, Date, Firm, Party, Type, Status, MRR Qty, Inv Qty, Item Value).
         const mrrQty = m.lines.reduce((sum, l) => sum + (l.actualQty || l.qty || 0), 0);
         const invQty = m.lines.reduce((sum, l) => sum + (l.invoiceQty || 0), 0);
-        return matchesTableSearch([m.transactionNo, m.gateEntryNo || "-", m.date, getFirmName(m), getSupplierName(m.supplierId), m.mrrType || "-", statusLabel(m.status), mrrQty.toFixed(2), invQty.toFixed(2), getItemValue(m).toFixed(2)], words);
+        return matchesTableSearch([m.transactionNo, m.gateEntryNo || "-", m.date, getFirmName(m), getSupplierName(m.supplierId), mrrTypeLabel(m.mrrType) || "-", statusLabel(m.status), mrrQty.toFixed(2), invQty.toFixed(2), getItemValue(m).toFixed(2)], words);
       })
       .sort((a, b) => {
         let comparison = 0;
@@ -676,7 +677,7 @@ export function MrrApprovals() {
                       <td className="border border-black px-3 py-2">{formatDate(m.date)}</td>
                       <td className="border border-black px-3 py-2 font-semibold">{getFirmName(m)}</td>
                       <td className="border border-black px-3 py-2">{getSupplierName(m.supplierId)}</td>
-                      <td className="border border-black px-3 py-2">{m.mrrType || "-"}</td>
+                      <td className="border border-black px-3 py-2">{mrrTypeLabel(m.mrrType) || "-"}</td>
                       <td className="border border-black px-3 py-2"><StatusBadge status={m.status} /></td>
                       <td className="border border-black px-3 py-2 text-right tabular-nums">{mrrQty.toFixed(2)}</td>
                       <td className="border border-black px-3 py-2 text-right tabular-nums">{invQty.toFixed(2)}</td>
@@ -721,7 +722,7 @@ export function MrrApprovals() {
                     <StatusBadge status={m.status} />
                   </div>
                   <div className="mt-0.5 text-xs font-semibold text-slate-600">
-                    {formatDate(m.date)} · {getFirmName(m)} · {m.mrrType || "-"}{m.gateEntryNo ? ` · ${m.gateEntryNo}` : ""}
+                    {formatDate(m.date)} · {getFirmName(m)} · {mrrTypeLabel(m.mrrType) || "-"}{m.gateEntryNo ? ` · ${m.gateEntryNo}` : ""}
                   </div>
                   <div className="mt-1 text-sm font-semibold">{getSupplierName(m.supplierId)}</div>
                 </div>

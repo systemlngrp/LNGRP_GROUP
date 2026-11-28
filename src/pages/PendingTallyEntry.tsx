@@ -14,6 +14,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useConfirm } from "../components/ConfirmDialog";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { SortHeader, useTableSort } from "../lib/tableSort";
+import { mrrTypeLabel } from "../lib/materialInSubTypes";
 
 export function PendingTallyEntry() {
   const confirm = useConfirm();
@@ -307,7 +308,7 @@ export function PendingTallyEntry() {
                       ) : null}
                       <td className={`${td} font-bold`}>{m.transactionNo}</td>
                       <td className={`${td} font-semibold`}>{getFirmName(m)}</td>
-                      <td className={td}>{m.mrrType || "-"}</td>
+                      <td className={td}>{mrrTypeLabel(m.mrrType) || "-"}</td>
                       <td className={td}>{formatDate(m.date)}</td>
                       <td className={td} title={getSupplierName(m.supplierId)}><div className="line-clamp-2">{getSupplierName(m.supplierId)}</div></td>
                       <td className={td} title={getItemNameList(m)}><div className="line-clamp-2">{getItemNameList(m) || "-"}</div></td>
