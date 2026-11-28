@@ -19,6 +19,7 @@ export function Services() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [active, setActive] = useState<"Yes" | "No">("Yes");
+  const [gstClaimable, setGstClaimable] = useState<"Yes" | "No">("Yes");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const filteredServices = useMemo(
@@ -34,6 +35,7 @@ export function Services() {
     setEditingId(null);
     setName("");
     setActive("Yes");
+    setGstClaimable("Yes");
     setIsFormOpen(true);
   };
 
@@ -41,6 +43,7 @@ export function Services() {
     setEditingId(service.id);
     setName(service.name);
     setActive(service.active === "No" ? "No" : "Yes");
+    setGstClaimable(service.gstClaimable === "No" ? "No" : "Yes");
     setIsFormOpen(true);
   };
 
@@ -48,6 +51,7 @@ export function Services() {
     setEditingId(null);
     setName("");
     setActive("Yes");
+    setGstClaimable("Yes");
     setIsFormOpen(false);
   };
 
@@ -71,6 +75,7 @@ export function Services() {
         id: editingId || crypto.randomUUID(),
         name: normalizedName,
         active,
+        gstClaimable,
         updatedBy: "System User",
         updateTimestamp: timestamp,
       };
@@ -105,6 +110,13 @@ export function Services() {
                 <option value="No">No</option>
               </select>
             </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-slate-600">GST Claimable (default on bills)</span>
+              <select value={gstClaimable} onChange={(e) => setGstClaimable(e.target.value === "No" ? "No" : "Yes")} className="h-10 w-full rounded border-2 border-black bg-white px-3 text-sm font-bold text-black focus:border-indigo-600 focus:outline-none">
+                <option value="Yes">Yes – GST goes to Input GST</option>
+                <option value="No">No – GST is added to the expense</option>
+              </select>
+            </label>
           </form>
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
             <button type="submit" form="service-form" disabled={isSubmitting} className="inline-flex items-center justify-center gap-2 rounded border-2 border-black bg-emerald-600 px-8 py-2.5 text-sm font-black uppercase text-white hover:bg-emerald-700 disabled:opacity-50">
@@ -128,17 +140,19 @@ export function Services() {
               <thead className="sticky top-0 z-30 bg-slate-100">
                 <tr>
                   <th className="border border-black px-3 py-2 text-[11px] font-black uppercase"><SortHeader label="Service" sortKey="name" sort={sort} onToggle={toggleSort} /></th>
+                  <th className="w-32 border border-black px-3 py-2 text-[11px] font-black uppercase">GST Claimable</th>
                   <th className="w-28 border border-black px-3 py-2 text-[11px] font-black uppercase"><SortHeader label="Active" sortKey="active" sort={sort} onToggle={toggleSort} align="center" /></th>
                   {canManage ? <th className="w-24 border border-black px-3 py-2 text-[11px] font-black uppercase">Action</th> : null}
                 </tr>
               </thead>
               <tbody>
                 {filteredServices.length === 0 ? (
-                  <tr><td colSpan={canManage ? 3 : 2} className="px-6 py-10 text-center font-medium">No services found.</td></tr>
+                  <tr><td colSpan={canManage ? 4 : 3} className="px-6 py-10 text-center font-medium">No services found.</td></tr>
                 ) : (
                   sortedServices.map((service) => (
                     <tr key={service.id} className="hover:bg-slate-50">
                       <td className="border border-black px-3 py-2 text-sm font-bold text-black">{service.name}</td>
+                      <td className="border border-black px-3 py-2 text-center text-sm font-bold">{service.gstClaimable === "No" ? "No" : "Yes"}</td>
                       <td className="border border-black px-3 py-2 text-center">{activeBadge(service.active)}</td>
                       {canManage ? (
                         <td className="border border-black px-3 py-2 text-center">

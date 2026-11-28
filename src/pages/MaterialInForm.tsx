@@ -312,7 +312,8 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const isJobWorkReturn = isJobWorkGatePass(linkedSourceGatePass) || editingEntry?.mrrType === "Job Work Return" || mrrType === "Job Work Return";
   const isFgType = mrrType === "Rejection In" || mrrType === "FG Purchase";
   const isServiceReturn = isReturnableReceiptFlow || mrrType === "Service Return" || mrrType === "Job Work Return";
-  const isDirectService = !linkedGateEntry && (directServiceRequested || mrrType === "Direct Service" || editingEntry?.mrrType === "Direct Service");
+  // Direct Service: on its own, or from a gate entry as an Expense MRR (no stock).
+  const isDirectService = (!linkedGateEntry || (directServiceRequested && linkedGateEntry.purpose !== "Returnable Receipt")) && (directServiceRequested || mrrType === "Direct Service" || editingEntry?.mrrType === "Direct Service");
   const poMandatoryMrrTypes = useMemo(() => new Set(parsePoMandatoryMrrTypes(settings[0])), [settings]);
   const supportsPoSettingForCurrentMrrType = supportsPoMandatorySetting(mrrType);
   const isPoMandatoryForCurrentMrrType = supportsPoSettingForCurrentMrrType && poMandatoryMrrTypes.has(mrrType);
@@ -475,7 +476,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   }, [mrrType, unitOneFirm?.id]);
 
   useEffect(() => {
-    if (!editingEntry && directServiceRequested && !linkedGateEntry) {
+    if (!editingEntry && directServiceRequested && (!linkedGateEntry || linkedGateEntry.purpose !== "Returnable Receipt")) {
       setMrrType("Direct Service");
       setLines([]);
       setPackingSlipDrafts({});
@@ -1333,6 +1334,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
         lineType: "Service",
         serviceId: service.id,
         serviceName: service.name,
+        gstClaimable: service.gstClaimable === "No" ? "No" : "Yes",
         qty: 1,
         actualQty: 1,
         invoiceQty: 1,
@@ -3584,6 +3586,19 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                                 : updateLine(line.id, { gstRate: Number(value || 0) })}
                               placeholder="Select GST..."
                             />
+                            {isDirectService && Number(line.gstRate || 0) > 0 ? (
+                              <label className="mt-1 flex items-center gap-1 text-xs font-bold text-black">
+                                Claim GST?
+                                <select
+                                  value={line.gstClaimable === "No" ? "No" : "Yes"}
+                                  onChange={(e) => setLines((prev) => prev.map((row) => row.id === line.id ? { ...row, gstClaimable: e.target.value === "No" ? "No" : "Yes" } : row))}
+                                  className="rounded border border-black bg-yellow-50 px-1 py-0.5 text-xs font-bold"
+                                >
+                                  <option value="Yes">Yes – Input GST</option>
+                                  <option value="No">No – add to expense</option>
+                                </select>
+                              </label>
+                            ) : null}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-black border border-black">{Number(line.invoiceValue || 0).toFixed(2)}</td>
                           {!isInterState ? (

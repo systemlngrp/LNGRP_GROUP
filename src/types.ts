@@ -130,6 +130,8 @@ export interface Item {
 export interface MaterialLine {
   id: string;
   itemId: string;
+  /** Direct Service / Expense lines: "No" = GST is not claimed; Tally adds it to the expense ledger. */
+  gstClaimable?: "Yes" | "No";
   itemName?: string;
   npdId?: string;
   /** FG Purchase / Rejection In lines: which master the item is from (FG = NPD, PHP, PLATE). */
@@ -1930,6 +1932,8 @@ export interface Service {
   id: string;
   name: string;
   active?: "Yes" | "No";
+  /** Default for Direct Service / Expense MRR lines: can the GST be claimed as input credit? Blank = Yes. */
+  gstClaimable?: "Yes" | "No";
   updatedBy?: string;
   updateTimestamp?: string;
 }

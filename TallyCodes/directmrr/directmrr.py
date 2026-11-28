@@ -301,15 +301,28 @@ def parse_lines(lines_raw: Any) -> list[dict[str, Any]]:
     return []
 
 
+def line_unclaimed_gst(line: dict[str, Any]) -> tuple[Decimal, Decimal, Decimal]:
+    """GST of a service line marked "Claim GST = No": it goes to the expense ledger, not Input GST."""
+    if str(line.get("lineType") or "") != "Service" or str(line.get("gstClaimable") or "").strip().lower() != "no":
+        return Decimal("0.00"), Decimal("0.00"), Decimal("0.00")
+    return round_money(line.get("cgst")), round_money(line.get("sgst")), round_money(line.get("igst"))
+
+
 def build_tax_ledger_entries(mrr: dict[str, Any], _lines: list[dict[str, Any]], _voucher_no: str) -> str:
     entries: list[str] = []
     insurance_other = round_money(mrr.get("insurance")) + round_money(mrr.get("otherCharges"))
+    unclaimed = [line_unclaimed_gst(line) for line in (_lines or [])]
+    unclaimed_cgst = sum((u[0] for u in unclaimed), Decimal("0.00"))
+    unclaimed_sgst = sum((u[1] for u in unclaimed), Decimal("0.00"))
+    unclaimed_igst = sum((u[2] for u in unclaimed), Decimal("0.00"))
     for ledger, amount in (
         ("INSURANCE & OTHER EXP. ON PURCHASE", insurance_other),
-        ("Input CGST", round_money(mrr.get("totalCgst"))),
-        ("Input SGST", round_money(mrr.get("totalSgst"))),
-        ("Input IGST", round_money(mrr.get("totalIgst"))),
+        ("Input CGST", round_money(mrr.get("totalCgst")) - unclaimed_cgst),
+        ("Input SGST", round_money(mrr.get("totalSgst")) - unclaimed_sgst),
+        ("Input IGST", round_money(mrr.get("totalIgst")) - unclaimed_igst),
     ):
+        if amount < Decimal("0.00"):
+            raise RuntimeError(f"{ledger} would be negative ({amount}) after unclaimed GST. Posting stopped.")
         if amount:
             entries.append(f"""<LEDGERENTRIES.LIST><LEDGERNAME>{escape_xml(ledger)}</LEDGERNAME>
             <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-{format_money(amount)}</AMOUNT></LEDGERENTRIES.LIST>""")
@@ -573,6 +586,7 @@ def build_service_ledger_entries(lines: list[dict[str, Any]]) -> str:
         amount = service_line_amount(line)
         if amount <= Decimal("0.00"):
             continue
+        amount = (amount + sum(line_unclaimed_gst(line), Decimal("0.00"))).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
         service_name = str(
             line.get("itemName")
             or line.get("materialName")

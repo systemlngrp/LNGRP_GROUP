@@ -254,6 +254,16 @@ export function PendingMrr() {
                       >
                         Create MRR
                       </button>
+                      {entry.purpose !== "Returnable Receipt" ? (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/material-in/direct-service?gateEntryId=${entry.id}`)}
+                          title="Expense bill with no stock (groceries, stationery, repairs...): posts to an expense ledger in Tally"
+                          className="inline-flex items-center gap-2 rounded border border-amber-700 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
+                        >
+                          Expense MRR
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => setSelectedEntryId(entry.id)}
