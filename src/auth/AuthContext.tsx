@@ -191,7 +191,7 @@ const RELATED_PAGE_ACCESS: Record<string, string[]> = {
   "/quality/printing-stereo/form": ["/quality/printing-stereo"],
   "/quality/complaints": ["/quality/complaints/master", "/quality/complaints/pending-capa"],
   "/quality/sample-requirement/master/form": ["/quality/sample-requirement/master"],
-  "/masters/materials": ["/indent/form"],
+  "/masters/materials": ["/indent/form", "/material-in/form", "/material-receipt/pending-mrr"],
   // Forms -> page shown after Save
   "/production/pending": ["/production/form"],
   "/production/pending-consumption": ["/material-movement/issue", "/material-movement/reel-issue-return", "/material-movement/reel-issue-return-scan"],

@@ -43,6 +43,7 @@ import { parsePoMandatoryMrrTypes, supportsPoMandatorySetting } from "../lib/mat
 import { buildMaterialInPdf, downloadMaterialInPdf } from "../lib/materialInPdf";
 import { formatOurReelNo as formatReelNo, getNextReelNumber } from "../lib/materialNumbering";
 import { findUnitOneFirm } from "../lib/unitOneFirm";
+import { CREATED_MATERIAL_STORAGE_KEY } from "../lib/createdMaterialSignal";
 import { MATERIAL_IN_SUB_TYPES, getMaterialInSubTypeLedger, isValidMaterialInSubType, normalizeMaterialInSubType } from "../lib/materialInSubTypes";
 
 type PackingSlipDraft = {
@@ -176,7 +177,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const [packingSlips, setPackingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
   const [gateEntries, setGateEntries] = useData<GateEntry>("gate-entries", []);
   const [gatePasses] = useData<GatePass>("gate_passes", []);
-  const [materials, setMaterials] = useData<Material>("materials", []);
+  const [materials, setMaterials, , materialsMeta] = useData<Material>("materials", []);
   // FG / PHP / Plate lines take GST % from their own master (NPD, PHP or Plate Item Master).
   const resolveCatalogGstRate = (item: any) => {
     const rate = Number(item?.gstRate ?? item?.raw?.gstRate ?? item?.raw?.gst);
@@ -394,6 +395,27 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const activeItemOptions = isServiceReturn || isDirectService ? serviceOptions : materialOptions;
   const activeItemLabel = isServiceReturn || isDirectService ? "Service" : isFgType ? "FG Item" : "Material";
   const activeItemPlaceholder = isServiceReturn || isDirectService ? "Select Service..." : isFgType ? "Select Item..." : "Select Material...";
+  const refreshMaterials = materialsMeta.refresh;
+  const canAddNewMaterial = !isServiceReturn && !isDirectService && !isFgType;
+  const openNewMaterial = () => {
+    const type = mrrType === "Reel" ? "Reel" : "Other";
+    window.open(`${window.location.origin}${window.location.pathname}#/masters/materials?new=1&type=${type}&closeAfter=1`, "_blank");
+  };
+  // A material saved in that tab: reload the list here and pick it on the line.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== CREATED_MATERIAL_STORAGE_KEY || !event.newValue) return;
+      let id = "";
+      try { id = String(JSON.parse(event.newValue).id || ""); } catch { return; }
+      if (!id) return;
+      void Promise.resolve(refreshMaterials({ force: true })).then(() => {
+        setCurrentItemId(id);
+        setCurrentPoLineId("");
+      });
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [refreshMaterials]);
   const activeItemSelectKey = isServiceReturn || isDirectService ? "service" : isFgType ? "fg" : mrrType === "Reel" ? "reel" : "material";
 
   const supplierOptions = useMemo(
@@ -3324,9 +3346,21 @@ export function MaterialInForm({ directService = false }: { directService?: bool
               </div>
             ) : null}
             <div className={`flex flex-col space-y-1 w-full ${isDirectService ? "md:min-w-[280px] md:flex-1" : "md:w-80"}`}>
-              <label className="text-sm font-bold text-black">
-                {activeItemLabel} <span className="text-red-600">*</span>
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm font-bold text-black">
+                  {activeItemLabel} <span className="text-red-600">*</span>
+                </label>
+                {canAddNewMaterial ? (
+                  <button
+                    type="button"
+                    onClick={openNewMaterial}
+                    title="Add a new material to the Material Master (opens in a new tab; this form stays as it is)"
+                    className="inline-flex items-center gap-1 rounded border border-black bg-white px-2 py-0.5 text-xs font-bold text-black hover:bg-slate-100"
+                  >
+                    <Plus size={13} /> New Material
+                  </button>
+                ) : null}
+              </div>
               <Select key={`${activeItemSelectKey}-${currentItemSource}`} options={activeItemOptions} value={currentItemId} onChange={setCurrentItemId} placeholder={activeItemPlaceholder} />
             </div>
             {isServiceReturn ? (

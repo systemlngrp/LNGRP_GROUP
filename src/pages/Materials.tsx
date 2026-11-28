@@ -19,6 +19,7 @@ import { getNextPlainNumber } from "../lib/materialNumbering";
 import { useConfirm } from "../components/ConfirmDialog";
 import { OPENING_REEL_MATERIAL_IN_ID, isOpeningReelPackingSlip } from "../lib/materialMovement";
 import { findUnitOneFirm } from "../lib/unitOneFirm";
+import { CREATED_MATERIAL_STORAGE_KEY } from "../lib/createdMaterialSignal";
 import { useTableSearch } from "../lib/tableSearch";
 import { SortHeader, useTableSort, type SortState } from "../lib/tableSort";
 
@@ -153,6 +154,7 @@ export function Materials() {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const returnToRef = useRef("");
+  const closeAfterSaveRef = useRef(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [firms] = useData<Firm>("firms", []);
   const [selectedFirmId, setSelectedFirmId] = useState("");
@@ -626,11 +628,14 @@ export function Materials() {
     // Opened from another form's + button: go back there after saving.
     const returnTo = searchParams.get("returnTo") || "";
     returnToRef.current = returnTo.startsWith("/") ? returnTo : "";
+    // Opened in a new tab from the MRR form's + button: tell that tab and close after saving.
+    closeAfterSaveRef.current = searchParams.get("closeAfter") === "1";
     setIsFormOpen(true);
     const next = new URLSearchParams(searchParams);
     next.delete("new");
     next.delete("type");
     next.delete("returnTo");
+    next.delete("closeAfter");
     setSearchParams(next, { replace: true });
   }, [firms, isFormOpen, materials, reelErpStartNumber, reelGroup, searchParams, setSearchParams]);
 
@@ -1259,6 +1264,12 @@ export function Materials() {
         await setPackingSlips(packingSlips.filter((slip) => !(slip.materialId === editingId && slip.firmId === firmId && isOpeningReelPackingSlip(slip))));
       }
       resetForm(nextMaterials, reelGroupId);
+      if (closeAfterSaveRef.current && !editingId) {
+        closeAfterSaveRef.current = false;
+        try { window.localStorage.setItem(CREATED_MATERIAL_STORAGE_KEY, JSON.stringify({ id: materialId, at: Date.now() })); } catch { /* storage blocked */ }
+        window.close();
+        return;
+      }
       if (returnToRef.current && !editingId) {
         const target = returnToRef.current;
         returnToRef.current = "";
