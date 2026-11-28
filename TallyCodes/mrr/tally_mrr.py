@@ -1703,7 +1703,7 @@ def get_pending_mrrs(
                    `totalInvoiceValue`, `totalActualValue`, `totalInvoiceValueAfterGst`,
                    `totalCgst`, `totalSgst`, `totalIgst`, `insurance`, `otherCharges`,
                    `expenseCGST`, `expenseSGST`, `expenseIGST`, `roundOff`, `tdsAmount`,
-                   `netSupplierPayable`, `lines`, `status`, `tallyTimestamp`, `firmId`
+                   `netSupplierPayable`, `lines`, `status`, `tallyTimestamp`, `firmId`, `narration`
             FROM `material_in`
             WHERE LOWER(TRIM(COALESCE(`status`, ''))) = 'pending tally'
               AND (`tallyTimestamp` IS NULL OR TRIM(`tallyTimestamp`) = '')

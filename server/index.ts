@@ -4171,6 +4171,7 @@ async function ensureInterFirmSchema(db: mysql.Pool, database: string) {
   for (const table of ["gate_entries", "material_in"]) {
     try { await ensureColumnExists(db, database, table, "firmName", "VARCHAR(255)"); } catch {}
   }
+  try { await ensureColumnExists(db, database, "material_in", "narration", "VARCHAR(1000) NULL"); } catch {}
   // How a reel issue was made: MANUAL (Manual Reel Issue form) or QR (QR scan).
   try { await ensureColumnExists(db, database, "material_issues", "issueMethod", "VARCHAR(20)"); } catch {}
   // Older deployments may not have received the global audit-column

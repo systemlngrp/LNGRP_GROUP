@@ -332,6 +332,9 @@ def build_purchase_mrr_xml(
         )
 
     narration = f"MRR {transaction_no} | Supplier Invoice {invoice_no}"
+    user_narration = str(mrr.get("narration") or "").strip()
+    if user_narration:
+        narration = f"{user_narration} | {narration}"
     return f"""<ENVELOPE>
         <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
         <BODY><IMPORTDATA>

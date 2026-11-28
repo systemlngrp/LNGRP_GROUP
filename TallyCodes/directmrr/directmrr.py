@@ -356,7 +356,7 @@ def get_pending_direct_service_mrrs(conn, firm_id: str):
                `invoiceNo`, `invDate`, `supplierId`, `totalAmount`,
                `totalCgst`, `totalSgst`, `totalIgst`, `insurance`,
                `otherCharges`, `roundOff`, `tdsAmount`, `lines`,
-               `status`, `tallyTimestamp`
+               `status`, `tallyTimestamp`, `narration`
         FROM `material_in`
         WHERE `mrrType` = 'Direct Service'
           AND (`tallyTimestamp` IS NULL OR `tallyTimestamp` = '')
@@ -669,6 +669,9 @@ def build_direct_service_voucher_xml(
         f"CONSIGNOR - {supplier_name}, INVOICE NO: {invoice_no}, "
         f"INVOICE VALUE: {gross_total:,.2f}"
     )
+    user_narration = str(mrr.get("narration") or "").strip()
+    if user_narration:
+        narration = f"{user_narration} | {narration}"
     return f"""
 <ENVELOPE>
     <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>

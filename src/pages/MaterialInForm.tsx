@@ -213,6 +213,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
 
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [invoiceNo, setInvoiceNo] = useState("");
+  const [narration, setNarration] = useState("");
   const [invDate, setInvDate] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [firmId, setFirmId] = useState("");
@@ -486,6 +487,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
 
     setDate(editingEntry.date || new Date().toISOString().split("T")[0]);
     setInvoiceNo(editingEntry.invoiceNo || "");
+    setNarration(String(editingEntry.narration || ""));
     setInvDate(editingEntry.invDate || "");
     const loadedCurrency = normalizeInvoiceCurrency(editingEntry.invoiceCurrency);
     const loadedExchangeRate = loadedCurrency === "USD" ? (editingEntry.exchangeRate ?? "") : "";
@@ -2709,6 +2711,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
           entryEmailId: editingEntry?.entryEmailId || "system@lngrp.in",
           date,
           invoiceNo,
+          narration: narration.trim(),
           invDate,
           supplierId,
           invoiceCurrency: normalizedInvoiceCurrency,
@@ -3320,6 +3323,16 @@ export function MaterialInForm({ directService = false }: { directService?: bool
             )}
           </div>
         </div>
+        <div className="mt-4 flex flex-col space-y-1">
+          <label className="font-bold text-black">Narration</label>
+          <textarea
+            value={narration}
+            onChange={(e) => setNarration(e.target.value.slice(0, 1000))}
+            rows={2}
+            placeholder="Optional. Goes to Tally as the voucher narration."
+            className="w-full rounded border-2 border-black bg-yellow-50 p-2 text-black focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
 
         <div className="mt-6 border-t border-black pt-4">
           <h3 className="text-lg font-bold text-black mb-4 uppercase">
@@ -3861,6 +3874,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                     ["Supplier", getPartyName(supplierId) || "-"],
                     ["Invoice No", invoiceNo || "-"],
                     ["Invoice Date", invDate ? formatDate(invDate) : "-"],
+                    ...(narration.trim() ? [["Narration", narration.trim()]] : []),
                     ...(linkedGateEntry ? [["Gate Entry", String(linkedGateEntry.gateEntryNo || "-")]] : []),
                     ...(isUsdInvoice ? [["Currency", `USD @ ${numericExchangeRate}`]] : []),
                   ].map(([label, value]) => (

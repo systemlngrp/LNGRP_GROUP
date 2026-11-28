@@ -803,6 +803,8 @@ export interface MaterialIn {
   entryEmailId: string;
   date: string;
   invoiceNo: string;
+  /** Free-text narration; sent to Tally as the voucher narration. */
+  narration?: string;
   invDate: string;
   supplierId: string;
   mrrSource?: "Manual" | "System Generated" | string;
