@@ -447,6 +447,25 @@ export function PendingInvoicing() {
     };
   }, [plans, orders, companies, loadingSlips, invoiceLineItems]);
 
+  // Order No, PO No and PO Rate of a loading slip: one entry per order, from
+  // each slip line's dispatch plan (slip -> dispatch plan -> order).
+  const slipOrderDetails = (slip: LoadingSlip) => {
+    const seen = new Map<string, { key: string; orderNo: string; poNumber: string; rate: number | null }>();
+    (slip.lines || []).forEach((line: any) => {
+      const plan = lookup.planById.get(String(line?.dispatchPlanId || ""));
+      const order = plan ? lookup.orderById.get(String(plan.orderId || "")) : undefined;
+      const key = order?.id || (slip.loadingSource === "DIRECT" ? "__direct__" : `__none__${line?.dispatchPlanId || ""}`);
+      if (seen.has(key)) return;
+      seen.set(key, {
+        key,
+        orderNo: order ? String(order.orderNo || "-") : slip.loadingSource === "DIRECT" ? "Direct Loading" : "No order",
+        poNumber: order ? String(order.poNumber || "No PO") : "-",
+        rate: order ? Number(order.rate || 0) : null,
+      });
+    });
+    return Array.from(seen.values());
+  };
+
   // Same rule as the dashboard's Pending Invoicing count (lib/pendingInvoicing).
   const pendingInvoicingContext = useMemo(
     () => ({
@@ -1448,6 +1467,7 @@ export function PendingInvoicing() {
                             </div>
                             {slipBlockReasons.has(s.id) ? <div className="mb-1 space-y-0.5 rounded border border-red-400 bg-red-50 px-1.5 py-1 text-[10px] font-black text-red-700">{(slipBlockReasons.get(s.id) || []).map((reason) => <div key={reason}>⛔ {reason}</div>)}</div> : <div className="mb-1 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-black text-emerald-800">✓ Ready for invoice</div>}<div className="text-[11px] font-semibold text-slate-700">{formatDate(s.date)} · <span className="font-bold uppercase text-indigo-700">{s.truckNo || trucks.find(t => t.id === s.truckId)?.truckNo || "N/A"}</span></div>
                             <div className="mt-1 space-y-0.5">{s.items.map((itemName) => <div key={itemName} className="break-words text-xs font-semibold">{itemName}</div>)}</div>
+                            <div className="mt-1 space-y-0.5">{slipOrderDetails(s).map((d) => <div key={d.key} className="text-[11px] font-semibold text-slate-700">{d.orderNo} · {d.poNumber}{d.rate === null ? "" : ` · Rate ${d.rate}`}</div>)}</div>
                           </div>
                         </div>
                       </label>
@@ -1464,6 +1484,9 @@ export function PendingInvoicing() {
                       <th className="w-[110px] px-3 py-2 text-left text-[10px] font-bold uppercase"><SortHeader label={"Date"} sortKey="date" sort={slipSort} onToggle={toggleSlipSort} align="left" /></th>
                       <th className="w-[130px] px-3 py-2 text-left text-[10px] font-bold uppercase"><SortHeader label={"Truck No"} sortKey="truckNo" sort={slipSort} onToggle={toggleSlipSort} align="left" /></th>
                       <th className="min-w-[360px] px-3 py-2 text-left text-[10px] font-bold uppercase"><SortHeader label={"Item Name(s)"} sortKey="items" sort={slipSort} onToggle={toggleSlipSort} align="left" /></th>
+                      <th className="w-[170px] px-3 py-2 text-left text-[10px] font-bold uppercase">Order No</th>
+                      <th className="w-[130px] px-3 py-2 text-left text-[10px] font-bold uppercase">PO No</th>
+                      <th className="w-[90px] px-3 py-2 text-right text-[10px] font-bold uppercase">PO Rate</th>
                       <th className="w-[120px] px-3 py-2 text-right text-[10px] font-bold uppercase"><SortHeader label={"Total Qty"} sortKey="totalQty" sort={slipSort} onToggle={toggleSlipSort} align="right" /></th>
                       <th className="w-[140px] px-3 py-2 text-center text-[10px] font-bold uppercase">Action</th>
                     </tr>
@@ -1497,6 +1520,16 @@ export function PendingInvoicing() {
                             ))}
                           </div>
                         </td>
+                        {(() => {
+                          const details = slipOrderDetails(s);
+                          return (
+                            <>
+                              <td className="px-3 py-2 text-xs font-bold whitespace-nowrap"><div className="space-y-1">{details.map((d) => <div key={d.key} className={d.rate === null ? "text-slate-500" : ""}>{d.orderNo}</div>)}</div></td>
+                              <td className="px-3 py-2 text-xs whitespace-nowrap"><div className="space-y-1">{details.map((d) => <div key={d.key}>{d.poNumber}</div>)}</div></td>
+                              <td className="px-3 py-2 text-xs text-right font-bold whitespace-nowrap"><div className="space-y-1">{details.map((d) => <div key={d.key}>{d.rate === null ? "-" : d.rate}</div>)}</div></td>
+                            </>
+                          );
+                        })()}
                         <td className="px-3 py-2 text-xs text-right font-medium">{s.totalQty.toLocaleString()}</td>
                         <td className="px-3 py-2 text-center">
                           <button type="button" onClick={() => setAdjustSlipId(s.id)} className="rounded border border-black bg-white px-2 py-1 text-[11px] font-bold uppercase hover:bg-slate-100" title="Correct loaded qty per job and enter loading wastage">Adjust Loading</button>
