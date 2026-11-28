@@ -132,6 +132,9 @@ export function InvoicesMaster() {
     canManage && currentSetting?.allowInvoiceTallyEdit === "Yes" &&
     Boolean(currentUserEmail) &&
     allowedInvoiceEditUsers.includes(currentUserEmail);
+  // Invoice No / Tally Inv No inline edit: also never for invoices before 17-Nov-2026.
+  const canInlineEditInvoice = (invoice: Invoice | null | undefined) =>
+    canEditInvoiceFields && String(invoice?.date || "").slice(0, 10) >= "2026-11-17";
   // Invoices from before the app went live (17-Nov-2026) can never be edited, by anyone.
   const canFullEditInvoice = (invoice: Invoice | null | undefined) =>
     Boolean(canManage && invoice) &&
@@ -292,6 +295,7 @@ export function InvoicesMaster() {
   };
 
   const startInlineEdit = (invoice: Invoice) => {
+    if (!canInlineEditInvoice(invoice)) return;
     setEditingInvoiceId(invoice.id);
     setEditDraft({
       invoiceNo: String(invoice.invoiceNo || ""),
@@ -306,6 +310,7 @@ export function InvoicesMaster() {
   };
 
   const saveInlineEdit = async (invoice: Invoice) => {
+    if (!canInlineEditInvoice(invoice)) return;
     const nextInvoiceNo = editDraft.invoiceNo.trim();
     const nextTallyInvNo = editDraft.tallyInvNo.trim();
     const baseInvoice = invoices.find((row) => row.id === invoice.id) || invoice;
@@ -636,7 +641,7 @@ export function InvoicesMaster() {
                       </button>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
-                      {canEditInvoiceFields && editingInvoiceId === invoice.id ? (
+                      {canInlineEditInvoice(invoice) && editingInvoiceId === invoice.id ? (
                         <div className="space-y-1">
                           <div className="flex items-center">
                             <Receipt size={14} className="text-indigo-600 mr-2" />
@@ -659,7 +664,7 @@ export function InvoicesMaster() {
                     <td className="px-4 py-4 text-sm font-medium">{invoice.companyName}</td>
                     <td className="px-4 py-4 whitespace-nowrap text-xs text-slate-600">{formatDate(invoice.date)}</td>
                     <td className="px-4 py-4 whitespace-nowrap text-xs">
-                      {canEditInvoiceFields && editingInvoiceId === invoice.id ? (
+                      {canInlineEditInvoice(invoice) && editingInvoiceId === invoice.id ? (
                         <input
                           type="text"
                           value={editDraft.tallyInvNo}
@@ -702,7 +707,7 @@ export function InvoicesMaster() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <div className="flex justify-center gap-2">
-                        {canEditInvoiceFields && (
+                        {canInlineEditInvoice(invoice) && (
                           editingInvoiceId === invoice.id ? (
                             <>
                               <button
