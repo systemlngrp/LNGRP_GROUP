@@ -11686,6 +11686,8 @@ async function initDb(retries = 5) {
                 await ensureColumnExists(db, database, "dispatch_plans", "orderFirmId", "VARCHAR(36) NULL");
                 await ensureColumnExists(db, database, "loading_slips", "firmId", "VARCHAR(36) NULL");
                 await ensureColumnExists(db, database, "loading_slips", "orderFirmId", "VARCHAR(36) NULL");
+                // Each invoice line keeps the order of its loading slip (slip -> dispatch plan -> order).
+                await ensureColumnExists(db, database, "invoice_line_items", "orderId", "VARCHAR(36) NULL");
                 try {
                     await db.query("UPDATE `dispatch_plans` p LEFT JOIN `orders` o ON o.id = p.orderId LEFT JOIN `orders_schedule` os ON os.id = p.scheduleId SET p.firmId = COALESCE(NULLIF(o.firmId, ''), NULLIF(os.firmId, '')), p.orderFirmId = COALESCE(NULLIF(o.firmId, ''), NULLIF(os.firmId, '')) WHERE COALESCE(p.firmId, '') = '' OR COALESCE(p.orderFirmId, '') = ''");
                 }
