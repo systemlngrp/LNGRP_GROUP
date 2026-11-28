@@ -133,3 +133,6 @@ Traceback (most recent call last):
     )
 RuntimeError: Posting skipped because 1 stock item(s) did not match Tally: Raw material: 7020186 - Size: 200 CM X GSM: 120 X BF: 18   Color - LG
 2026-10-28 15:37:09,940 | INFO | Finished Tally Manufacturing Journal posting
+2026-11-28 14:11:12,446 | INFO | Starting Tally Manufacturing Journal posting
+2026-11-28 14:11:12,447 | INFO | Build signature: 2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS
+2026-11-28 14:11:13,011 | INFO | Finished Tally Manufacturing Journal posting

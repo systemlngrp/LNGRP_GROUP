@@ -24,9 +24,9 @@ def resolve_log_dir() -> Path:
 
 LOG_DIR = resolve_log_dir()
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-LOG_FILE = LOG_DIR / "manufacturingjournallog.log"
-BUILD_SIGNATURE = "2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS"
-POSTED_BY = "tally_manufacturing_journal_posting.py"
+LOG_FILE = LOG_DIR / "mrr_tally.log"
+BUILD_SIGNATURE = "2026-11-28 MRR_INVENTORY_PURCHASE"
+POSTED_BY = "tally_mrr.py"
 
 REEL_GROUP = str(os.getenv("LNPI_TALLY_REEL_GROUP") or os.getenv("TALLY_REEL_GROUP") or "PAPER IN REEL FORM").strip()
 OTHER_GROUP = "OTHER"
@@ -66,6 +66,7 @@ def load_env_file() -> None:
         Path(explicit_env).expanduser() if explicit_env else None,
         Path.cwd() / ".env",
         BASE_DIR / ".env",
+        BASE_DIR / "invoice" / ".env",
         BASE_DIR.parent / ".env",
         BASE_DIR.parent.parent / ".env",
     ]
@@ -90,10 +91,10 @@ TALLY_READ_TIMEOUT = float(os.getenv("TALLY_READ_TIMEOUT", "120"))
 REQUEST_TIMEOUT = (TALLY_CONNECT_TIMEOUT, TALLY_READ_TIMEOUT)
 
 DB_CONFIG = {
-    "host": os.getenv("DB_HOST") or os.getenv("LNPI_DB_HOST", "193.203.184.152"),
-    "user": os.getenv("DB_USER") or os.getenv("LNPI_DB_USER", "u380633007_lnpidata"),
-    "password": os.getenv("DB_PASSWORD") or os.getenv("LNPI_DB_PASSWORD", "!Office1@"),
-    "database": os.getenv("DB_NAME") or os.getenv("LNPI_DB_NAME", "u380633007_lnpidata"),
+    "host": os.getenv("DB_HOST") or os.getenv("LNPI_DB_HOST", ""),
+    "user": os.getenv("DB_USER") or os.getenv("LNPI_DB_USER", ""),
+    "password": os.getenv("DB_PASSWORD") or os.getenv("LNPI_DB_PASSWORD", ""),
+    "database": os.getenv("DB_NAME") or os.getenv("LNPI_DB_NAME", ""),
     "port": int(os.getenv("DB_PORT") or os.getenv("LNPI_DB_PORT", "3306")),
     "use_pure": True,
 }
@@ -720,6 +721,19 @@ def compact_xml_for_log(xml_text: str, max_length: int = 1200) -> str:
 
 
 def get_db_connection():
+    required_settings = {
+        "host": "DB_HOST",
+        "user": "DB_USER",
+        "password": "DB_PASSWORD",
+        "database": "DB_NAME",
+    }
+    missing = [env_name for key, env_name in required_settings.items() if not DB_CONFIG.get(key)]
+    if missing:
+        raise RuntimeError(
+            "Database settings are missing: "
+            + ", ".join(missing)
+            + ". Configure them in .env or set LNPI_ENV_FILE."
+        )
     try:
         return mysql.connector.connect(**DB_CONFIG)
     except mysql.connector.Error as error:
@@ -1644,15 +1658,23 @@ def resolve_firm(conn, firm_number: int) -> dict[str, Any]:
     short_placeholders = ", ".join("%s" for _ in config["short_names"])
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute(
-            f"""SELECT id, firmName, shortName, tallyPortNo
-                FROM firms
-                WHERE {name_conditions}
-                   OR UPPER(TRIM(COALESCE(shortName, ''))) IN ({short_placeholders})
-                ORDER BY id
-                LIMIT 1""",
-            (*config["names"], *(name.upper() for name in config["short_names"])),
-        )
+        try:
+            cursor.execute(
+                f"""SELECT id, firmName, shortName, tallyPortNo
+                    FROM firms
+                    WHERE {name_conditions}
+                       OR UPPER(TRIM(COALESCE(shortName, ''))) IN ({short_placeholders})
+                    ORDER BY id
+                    LIMIT 1""",
+                (*config["names"], *(name.upper() for name in config["short_names"])),
+            )
+        except mysql.connector.Error as error:
+            if getattr(error, "errno", None) == 1146:
+                raise RuntimeError(
+                    f"The configured database '{DB_CONFIG['database']}' does not contain the "
+                    "`firms` table. Check DB_NAME and the .env file used by this script."
+                ) from error
+            raise
         firm = cursor.fetchone()
     finally:
         cursor.close()
@@ -1668,6 +1690,122 @@ def resolve_firm(conn, firm_number: int) -> dict[str, Any]:
     if not firm_id or not firm_name or not 1 <= port <= 65535:
         raise RuntimeError(f"{config['label']} has invalid firm configuration.")
     return {**firm, "id": firm_id, "firmName": firm_name, "tallyPortNo": port, "label": config["label"]}
+
+
+def get_pending_mrrs(
+    conn, firm_id: str | None = None, mrr_no: str | None = None
+) -> list[dict[str, Any]]:
+    cursor = conn.cursor(dictionary=True)
+    try:
+        query = """
+            SELECT `id`, `transactionNo`, `mrrType`, `date`, `timestamp`,
+                   `invoiceNo`, `invDate`, `supplierId`, `totalAmount`,
+                   `totalInvoiceValue`, `totalActualValue`, `totalInvoiceValueAfterGst`,
+                   `totalCgst`, `totalSgst`, `totalIgst`, `insurance`, `otherCharges`,
+                   `expenseCGST`, `expenseSGST`, `expenseIGST`, `roundOff`, `tdsAmount`,
+                   `netSupplierPayable`, `lines`, `status`, `tallyTimestamp`, `firmId`
+            FROM `material_in`
+            WHERE LOWER(TRIM(COALESCE(`status`, ''))) = 'pending tally'
+              AND (`tallyTimestamp` IS NULL OR TRIM(`tallyTimestamp`) = '')
+              AND LOWER(TRIM(COALESCE(`mrrType`, ''))) <> 'direct service'
+        """
+        params: tuple[str, ...] = ()
+        if firm_id:
+            query += " AND `firmId` = %s"
+            params = (firm_id,)
+        if mrr_no:
+            query += " AND `transactionNo` = %s"
+            params += (mrr_no,)
+        query += " ORDER BY `timestamp` ASC, `transactionNo` ASC"
+        cursor.execute(query, params)
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+
+
+def fetch_tally_vouchers_for_duplicate_check(
+    company_name: str | None,
+    voucher_type: str,
+    supplier_name: str,
+    from_date: str,
+    to_date: str,
+) -> list[dict[str, Any]]:
+    safe_type = escape_xml(voucher_type)
+    safe_supplier = escape_tally_formula_text(supplier_name)
+    xml_text = f"""
+    <ENVELOPE>
+        <HEADER>
+            <VERSION>1</VERSION>
+            <TALLYREQUEST>Export</TALLYREQUEST>
+            <TYPE>Collection</TYPE>
+            <ID>TargetPartyVouchers</ID>
+        </HEADER>
+        <BODY>
+            <DESC>
+                <STATICVARIABLES>
+                    {build_company_static_variables(company_name)}
+                    <SVFROMDATE>{escape_xml(from_date)}</SVFROMDATE>
+                    <SVTODATE>{escape_xml(to_date)}</SVTODATE>
+                    <VOUCHERTYPENAME>{safe_type}</VOUCHERTYPENAME>
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+                <TDL>
+                    <TDLMESSAGE>
+                        <COLLECTION NAME="TargetPartyVouchers" ISMODIFY="No">
+                            <TYPE>Voucher</TYPE>
+                            <FETCH>DATE</FETCH>
+                            <FETCH>VOUCHERNUMBER</FETCH>
+                            <FETCH>REFERENCE</FETCH>
+                            <FETCH>PartyLedgerName</FETCH>
+                            <FETCH>VOUCHERTYPENAME</FETCH>
+                            <FILTERS>OnlyTargetParty</FILTERS>
+                        </COLLECTION>
+                        <SYSTEM TYPE="Formulae" NAME="OnlyTargetParty">
+                            $$StringEqual:$PartyLedgerName:"{safe_supplier}"
+                        </SYSTEM>
+                    </TDLMESSAGE>
+                </TDL>
+            </DESC>
+        </BODY>
+    </ENVELOPE>
+    """
+
+    response_text = post_xml_to_tally(xml_text)
+    vouchers: list[dict[str, Any]] = []
+    cleaned = clean_tally_xml(response_text)
+    try:
+        root = ET.fromstring(cleaned)
+    except ET.ParseError as error:
+        raise RuntimeError("Tally returned an unreadable voucher export during the duplicate check.") from error
+    if root.tag.upper() != "ENVELOPE":
+        raise RuntimeError("Tally returned an invalid voucher export during the duplicate check.")
+    export_status = root.findtext(".//HEADER/STATUS")
+    if export_status and export_status.strip() == "0":
+        raise RuntimeError("Tally rejected the Purchase voucher duplicate-check export.")
+
+    supplier_lookup = normalize_lookup_token(supplier_name)
+    for block in re.findall(r"<VOUCHER\b[^>]*>.*?</VOUCHER>", cleaned, flags=re.IGNORECASE | re.DOTALL):
+        def voucher_field(tag: str) -> str:
+            return clean_tally_text(extract_first_tag_value(block, tag))
+
+        party = voucher_field("PARTYLEDGERNAME") or voucher_field("PARTYNAME")
+        if supplier_lookup and normalize_lookup_token(party) != supplier_lookup:
+            continue
+        opening_tag = block.split(">", 1)[0]
+        type_match = re.search(r'\bVCHTYPE="([^"]*)"', opening_tag, flags=re.IGNORECASE)
+        exported_type = voucher_field("VOUCHERTYPENAME") or (
+            clean_tally_text(type_match.group(1)) if type_match else ""
+        )
+        if exported_type and normalize_lookup_token(exported_type) != normalize_lookup_token(voucher_type):
+            continue
+        vouchers.append({
+            "date": voucher_field("DATE"),
+            "voucherNumber": voucher_field("VOUCHERNUMBER"),
+            "reference": voucher_field("REFERENCE"),
+            "partyLedgerName": party,
+            "voucherType": exported_type,
+        })
+    return vouchers
 
 
 def get_pending_jobs(conn, firm_id: str | None = None) -> list[dict[str, Any]]:
@@ -2453,62 +2591,22 @@ def process_one_job(conn, company_name: str | None, tally_groups: set[str], job:
         f"Tally rejected Manufacturing Journal {job['voucherNo']}: {response_error_message(response_text)}"
     )
 
-def main(firm_number: int | None = None) -> None:
-    LOGGER.info("Starting Tally Manufacturing Journal posting")
-    LOGGER.info("Build signature: %s", BUILD_SIGNATURE)
-    conn = get_db_connection()
+def main(firm_number: int | None = None, dry_run: bool = False, mrr_no: str | None = None) -> None:
     try:
-        firm_numbers = [firm_number] if firm_number is not None else sorted(FIRM_CONFIG)
-        for selected_firm_number in firm_numbers:
-            global TALLY_URL_CANDIDATES, ACTIVE_TALLY_URL
-            firm = resolve_firm(conn, selected_firm_number)
-            TALLY_URL_CANDIDATES = build_tally_url_candidates(firm["tallyPortNo"])
-            ACTIVE_TALLY_URL = None
-            company_name = firm["firmName"]
-            LOGGER.info(
-                "Selected %s | firm_id=%s | company=%s | Tally port=%s",
-                firm["label"], firm["id"], company_name, firm["tallyPortNo"],
-            )
-            LOGGER.info("Tally URL candidates: %s", ", ".join(TALLY_URL_CANDIDATES))
-
-            tally_groups = get_tally_groups()
-            LOGGER.info("Found %s stock group(s) in Tally", len(tally_groups))
-            pending_jobs = get_pending_jobs(conn, firm["id"])
-            LOGGER.info("Found %s eligible job(s) for %s", len(pending_jobs), firm["label"])
-            prepared_jobs: list[dict[str, Any]] = []
-            for production in pending_jobs:
-                try:
-                    job = build_job_context(conn, production)
-                    validate_job_context(job)
-                    prepared_jobs.append(job)
-                except Exception as error:
-                    transaction_no = production.get("transactionNo") or production.get("id")
-                    LOGGER.exception("ERROR in job %s: %s", transaction_no, error)
-                    mark_error(conn, str(production["id"]), str(error))
-
-            matched_jobs: list[dict[str, Any]] = []
-            for job in prepared_jobs:
-                production = job["production"]
-                try:
-                    ensure_stock_items_for_jobs(company_name, [job], tally_groups)
-                    matched_jobs.append(job)
-                except Exception as error:
-                    transaction_no = production.get("transactionNo") or production.get("id")
-                    LOGGER.exception("Stock-item matching failed for job %s: %s", transaction_no, error)
-                    mark_error(conn, str(production["id"]), str(error))
-
-            for job in matched_jobs:
-                production = job["production"]
-                try:
-                    process_one_job(conn, company_name, tally_groups, job)
-                except Exception as error:
-                    transaction_no = production.get("transactionNo") or production.get("id")
-                    LOGGER.exception("ERROR in job %s: %s", transaction_no, error)
-                    mark_error(conn, str(production["id"]), str(error))
-    finally:
-        conn.close()
-        LOGGER.info("Finished Tally Manufacturing Journal posting")
+        from mrr_posting import run_pending_mrrs
+    except ModuleNotFoundError as error:
+        if error.name != "mrr_posting":
+            raise
+        from TallyCodes.mrr.mrr_posting import run_pending_mrrs
+    run_pending_mrrs(firm_number=firm_number, dry_run=dry_run, mrr_no=mrr_no)
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Post approved material MRRs as Tally Purchase vouchers.")
+    parser.add_argument("--firm", type=int, choices=sorted(FIRM_CONFIG), help="Process only one firm.")
+    parser.add_argument("--mrr", help="Process only this MRR transaction number.")
+    parser.add_argument("--dry-run", action="store_true", help="Build and print voucher XML without posting or updating the database.")
+    args = parser.parse_args()
+    main(firm_number=args.firm, dry_run=args.dry_run, mrr_no=args.mrr)
