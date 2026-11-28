@@ -1814,11 +1814,13 @@ export function Materials() {
                   maxLength={formData.type === "Other" ? 8 : undefined}
                   required
                   value={formData.erpCode}
+                  onFocus={(e) => e.currentTarget.select()}
+                  title="Suggested next ERP code. You can type your own."
                   onChange={(e) => setFormData((prev) => ({
                     ...prev,
                     erpCode: prev.type === "Other" ? e.target.value.replace(/\D/g, "").slice(0, 8) : e.target.value,
                   }))}
-                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                  className="w-full rounded border-2 border-black bg-yellow-50 px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                 />
               </div>
 
