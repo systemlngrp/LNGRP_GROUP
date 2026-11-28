@@ -398,14 +398,14 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   );
 
   const activeItemOptions = isServiceReturn || isDirectService ? serviceOptions : materialOptions;
-  const activeItemLabel = isServiceReturn || isDirectService ? "Service" : isFgType ? "FG Item" : "Material";
-  const activeItemPlaceholder = isServiceReturn || isDirectService ? "Select Service..." : isFgType ? "Select Item..." : "Select Material...";
+  const activeItemLabel = isDirectService ? "Expense" : isServiceReturn ? "Service" : isFgType ? "FG Item" : "Material";
+  const activeItemPlaceholder = isDirectService ? "Select Expense..." : isServiceReturn ? "Select Service..." : isFgType ? "Select Item..." : "Select Material...";
   const saveNewService = async () => {
     const name = newServiceName.trim().replace(/\s+/g, " ");
     if (!name) return;
     const existing = services.find((service) => service.name.trim().toLowerCase() === name.toLowerCase());
     if (existing) {
-      if (existing.active === "No") { alert(`"${existing.name}" already exists but is inactive. Activate it in Masters → Services.`); return; }
+      if (existing.active === "No") { alert(`"${existing.name}" already exists but is inactive. Activate it in Masters → Expenses.`); return; }
       setCurrentItemId(existing.id);
       setNewServiceOpen(false);
       setNewServiceName("");
@@ -420,7 +420,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
       setNewServiceName("");
     } catch (error) {
       console.error("Failed to save service:", error);
-      alert("Could not save the service.");
+      alert("Could not save the expense.");
     } finally {
       setSavingNewService(false);
     }
@@ -1323,7 +1323,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
       const service = services.find((entry) => entry.id === currentItemId && entry.active !== "No");
       const amount = Number(currentInvoiceRate || 0);
       if (!service || amount <= 0) {
-        alert("Select an active service and enter a service amount greater than 0.");
+        alert("Select an active expense and enter an amount greater than 0.");
         return;
       }
 
@@ -2904,7 +2904,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   return (
     <div className="bg-white p-6 rounded shadow-sm border border-black text-black">
       <h2 className="text-xl font-bold text-black mb-6 uppercase tracking-tight border-b border-black pb-2">
-        {isDirectService ? (editingEntry ? "Edit Direct Service MRR" : "Direct Service Form") : editingEntry ? "Edit MRR" : "Material Receipt Report (MRR) Form"}
+        {isDirectService ? (editingEntry ? "Edit Expense MRR" : linkedGateEntry ? "Expense MRR" : "Expense Form") : editingEntry ? "Edit MRR" : "Material Receipt Report (MRR) Form"}
       </h2>
       <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col space-y-4">
         {linkedGateEntry ? (
@@ -3366,7 +3366,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
 
         <div className="mt-6 border-t border-black pt-4">
           <h3 className="text-lg font-bold text-black mb-4 uppercase">
-            {isDirectService ? "Add Service" : isJobWorkReturn ? "Job Work Return (job worker's bill)" : isServiceReturn ? "Service Return Lines" : isFgType ? "FG Items" : (mrrType === "Reel" ? "Reel Items" : "Line Items")}
+            {isDirectService ? "Add Expense" : isJobWorkReturn ? "Job Work Return (job worker's bill)" : isServiceReturn ? "Service Return Lines" : isFgType ? "FG Items" : (mrrType === "Reel" ? "Reel Items" : "Line Items")}
           </h3>
           <div className="flex flex-wrap gap-4 items-end mb-4 bg-slate-50 p-4 rounded border border-black">
             {mrrType === "FG Purchase" && !isServiceReturn && !isDirectService ? (
@@ -3397,10 +3397,10 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                   <button
                     type="button"
                     onClick={() => { setNewServiceName(""); setNewServiceOpen(true); }}
-                    title="Add a new service to the Services master. Its name is used as the Tally ledger name."
+                    title="Add a new expense to the Expenses master. Its name is used as the Tally ledger name."
                     className="inline-flex items-center gap-1 rounded border border-black bg-white px-2 py-0.5 text-xs font-bold text-black hover:bg-slate-100"
                   >
-                    <Plus size={13} /> New Service
+                    <Plus size={13} /> New Expense
                   </button>
                 ) : null}
                 {canAddNewMaterial ? (
@@ -3421,7 +3421,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                     value={newServiceName}
                     onChange={(e) => setNewServiceName(e.target.value.slice(0, 200))}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveNewService(); } if (e.key === "Escape") setNewServiceOpen(false); }}
-                    placeholder="New service name (same as the Tally ledger)"
+                    placeholder="New expense name (same as the Tally ledger)"
                     className="w-full rounded border-2 border-black bg-yellow-50 p-[6px] text-black focus:border-indigo-600 focus:outline-none"
                   />
                   <div className="flex justify-end gap-2">
@@ -3486,7 +3486,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
               </div>
             ) : null}
             <div className={`flex flex-col space-y-1 w-full ${isDirectService ? "md:w-48" : "md:w-24"}`}>
-              <label className="text-sm font-bold text-black whitespace-nowrap">{isDirectService ? `Service Amount (${isUsdInvoice ? "USD" : "INR"})` : isUsdInvoice ? "Invoice Rate (USD)" : "Invoice Rate (INR)"}</label>
+              <label className="text-sm font-bold text-black whitespace-nowrap">{isDirectService ? `Expense Amount (${isUsdInvoice ? "USD" : "INR"})` : isUsdInvoice ? "Invoice Rate (USD)" : "Invoice Rate (INR)"}</label>
               <input
                 type="number"
                 value={currentInvoiceRate || ""}
@@ -3506,12 +3506,12 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                 <table className="min-w-full divide-y divide-black border-collapse border border-black">
                   <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
                     <tr className="divide-x divide-black">
-                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService || isServiceReturn ? "Service" : isFgType ? "Item" : "Material"}</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService ? "Expense" : isServiceReturn ? "Service" : isFgType ? "Item" : "Material"}</th>
                       {isServiceReturn ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Returned Item</th> : null}
                       {showPoLineSelection ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Our PO No.</th> : null}
                       {showPoLineSelection ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">PO Rate</th> : null}
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService ? "Quantity" : isJobWorkReturn ? "Billed Qty" : isServiceReturn ? "Return Qty" : isFgType ? "Item Receipt" : "Invoice Qty"}</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService ? `Service Amount (${isUsdInvoice ? "USD" : "INR"})` : isUsdInvoice ? "Invoice Rate (USD)" : "Invoice Rate (INR)"}</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService ? `Expense Amount (${isUsdInvoice ? "USD" : "INR"})` : isUsdInvoice ? "Invoice Rate (USD)" : "Invoice Rate (INR)"}</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">GST %</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Pre-GST Invoice Value (INR)</th>
                       {!isInterState ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">CGST %</th> : null}

@@ -90,7 +90,7 @@ const gateEntryItems: NavItem[] = [
 ];
 
 const materialReceiptItems: NavItem[] = [
-  { name: "Direct Service Form", href: "/material-in/direct-service", icon: ClipboardList },
+  { name: "Expense Form", href: "/material-in/direct-service", icon: ClipboardList },
   { name: "Pending Material Receipt", href: "/material-receipt/pending-mrr", icon: Activity, countKey: "/material-receipt/pending-mrr" },
   { name: "Material Receipt Master", href: "/material-in/master", icon: Database },
   { name: "Material Receipt (Itemized)", href: "/material-in/item-master", icon: Database },
@@ -489,7 +489,7 @@ export const NAVIGATION: NavGroup[] = [
       { name: "Machine Master", href: "/masters/machines", icon: Hammer },
       { name: "RAPC Range Master", href: "/masters/rapc-ranges", icon: Database },
       { name: "Users", href: "/masters/users", icon: Users },
-      { name: "Services", href: "/masters/services", icon: Database },
+      { name: "Expenses", href: "/masters/services", icon: Database },
       { name: "WhatsApp Master", href: "/masters/whatsapp", icon: Database },
       { name: "Firm Master", href: "/masters/firms", icon: Database },
       { name: "Settings", href: "/masters/settings", icon: Database },

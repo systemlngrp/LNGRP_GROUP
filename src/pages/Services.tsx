@@ -64,7 +64,7 @@ export function Services() {
       (service) => service.id !== editingId && service.name.toLowerCase() === normalizedName.toLowerCase()
     );
     if (duplicate) {
-      alert("A service with this name already exists.");
+      alert("An expense with this name already exists.");
       return;
     }
 
@@ -83,7 +83,7 @@ export function Services() {
       closeForm();
     } catch (error) {
       console.error("Failed to save service:", error);
-      alert("Failed to save service.");
+      alert("Failed to save expense.");
     } finally {
       setIsSubmitting(false);
     }
@@ -97,10 +97,10 @@ export function Services() {
     <div className="space-y-4">
       {isFormOpen ? (
         <div className="mx-auto w-full max-w-xl space-y-4">
-          <h2 className="text-center text-xl font-bold uppercase tracking-tight text-black">{editingId ? "Edit Service" : "New Service"}</h2>
+          <h2 className="text-center text-xl font-bold uppercase tracking-tight text-black">{editingId ? "Edit Expense" : "New Expense"}</h2>
           <form id="service-form" onSubmit={handleSubmit} className="space-y-4 rounded-lg border-2 border-black bg-white p-4">
             <label className="block">
-              <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-slate-600">Service Name *</span>
+              <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-slate-600">Expense Name * (same as the Tally ledger)</span>
               <input value={name} onChange={(e) => setName(e.target.value)} autoFocus required className="h-10 w-full rounded border-2 border-black bg-white px-3 text-sm font-bold text-black focus:border-indigo-600 focus:outline-none" />
             </label>
             <label className="block">
@@ -127,19 +127,19 @@ export function Services() {
         </div>
       ) : (
         <>
-          <MasterHeader title="Services Master" addLabel="Add Service" onAdd={openCreate} />
+          <MasterHeader title="Expenses Master" addLabel="Add Expense" onAdd={openCreate} />
 
           <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || activeFilter)} onClear={() => { setSearchTerm(""); setActiveFilter(""); }}>
             <SelectFilter label="Active" value={activeFilter} onChange={setActiveFilter} options={[{ value: "Yes", label: "Yes" }, { value: "No", label: "No" }]} />
           </ReportFilterBox>
 
-          <div className="text-xs font-bold text-slate-700">{filteredServices.length.toLocaleString()} {filteredServices.length === 1 ? "service" : "services"}</div>
+          <div className="text-xs font-bold text-slate-700">{filteredServices.length.toLocaleString()} {filteredServices.length === 1 ? "expense" : "expenses"}</div>
 
           <div className="overflow-x-auto rounded border border-black bg-white">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-30 bg-slate-100">
                 <tr>
-                  <th className="border border-black px-3 py-2 text-[11px] font-black uppercase"><SortHeader label="Service" sortKey="name" sort={sort} onToggle={toggleSort} /></th>
+                  <th className="border border-black px-3 py-2 text-[11px] font-black uppercase"><SortHeader label="Expense" sortKey="name" sort={sort} onToggle={toggleSort} /></th>
                   <th className="w-32 border border-black px-3 py-2 text-[11px] font-black uppercase">GST Claimable</th>
                   <th className="w-28 border border-black px-3 py-2 text-[11px] font-black uppercase"><SortHeader label="Active" sortKey="active" sort={sort} onToggle={toggleSort} align="center" /></th>
                   {canManage ? <th className="w-24 border border-black px-3 py-2 text-[11px] font-black uppercase">Action</th> : null}
@@ -147,7 +147,7 @@ export function Services() {
               </thead>
               <tbody>
                 {filteredServices.length === 0 ? (
-                  <tr><td colSpan={canManage ? 4 : 3} className="px-6 py-10 text-center font-medium">No services found.</td></tr>
+                  <tr><td colSpan={canManage ? 4 : 3} className="px-6 py-10 text-center font-medium">No expenses found.</td></tr>
                 ) : (
                   sortedServices.map((service) => (
                     <tr key={service.id} className="hover:bg-slate-50">
