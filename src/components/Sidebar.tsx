@@ -90,7 +90,6 @@ const gateEntryItems: NavItem[] = [
 ];
 
 const materialReceiptItems: NavItem[] = [
-  { name: "Expense Form", href: "/material-in/direct-service", icon: ClipboardList },
   { name: "Pending Material Receipt", href: "/material-receipt/pending-mrr", icon: Activity, countKey: "/material-receipt/pending-mrr" },
   { name: "Material Receipt Master", href: "/material-in/master", icon: Database },
   { name: "Material Receipt (Itemized)", href: "/material-in/item-master", icon: Database },

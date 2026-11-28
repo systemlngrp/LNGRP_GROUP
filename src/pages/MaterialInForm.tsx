@@ -475,6 +475,13 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     if (mrrType === "Reel" && unitOneFirm?.id) setFirmId(unitOneFirm.id);
   }, [mrrType, unitOneFirm?.id]);
 
+  // Expense (Direct Service) MRRs are made only from a gate entry now (Pending Material Receipt → Expense MRR).
+  useEffect(() => {
+    if (!directServiceRequested || gateEntryId || editId) return;
+    alert("Expense MRRs are made from a gate entry: open Pending Material Receipt and use Expense MRR.");
+    navigate("/material-receipt/pending-mrr", { replace: true });
+  }, [directServiceRequested, editId, gateEntryId, navigate]);
+
   useEffect(() => {
     if (!editingEntry && directServiceRequested && (!linkedGateEntry || linkedGateEntry.purpose !== "Returnable Receipt")) {
       setMrrType("Direct Service");
