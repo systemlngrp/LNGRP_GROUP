@@ -132,8 +132,11 @@ export function InvoicesMaster() {
     canManage && currentSetting?.allowInvoiceTallyEdit === "Yes" &&
     Boolean(currentUserEmail) &&
     allowedInvoiceEditUsers.includes(currentUserEmail);
+  // Invoices from before the app went live (17-Nov-2026) can never be edited, by anyone.
   const canFullEditInvoice = (invoice: Invoice | null | undefined) =>
-    Boolean(canManage && invoice) && (isPankajUser || !invoice?.tallyTimestamp);
+    Boolean(canManage && invoice) &&
+    String(invoice?.date || "").slice(0, 10) >= "2026-11-17" &&
+    (isPankajUser || !invoice?.tallyTimestamp);
 
   const toggleRow = (id: string) => {
     const next = new Set(expandedRows);

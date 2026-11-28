@@ -993,6 +993,13 @@ export function PendingInvoicing() {
 
     const invoice = invoices.find((entry) => entry.id === editInvoiceId);
     if (!invoice) return;
+    // Invoices from before the app went live (17-Nov-2026) can never be edited.
+    if (String(invoice.date || "").slice(0, 10) < "2026-11-17") {
+      alert("Invoices dated before 17-Nov-2026 cannot be edited.");
+      setSearchParams({});
+      navigate("/billing/master");
+      return;
+    }
     if (invoice.tallyTimestamp && !isPankajUser) {
       alert("This invoice is already posted to Tally and can no longer be edited.");
       setSearchParams({});
