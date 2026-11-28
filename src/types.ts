@@ -2028,6 +2028,8 @@ export interface Setting {
   flapAsPerCalculation?: string;
   allowInvoiceTallyEdit?: string;
   allowInvoiceTallyEditUsers?: string;
+  /** Edit Settings: JSON list of user emails who may change the supplier on a PO. */
+  allowPoSupplierEditUsers?: string;
   tableColumnWidths?: string;
   tableColumnResizeUsers?: string;
   productionFormVisibleColumns?: string;

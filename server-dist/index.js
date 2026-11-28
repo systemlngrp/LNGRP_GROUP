@@ -11130,6 +11130,8 @@ async function initDb(retries = 5) {
                 { table: "settings", column: "gsmAsPerCalculation", type: "TEXT" },
                 { table: "settings", column: "allowInvoiceTallyEdit", type: "VARCHAR(10)" },
                 { table: "settings", column: "allowInvoiceTallyEditUsers", type: "LONGTEXT" },
+                // Edit Settings (System Admin): users who may change the supplier on a PO.
+                { table: "settings", column: "allowPoSupplierEditUsers", type: "LONGTEXT" },
                 { table: "settings", column: "tableColumnWidths", type: "LONGTEXT" },
                 { table: "settings", column: "tableColumnResizeUsers", type: "LONGTEXT" },
                 { table: "settings", column: "productionFormVisibleColumns", type: "LONGTEXT" },
@@ -14101,6 +14103,43 @@ const createHandlers = (tableName) => {
             let materialOpening = null;
             let whatsappDelivery;
             try {
+                // Changing a PO's supplier: only users picked in Settings > Edit Settings (and the
+                // System Admin), and never once material has been received against the PO.
+                if (tableName === "purchase_orders") {
+                    const incoming = (Array.isArray(data) ? data : [data]).filter((row) => row && typeof row === "object" && String(row.id || "").trim() && "supplierId" in row);
+                    if (incoming.length) {
+                        const ids = incoming.map((row) => String(row.id).trim());
+                        const [storedRows] = await db.query("SELECT id, poNo, supplierId FROM `purchase_orders` WHERE id IN (?)", [ids]);
+                        const storedById = new Map(storedRows.map((row) => [String(row.id), row]));
+                        const changed = incoming.filter((row) => {
+                            const stored = storedById.get(String(row.id).trim());
+                            return stored && String(stored.supplierId || "") !== String(row.supplierId || "");
+                        });
+                        if (changed.length) {
+                            const email = String(requestUser?.email || requestUser?.userId || "").trim().toLowerCase();
+                            const isSystemAdmin = requestUser?.role === "Admin" && [requestUser?.userId, requestUser?.email].some((value) => String(value || "").trim().toLowerCase() === "system.lngrp.in");
+                            let allowed = [];
+                            try {
+                                const [settingRows] = await db.query("SELECT allowPoSupplierEditUsers FROM `settings` LIMIT 1");
+                                const parsed = JSON.parse(String(settingRows[0]?.allowPoSupplierEditUsers || "[]"));
+                                allowed = Array.isArray(parsed) ? parsed.map((value) => String(value || "").trim().toLowerCase()) : [];
+                            }
+                            catch {
+                                allowed = [];
+                            }
+                            if (!isSystemAdmin && !allowed.includes(email)) {
+                                return res.status(403).json({ error: "You are not allowed to change the supplier on a PO. Ask the System Admin (Settings > Edit Settings)." });
+                            }
+                            for (const row of changed) {
+                                const [mrrRows] = await db.query("SELECT transactionNo FROM `material_in` WHERE `lines` LIKE ? AND COALESCE(status, '') NOT IN ('Cancelled', 'Canceled') LIMIT 1", [`%${String(row.id).trim()}%`]);
+                                if (mrrRows.length) {
+                                    const stored = storedById.get(String(row.id).trim());
+                                    return res.status(400).json({ error: `Supplier of PO ${stored?.poNo || ""} cannot be changed: material is already received on MRR ${mrrRows[0].transactionNo}.` });
+                                }
+                            }
+                        }
+                    }
+                }
                 // A job can have several PDIs (each save of the PDI form is a new record); the latest one counts.
                 // Closing / unclosing a job (Closer + Close Date) is for Admin only.
                 if (tableName === "productions" && requestUser?.role !== "Admin") {
