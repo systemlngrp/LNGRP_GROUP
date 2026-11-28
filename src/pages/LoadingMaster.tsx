@@ -31,7 +31,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { buildLinkedLoadingDetailsFromSlip } from "../lib/linkedLoading";
 import { upsertFgLinkedChildSlip } from "../lib/linkedLoadingSlipSync";
 import { downloadLoadingSlipPdf } from "../lib/loadingSlipPdf";
-import { checkLiveStock } from "../lib/liveStockCheck";
+import { checkLiveStock, fetchPurchaseLots, type PurchaseLot } from "../lib/liveStockCheck";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { SortHeader, useTableSort } from "../lib/tableSort";
@@ -143,6 +143,8 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
   }, [processingRows]);
   const focusStartedRef = useRef(false);
   const [draftBySlipId, setDraftBySlipId] = useState<Record<string, LoadingSlip>>({});
+  // FG Purchase lots (one per FG Purchase MRR): shown as boxes on Adjust Loading, like FG Stock.
+  const [purchaseLots, setPurchaseLots] = useState<PurchaseLot[]>([]);
   const [isDownloading, setIsDownloading] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -380,6 +382,27 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
     }
     setDraftBySlipId((prev) => ({ ...prev, [slip.id]: draft }));
     setExpandedSlipIds((prev) => new Set(prev).add(slip.id));
+    // Add a 0 box for each FG Purchase lot of the line's item with stock left (dropped on save if 0).
+    if (!isDirectLoadingSlip(draft)) {
+      void fetchPurchaseLots().then((lots) => {
+        setPurchaseLots(lots);
+        const slipFirm = String(slip.firmId || (slip as any).orderFirmId || "").trim();
+        setDraftBySlipId((prev) => {
+          const current = prev[slip.id];
+          if (!current) return prev;
+          const lines = (current.lines || []).map((line) => {
+            if (String(line.itemSource || "FG").toUpperCase() !== "FG" || !String(line.dispatchPlanId || "").trim()) return line;
+            const erp = String(line.erpCode || "").trim();
+            const have = new Set((line.allocations || []).filter((a) => a.sourceType === "purchase").map((a: any) => String(a.mrrNo)));
+            const extra = lots
+              .filter((lot) => lot.erp === erp && lot.balance > 0.0001 && !have.has(lot.mrrNo) && (!lot.firmId || !slipFirm || lot.firmId === slipFirm))
+              .map((lot) => ({ sourceType: "purchase" as const, mrrId: lot.mrrId, mrrNo: lot.mrrNo, sourceRef: `Purchase ${lot.mrrNo}`, qty: 0, sourceFirmId: lot.firmId || undefined }));
+            return extra.length ? { ...line, allocations: [...(line.allocations || []), ...extra] } : line;
+          });
+          return { ...prev, [slip.id]: { ...current, lines } };
+        });
+      });
+    }
   };
 
   const cancelEdit = (slipId: string) => {
@@ -523,7 +546,7 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
         return {
           ...l,
           allocations: (l.allocations || [])
-            .filter((a) => a.sourceType !== "opening_stock" || Number(a.qty || 0) > 0)
+            .filter((a) => (a.sourceType !== "opening_stock" && a.sourceType !== "purchase") || Number(a.qty || 0) > 0)
             .map((a) => {
               if (a.sourceType !== "opening_stock" || a.sourceFirmId) return a;
               return { ...a, sourceRef, ...(sourceRef === "FG Stock" && firmId ? { sourceFirmId: firmId, sourceFirmName: firm?.firmName } : {}) };
@@ -812,13 +835,13 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
                       <div style={{ display: "grid", gridTemplateColumns: "max-content 6.5rem", columnGap: "0.75rem", rowGap: "0.35rem", alignItems: "center", minWidth: "17rem", textAlign: "left", justifyItems: "stretch" }}>
                         {line.allocations.map((a, aidx) => (
                           <React.Fragment key={aidx}>
-                            <span style={{ whiteSpace: "nowrap", textAlign: "left", justifySelf: "start" }} className={a.sourceType === "job" ? "font-bold" : "font-bold text-emerald-800"}>{a.sourceType === "job" ? `Job No: ${a.jobNo}` : (a as any).sourceRef}</span>
+                            <span style={{ whiteSpace: "nowrap", textAlign: "left", justifySelf: "start" }} className={a.sourceType === "job" ? "font-bold" : a.sourceType === "purchase" ? "font-bold text-violet-800" : "font-bold text-emerald-800"}>{a.sourceType === "job" ? `Job No: ${a.jobNo}` : (a as any).sourceRef}{a.sourceType === "purchase" && isEditing ? (() => { const lot = purchaseLots.find((row) => row.mrrNo === (a as any).mrrNo && row.erp === String(line.erpCode || "").trim()); return lot ? <span className="ml-1 text-[10px] font-semibold text-slate-500">({lot.balance.toLocaleString()} left)</span> : null; })() : null}</span>
                             {isEditing ? (
                               <input
                                 type="number"
                                 min={0}
                                 placeholder="0"
-                                value={a.sourceType === "opening_stock" && !Number(a.qty || 0) ? "" : Number(a.qty || 0)}
+                                value={(a.sourceType === "opening_stock" || a.sourceType === "purchase") && !Number(a.qty || 0) ? "" : Number(a.qty || 0)}
                                 onChange={(e) => {
                                   const rawQty = e.target.value === "" ? 0 : Math.max(0, Number(e.target.value));
                                   const nextQty = rawQty;
@@ -831,7 +854,7 @@ export function LoadingMaster({ focusSlipId, onFocusDone, onFocusSaved }: { focu
                                     return { ...prev, [slip.id]: nextSlip };
                                   });
                                 }}
-                                className={`w-full rounded border px-2 py-1 text-xs text-right font-bold ${a.sourceType === "opening_stock" ? "border-emerald-600 bg-emerald-50" : "border-black bg-yellow-200"}`}
+                                className={`w-full rounded border px-2 py-1 text-xs text-right font-bold ${a.sourceType === "opening_stock" ? "border-emerald-600 bg-emerald-50" : a.sourceType === "purchase" ? "border-violet-600 bg-violet-50" : "border-black bg-yellow-200"}`}
                               />
                             ) : (
                               <span className="text-slate-700">Load Qty: {Number(a.qty || 0).toLocaleString()}</span>
