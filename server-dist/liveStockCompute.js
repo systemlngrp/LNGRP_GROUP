@@ -5,12 +5,15 @@
 // Live stock from a physical count (owner's rule, 27-Nov-2026):
 //   Live = Opening (physical count + adjustment rows, as on the cutoff)
 //        + Production (FG: printed qty; PHP/Plate: job output)
-//        + Receipts (FG Purchase / Rejection In MRRs into Unit-II, not inter-firm)
+//        + Receipts (FG Purchase MRRs of any firm but Unit-I - each its own lot, by MRR number;
+//          Rejection In MRRs into Unit-II; never the automatic inter-firm ones)
 //        - Dispatched (loaded qty on loading slips)
 //        - Loading wastage (FG, entered on the slips)
 // Only movements after the cutoff count. A movement dated the cutoff day counts
 // unless its id was saved before the cutoff (cutoff.preCutoffIds). PHP / Plate job
 // output counts as the change since the cutoff (cutoff.jobBaselines).
+/** FG Purchase MRR numbers are their own lots, like jobs (e.g. LNKI/MRR/26-27/00049). */
+export const isPurchaseBucket = (bucket) => /\/MRR\//i.test(String(bucket || ""));
 const num = (value) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
