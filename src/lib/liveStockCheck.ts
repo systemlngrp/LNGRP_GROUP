@@ -34,3 +34,17 @@ export async function fetchLiveStockLevels(): Promise<Record<string, number>> {
     return {};
   }
 }
+
+export type PurchaseLot = { erp: string; itemName: string; mrrNo: string; mrrId: string; firmId: string; date: string; received: number; loaded: number; balance: number };
+
+/** FG Purchase lots (received on the MRR − loaded against it), for the loading popup. */
+export async function fetchPurchaseLots(): Promise<PurchaseLot[]> {
+  try {
+    const response = await fetch("/api/live-stock/purchase-lots", { headers: getDataAuthHeaders(false) as HeadersInit });
+    if (!response.ok) return [];
+    const body = await response.json().catch(() => ({}));
+    return Array.isArray(body?.lots) ? body.lots : [];
+  } catch {
+    return [];
+  }
+}

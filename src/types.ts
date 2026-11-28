@@ -1663,6 +1663,15 @@ export type LoadingSlipAllocation =
       qty: number;
       sourceFirmId?: string;
       sourceFirmName?: string;
+    }
+  | {
+      /** FG bought on an FG Purchase MRR: loaded against that MRR, like a job. */
+      sourceType: "purchase";
+      mrrId: string;
+      mrrNo: string;
+      sourceRef: string;
+      qty: number;
+      sourceFirmId?: string;
     };
 
 export interface PackingDetail {

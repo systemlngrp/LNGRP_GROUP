@@ -16,7 +16,7 @@ import { AddToOpeningDialog } from "../components/AddToOpeningDialog";
 
 type Movement = { kind: string; qty: number; bucket?: string };
 type LiveRow = { itemType: string; erp: string; itemName: string; company?: string; opening: number; live: number; movements: Movement[] };
-type StockLine = { key: string; company: string; erp: string; itemName: string; source: "Opening" | "Job"; jobNo: string; qty: number };
+type StockLine = { key: string; company: string; erp: string; itemName: string; source: "Opening" | "Job" | "Purchase"; jobNo: string; qty: number };
 type GroupBy = "none" | "erp" | "company";
 
 const n0 = (value: number) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
@@ -36,7 +36,7 @@ function splitRow(row: LiveRow): StockLine[] {
       company: row.company || "",
       erp: row.erp,
       itemName: row.itemName,
-      source: part.label === "Opening" ? "Opening" : "Job",
+      source: (part.label === "Opening" ? "Opening" : /\/MRR\//i.test(part.label) ? "Purchase" : "Job") as StockLine["source"],
       jobNo: part.label === "Opening" ? "" : part.label,
       qty: part.qty,
     }));
@@ -45,7 +45,7 @@ function splitRow(row: LiveRow): StockLine[] {
 const defaultOrder = (a: StockLine, b: StockLine) =>
   (a.company || "~").localeCompare(b.company || "~") ||
   a.erp.localeCompare(b.erp, undefined, { numeric: true }) ||
-  (a.source === b.source ? a.jobNo.localeCompare(b.jobNo, undefined, { numeric: true }) : a.source === "Opening" ? -1 : 1);
+  (a.source === b.source ? a.jobNo.localeCompare(b.jobNo, undefined, { numeric: true }) : a.source === "Opening" ? -1 : b.source === "Opening" ? 1 : a.source === "Purchase" ? -1 : 1);
 
 export function JobwiseFgStock() {
   const { user } = useAuth();
@@ -106,10 +106,12 @@ export function JobwiseFgStock() {
   const tiles = useMemo(() => {
     const total = filtered.reduce((sum, line) => sum + line.qty, 0);
     const opening = filtered.filter((line) => line.source === "Opening").reduce((sum, line) => sum + line.qty, 0);
+    const purchases = filtered.filter((line) => line.source === "Purchase").reduce((sum, line) => sum + line.qty, 0);
     return {
       total,
       opening,
-      jobs: total - opening,
+      purchases,
+      jobs: total - opening - purchases,
       items: new Set(filtered.map((line) => line.erp)).size,
       jobCount: filtered.filter((line) => line.source === "Job" && line.qty > 0).length,
       negative: filtered.filter((line) => line.qty < 0).length,
@@ -132,7 +134,7 @@ export function JobwiseFgStock() {
 
   const toggleGroup = (key: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; });
 
-  const exportRows = () => sorted.map((line, index) => ({ "Sl No": index + 1, "Opening / Job No.": line.source === "Opening" ? "Opening" : line.jobNo, Company: line.company, ERP: line.erp, Item: line.itemName, Stock: line.qty }));
+  const exportRows = () => sorted.map((line, index) => ({ "Sl No": index + 1, "Opening / Job No.": line.source === "Opening" ? "Opening" : line.source === "Purchase" ? `Purchase ${line.jobNo}` : line.jobNo, Company: line.company, ERP: line.erp, Item: line.itemName, Stock: line.qty }));
   const downloadExcel = () => {
     const sheet = XLSX.utils.json_to_sheet(exportRows());
     sheet["!cols"] = [{ wch: 6 }, { wch: 18 }, { wch: 34 }, { wch: 12 }, { wch: 55 }, { wch: 12 }];
@@ -167,12 +169,14 @@ export function JobwiseFgStock() {
   const th = "border border-black px-3 py-2.5 text-[11px] font-black uppercase tracking-wide";
   const td = "border border-black px-3 py-1.5";
   const lineRow = (line: StockLine, index: number) => (
-    <tr key={line.key} className={`${line.qty < 0 ? "bg-red-50" : line.source === "Opening" ? "bg-amber-50" : index % 2 ? "bg-slate-50" : "bg-white"} hover:bg-indigo-50`}>
+    <tr key={line.key} className={`${line.qty < 0 ? "bg-red-50" : line.source === "Opening" ? "bg-amber-50" : line.source === "Purchase" ? "bg-violet-50" : index % 2 ? "bg-slate-50" : "bg-white"} hover:bg-indigo-50`}>
       <td className={`${td} text-center text-xs font-bold text-slate-500`}>{index + 1}</td>
       <td className={`${td} text-center`}>
         {line.source === "Opening"
           ? <span className="inline-block rounded-full border border-amber-400 bg-amber-100 px-2.5 py-0.5 text-[11px] font-black text-amber-800">Opening</span>
-          : <span className="inline-block rounded-full border border-emerald-400 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-black text-emerald-800">{line.jobNo}</span>}
+          : line.source === "Purchase"
+            ? <span className="inline-block rounded-full border border-violet-400 bg-violet-100 px-2.5 py-0.5 text-[11px] font-black text-violet-800" title="FG Purchase MRR">Purchase {line.jobNo}</span>
+            : <span className="inline-block rounded-full border border-emerald-400 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-black text-emerald-800">{line.jobNo}</span>}
       </td>
       <td className={`${td} text-left text-xs font-semibold text-slate-700`} style={{ textAlign: "left" }}>{line.company || "-"}</td>
       <td className={`${td} text-center font-mono text-xs font-bold`}>{line.erp}</td>
@@ -185,6 +189,7 @@ export function JobwiseFgStock() {
     { label: "Total FG Stock", value: n0(tiles.total), icon: Warehouse, tone: "from-indigo-600 to-violet-600" },
     { label: "Opening (old stock)", value: n0(tiles.opening), icon: PackageOpen, tone: "from-amber-500 to-orange-600" },
     { label: "In Jobs", value: n0(tiles.jobs), icon: Boxes, tone: "from-emerald-600 to-teal-600" },
+    { label: "In Purchases", value: n0(tiles.purchases), icon: PackageOpen, tone: "from-violet-600 to-purple-700" },
     { label: "Items", value: String(tiles.items), icon: Layers, tone: "from-sky-600 to-cyan-600" },
     { label: "Jobs with Stock", value: String(tiles.jobCount), icon: Boxes, tone: "from-fuchsia-600 to-pink-600" },
     { label: "Negative Rows", value: String(tiles.negative), icon: TriangleAlert, tone: tiles.negative ? "from-red-600 to-rose-700" : "from-slate-500 to-slate-600", onClick: () => setRange(range === "neg" ? "" : "neg") },
@@ -195,7 +200,7 @@ export function JobwiseFgStock() {
       <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-black pb-3">
         <div>
           <h1 className="text-xl font-black uppercase tracking-tight">Job-wise FG Stock</h1>
-          <p className="text-xs font-semibold text-slate-600">Jobs from 17-Nov: printed − loaded − loading wastage. Opening: older stock from the physical count{asOn ? ` as on ${asOn}` : ""}, less what is loaded from it since.</p>
+          <p className="text-xs font-semibold text-slate-600">Jobs from 17-Nov: printed − loaded − loading wastage. Opening: older stock from the physical count{asOn ? ` as on ${asOn}` : ""}, less what is loaded from it since. Purchase: each FG Purchase MRR, received − loaded against it.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin ? <button type="button" onClick={() => setAddOpen(true)} className="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 px-3 py-2 text-sm font-black text-white shadow hover:bg-emerald-800"><PackagePlus size={16} /> Add / Reduce Opening</button> : null}
@@ -208,7 +213,7 @@ export function JobwiseFgStock() {
       {notice ? <div className="flex items-center justify-between rounded-md border-2 border-emerald-600 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800"><span>{notice}</span><button type="button" onClick={() => setNotice("")}><X size={16} /></button></div> : null}
       {error ? <div className="rounded-md border-2 border-red-600 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div> : null}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         {TILES.map((tile) => (
           <button key={tile.label} type="button" onClick={tile.onClick} className={`rounded-xl bg-gradient-to-br ${tile.tone} p-3 text-left text-white shadow-md transition ${tile.onClick ? "hover:scale-[1.02] hover:shadow-lg" : "cursor-default"}`}>
             <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wide opacity-90"><span>{tile.label}</span><tile.icon size={16} /></div>
@@ -224,7 +229,7 @@ export function JobwiseFgStock() {
         </div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={company} onChange={setCompany} options={[{ value: "", label: "All" }, ...companyOptions]} placeholder="All" /></div>
-          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Opening / Job</span><Select compact value={sourceFilter} onChange={setSourceFilter} options={[{ value: "", label: "All" }, { value: "Opening", label: "Opening only" }, { value: "Job", label: "Jobs only" }]} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Opening / Job</span><Select compact value={sourceFilter} onChange={setSourceFilter} options={[{ value: "", label: "All" }, { value: "Opening", label: "Opening only" }, { value: "Job", label: "Jobs only" }, { value: "Purchase", label: "Purchases only" }]} placeholder="All" /></div>
           <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Stock</span><Select compact value={range} onChange={setRange} options={[{ value: "", label: "All" }, { value: "neg", label: "Negative" }, { value: "upto100", label: "Up to 100" }, { value: "over100", label: "More than 100" }]} placeholder="All" /></div>
           <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Group by</span><Select compact value={groupBy} onChange={(value) => { setGroupBy((value || "none") as GroupBy); setCollapsed(new Set()); }} options={[{ value: "none", label: "No grouping" }, { value: "erp", label: "ERP" }, { value: "company", label: "Company" }]} placeholder="No grouping" /></div>
         </div>

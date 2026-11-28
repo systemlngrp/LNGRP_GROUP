@@ -45,7 +45,7 @@ import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { buildLinkedLoadingDetailsFromSlip, findLinkedItemByMasterErp, getLinkedSetsPerBox } from "../lib/linkedLoading";
 import { upsertFgLinkedChildSlip } from "../lib/linkedLoadingSlipSync";
-import { checkLiveStock, fetchLiveStockLevels } from "../lib/liveStockCheck";
+import { checkLiveStock, fetchLiveStockLevels, fetchPurchaseLots, type PurchaseLot } from "../lib/liveStockCheck";
 import { normalizeTruckStatus } from "../lib/truckStatus";
 import { useAuth } from "../auth/AuthContext";
 import { usePageDataStatus } from "../components/DataLoadingBoundary";
@@ -178,8 +178,18 @@ export function PendingLoading() {
     if (!loadingModal) return;
     let active = true;
     void fetchLiveStockLevels().then((levels) => { if (active) setLiveStockLevels(levels); });
+    void fetchPurchaseLots().then((lots) => { if (active) setPurchaseLots(lots); });
     return () => { active = false; };
   }, [loadingModal?.itemId, loadingModal?.itemSource]);
+  // FG Purchase lots (one per FG Purchase MRR), loaded against like a job.
+  const [purchaseLots, setPurchaseLots] = useState<PurchaseLot[]>([]);
+  const [purchaseQtys, setPurchaseQtys] = useState<Record<string, Record<string, number | "">>>({});
+  const getPlanPurchaseTotal = (key: string) => Object.values(purchaseQtys[key] || {}).reduce<number>((sum, qty) => sum + Number(qty || 0), 0);
+  const lotsForItem = (itemId: string, firmId: string) => {
+    const erp = String((itemsBySource.FG || []).find((row) => row.id === itemId)?.erp || "").trim();
+    if (!erp) return [] as PurchaseLot[];
+    return purchaseLots.filter((lot) => lot.erp === erp && (!lot.firmId || lot.firmId === firmId));
+  };
   // Admin: add boxes found later to the item's opening stock (from the FG Stock row).
   const [addOpeningFor, setAddOpeningFor] = useState<{ npdId: string; firmId: string } | null>(null);
   const [loadedQuantities, setLoadedQuantities] = useState<Record<string, number>>({});
@@ -454,8 +464,12 @@ export function PendingLoading() {
         : job.yetToLoad;
       return sum + available;
     }, 0);
-    const bookRemainder = Number(firmStock.balance || 0) - loadedNotInvoiced - slipWastage - jobRowsAvailable;
-    return Math.max(0, Math.min(nonJobFormula, bookRemainder));
+    // FG Purchase lots are shown on their own rows, so they are left out of the FG Stock row.
+    const lots = lotsForItem(String(item?.id || itemId), firmId);
+    const lotsReceived = lots.reduce((sum, lot) => sum + Number(lot.received || 0), 0);
+    const lotsLeft = lots.reduce((sum, lot) => sum + Math.max(0, Number(lot.balance || 0)), 0);
+    const bookRemainder = Number(firmStock.balance || 0) - loadedNotInvoiced - slipWastage - jobRowsAvailable - lotsLeft;
+    return Math.max(0, Math.min(nonJobFormula - lotsReceived, bookRemainder));
   };
 
   const isTruckAvailableForLoading = (truckId: string) => {
@@ -490,8 +504,18 @@ export function PendingLoading() {
     const byJobId = jobSplitQtys[modalKey] || {};
     const openingStockQty = getPlanOpeningStockQty(modalKey);
     const jobAllocatedTotal = Object.values(byJobId).reduce<number>((sum, qty) => sum + Number(qty || 0), 0);
-    const allocatedTotal = jobAllocatedTotal + openingStockQty;
+    const purchaseTotal = modal.itemSource === "FG" ? getPlanPurchaseTotal(modalKey) : 0;
+    const allocatedTotal = jobAllocatedTotal + openingStockQty + purchaseTotal;
     const errors: string[] = [];
+    if (modal.itemSource === "FG") {
+      const lots = lotsForItem(modal.itemId, modal.firmId);
+      Object.entries(purchaseQtys[modalKey] || {}).forEach(([mrrNo, qty]) => {
+        const value = Number(qty || 0);
+        if (value < 0) errors.push(`Purchase ${mrrNo}: quantity cannot be negative.`);
+        const lot = lots.find((row) => row.mrrNo === mrrNo);
+        if (value > 0 && (!lot || value > Number(lot.balance || 0) + 0.0001)) errors.push(`Purchase ${mrrNo}: only ${Number(lot?.balance || 0).toLocaleString()} left.`);
+      });
+    }
 
     const totalPending = modal.plans.reduce((sum, plan) => sum + Number(plan.pendingQty || 0), 0);
 
@@ -558,7 +582,7 @@ export function PendingLoading() {
   const modalHasErrors = useMemo(() => {
     if (!loadingModal) return false;
     return !getModalValidation(loadingModal).isValid;
-  }, [atJobWorkerByJobId, jobSplitQtys, jobWastageQtys, existingWastageByJobId, printedQtyByJobId, printingCompleteJobIds, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, corrugationQtyByJobId, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, npdStockLoading, itemsBySource.FG, firms, jobTicks]);
+  }, [purchaseQtys, purchaseLots, atJobWorkerByJobId, jobSplitQtys, jobWastageQtys, existingWastageByJobId, printedQtyByJobId, printingCompleteJobIds, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, corrugationQtyByJobId, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, npdStockLoading, itemsBySource.FG, firms, jobTicks]);
 
   const handleOpenLoad = (firmId: string, companyId: string, itemSource: OrderItemSource, itemId: string, itemName: string, itemPlans: PendingPlan[]) => {
     const firm = firms.find((row) => row.id === firmId);
@@ -574,6 +598,7 @@ export function PendingLoading() {
 
     setLoadedQuantities({ [modalKey]: totalPending });
     setOpeningStockQtys({ [modalKey]: "" });
+    setPurchaseQtys({});
     setJobSplitQtys({
       [modalKey]: Object.fromEntries(eligibleJobs.map((j) => [j.jobId, ""])),
     });
@@ -593,6 +618,7 @@ export function PendingLoading() {
     setJobSplitQtys({});
     setJobWastageQtys({});
     setOpeningStockQtys({});
+    setPurchaseQtys({});
     setModalTruckId("");
     setModalManualTruckNo("");
     setPackingDetails(createEmptyPackingRows());
@@ -725,6 +751,16 @@ export function PendingLoading() {
         qty: openingStockQty,
         sourceFirmId: loadingModal.itemSource === "FG" ? loadingModal.firmId : undefined,
         sourceFirmName: loadingModal.itemSource === "FG" ? sourceFirm?.firmName : undefined,
+      });
+    }
+
+    if (loadingModal.itemSource === "FG") {
+      const lots = lotsForItem(loadingModal.itemId, loadingModal.firmId);
+      Object.entries(purchaseQtys[modalKey] || {}).forEach(([mrrNo, qty]) => {
+        const value = Number(qty || 0);
+        const lot = lots.find((row) => row.mrrNo === mrrNo);
+        if (!lot || value <= 0) return;
+        allocationPool.push({ sourceType: "purchase", mrrId: lot.mrrId, mrrNo: lot.mrrNo, sourceRef: `Purchase ${lot.mrrNo}`, qty: value, sourceFirmId: lot.firmId || loadingModal.firmId });
       });
     }
 
@@ -1370,6 +1406,45 @@ export function PendingLoading() {
                                 {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-400">-</td> : null}
                                 {loadingModal.itemSource === "FG" ? <td className="px-4 py-4 text-right text-xs text-slate-400">-</td> : null}
                               </tr>
+                              {loadingModal.itemSource === "FG" ? lotsForItem(loadingModal.itemId, loadingModal.firmId)
+                                .filter((lot) => Number(lot.balance || 0) > 0.0001 || Number((purchaseQtys[modalKey] || {})[lot.mrrNo] || 0) > 0)
+                                .map((lot) => (
+                                  <tr key={lot.mrrNo} className="divide-x divide-black bg-violet-50/50">
+                                    <td className="px-4 py-3 text-xs font-black text-violet-800">
+                                      <span className="mr-1.5 inline-block rounded-full border border-violet-400 bg-violet-100 px-2 py-0.5 text-[10px] uppercase">Purchase</span>
+                                      {lot.mrrNo}
+                                      <div className="mt-0.5 text-[10px] font-semibold text-slate-500">{lot.date} · received {Number(lot.received || 0).toLocaleString()} · loaded {Number(lot.loaded || 0).toLocaleString()}</div>
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-xs text-slate-500">-</td>
+                                    <td className="px-4 py-3 text-right text-xs text-slate-500">-</td>
+                                    <td className="px-4 py-3 text-right text-xs text-slate-500">-</td>
+                                    <td className="px-4 py-3 text-right text-xs font-black text-violet-700" title="Received on this FG Purchase MRR − loaded against it">{Number(lot.balance || 0).toLocaleString()}</td>
+                                    <td className="px-4 py-2 text-right bg-indigo-50/30">
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        placeholder="0"
+                                        value={(purchaseQtys[modalKey] || {})[lot.mrrNo] ?? ""}
+                                        onChange={(e) => {
+                                          const rawValue = e.target.value;
+                                          setPurchaseQtys((prev) => {
+                                            const current = { ...(prev[modalKey] || {}) };
+                                            if (rawValue === "") current[lot.mrrNo] = "";
+                                            else {
+                                              const parsedValue = Number(rawValue);
+                                              if (!Number.isFinite(parsedValue)) return prev;
+                                              current[lot.mrrNo] = Math.max(0, parsedValue);
+                                            }
+                                            return { ...prev, [modalKey]: current };
+                                          });
+                                        }}
+                                        className="h-9 w-28 rounded border-2 border-violet-500 bg-violet-50 px-2 py-1.5 text-right text-xs font-black text-black focus:border-violet-700 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                                      />
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-xs text-slate-400">-</td>
+                                    <td className="px-4 py-3 text-right text-xs text-slate-400">-</td>
+                                  </tr>
+                                )) : null}
                             </tbody>
                             <tfoot className="bg-slate-900 text-white font-black border-t-2 border-black">
                                 <tr className="divide-x divide-white/20">
@@ -1399,24 +1474,36 @@ export function PendingLoading() {
                                   <th className="px-4 py-2 text-left text-[10px] font-black uppercase">{section.title === "PHP Details" ? "PHP Item Name" : "Plate Item Name"}</th>
                                   <th className="px-4 py-2 text-right text-[10px] font-black uppercase">Sets/Box</th>
                                   <th className="px-4 py-2 text-right text-[10px] font-black uppercase">Required Qty</th>
+                                  <th className="px-4 py-2 text-right text-[10px] font-black uppercase" title="Physical count as on 26-Nov-2026 5 PM + produced + receipts − loaded. The slip cannot take more than this.">Live Stock</th>
                                 </tr>
                               </thead>
                               <tbody className="bg-white divide-y divide-black">
                                 {section.rows.length === 0 ? (
                                   <tr>
-                                    <td colSpan={6} className="px-4 py-5 text-center text-xs font-semibold text-slate-500">{section.emptyLabel}</td>
+                                    <td colSpan={7} className="px-4 py-5 text-center text-xs font-semibold text-slate-500">{section.emptyLabel}</td>
                                   </tr>
                                 ) : (
-                                  section.rows.map((detail, index) => (
+                                  section.rows.map((detail, index) => {
+                                    // The PHP / Plate item's own ERP (detail.erpCode carries the FG item's ERP).
+                                    const ownErp = String((itemsBySource[section.source] || []).find((row) => row.id === detail.itemId)?.erp || "").trim();
+                                    const live = ownErp ? liveStockLevels[`${section.source}|${ownErp}`] : undefined;
+                                    const liveQty = Number(live || 0);
+                                    const short = Math.max(0, Number(detail.requiredQty || 0) - liveQty);
+                                    return (
                                     <tr key={`${section.title}-${detail.itemId}`} className="divide-x divide-black">
                                       <td className="px-4 py-2 text-xs font-black">{index + 1}</td>
-                                      <td className="px-4 py-2 text-xs font-semibold text-slate-700">{detail.erpCode || "-"}</td>
+                                      <td className="px-4 py-2 text-xs font-semibold text-slate-700">{ownErp || detail.erpCode || "-"}</td>
                                       <td className="px-4 py-2 text-xs font-semibold text-slate-700">{detail.masterErp || "-"}</td>
                                       <td className="px-4 py-2 text-xs font-semibold text-black">{detail.itemName}</td>
                                       <td className="px-4 py-2 text-right text-xs font-black text-slate-700">{detail.setsPerBox.toLocaleString()}</td>
                                       <td className="px-4 py-2 text-right text-xs font-black text-indigo-700">{detail.requiredQty.toLocaleString()}</td>
+                                      <td className={`px-4 py-2 text-right text-xs font-black ${short > 0 ? "bg-red-50 text-red-700" : "text-emerald-700"}`}>
+                                        {ownErp ? liveQty.toLocaleString() : "-"}
+                                        {ownErp && short > 0 ? <div className="text-[10px] font-bold">Short {short.toLocaleString()}</div> : null}
+                                      </td>
                                     </tr>
-                                  ))
+                                    );
+                                  })
                                 )}
                               </tbody>
                             </table>
