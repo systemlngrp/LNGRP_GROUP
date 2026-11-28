@@ -3361,16 +3361,6 @@ export function MaterialInForm({ directService = false }: { directService?: bool
             )}
           </div>
         </div>
-        <div className="mt-4 flex flex-col space-y-1">
-          <label className="font-bold text-black">Narration</label>
-          <textarea
-            value={narration}
-            onChange={(e) => setNarration(e.target.value.slice(0, 1000))}
-            rows={2}
-            placeholder="Optional. Goes to Tally as the voucher narration."
-            className="w-full rounded border-2 border-black bg-yellow-50 p-2 text-black focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-          />
-        </div>
 
         <div className="mt-6 border-t border-black pt-4">
           <h3 className="text-lg font-bold text-black mb-4 uppercase">
@@ -3785,6 +3775,17 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                 : null}
             </div>
           ) : null}
+          {/* Narration: below the item table; goes to Tally as the voucher narration. */}
+          <div className="mt-4 flex flex-col space-y-1">
+            <label className="font-bold text-black">Narration</label>
+            <textarea
+              value={narration}
+              onChange={(e) => setNarration(e.target.value.slice(0, 1000))}
+              rows={2}
+              placeholder="Optional. Goes to Tally as the voucher narration."
+              className="w-full rounded border-2 border-black bg-yellow-50 p-2 text-black focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+            />
+          </div>
           {/* Charges and deductions: shown once at least one item line is added. */}
           {lines.length > 0 ? (
             <div className="mt-4 grid grid-cols-1 gap-4 rounded border border-black bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-4">
