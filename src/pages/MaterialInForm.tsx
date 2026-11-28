@@ -3521,6 +3521,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService ? "Quantity" : isJobWorkReturn ? "Billed Qty" : isServiceReturn ? "Return Qty" : isFgType ? "Item Receipt" : "Invoice Qty"}</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService ? `Expense Amount (${isUsdInvoice ? "USD" : "INR"})` : isUsdInvoice ? "Invoice Rate (USD)" : "Invoice Rate (INR)"}</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">GST %</th>
+                      {isDirectService ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Claim GST?</th> : null}
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Pre-GST Invoice Value (INR)</th>
                       {!isInterState ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">CGST %</th> : null}
                       {!isInterState ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">SGST %</th> : null}
@@ -3594,20 +3595,21 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                                 : updateLine(line.id, { gstRate: Number(value || 0) })}
                               placeholder="Select GST..."
                             />
-                            {isDirectService && Number(line.gstRate || 0) > 0 ? (
-                              <label className="mt-1 flex items-center gap-1 text-xs font-bold text-black">
-                                Claim GST?
+                          </td>
+                          {isDirectService ? (
+                            <td className="px-4 py-3 text-sm text-black border border-black min-w-[170px]">
+                              {Number(line.gstRate || 0) > 0 ? (
                                 <select
                                   value={line.gstClaimable === "No" ? "No" : "Yes"}
                                   onChange={(e) => setLines((prev) => prev.map((row) => row.id === line.id ? { ...row, gstClaimable: e.target.value === "No" ? "No" : "Yes" } : row))}
-                                  className="rounded border border-black bg-yellow-50 px-1 py-0.5 text-xs font-bold"
+                                  className="w-full rounded border-2 border-black bg-yellow-50 px-2 py-1 text-xs font-bold"
                                 >
                                   <option value="Yes">Yes – Input GST</option>
                                   <option value="No">No – add to expense</option>
                                 </select>
-                              </label>
-                            ) : null}
-                          </td>
+                              ) : <span className="text-xs text-slate-500">No GST</span>}
+                            </td>
+                          ) : null}
                           <td className="px-4 py-3 text-sm font-medium text-black border border-black">{Number(line.invoiceValue || 0).toFixed(2)}</td>
                           {!isInterState ? (
                             <td className="px-4 py-3 text-sm text-black border border-black">
