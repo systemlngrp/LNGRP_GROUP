@@ -4037,6 +4037,10 @@ async function ensureInterFirmSchema(db, database) {
         }
         catch { }
     }
+    try {
+        await ensureColumnExists(db, database, "material_in", "narration", "VARCHAR(1000) NULL");
+    }
+    catch { }
     // How a reel issue was made: MANUAL (Manual Reel Issue form) or QR (QR scan).
     try {
         await ensureColumnExists(db, database, "material_issues", "issueMethod", "VARCHAR(20)");
