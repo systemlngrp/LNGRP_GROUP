@@ -1828,6 +1828,8 @@ export interface InvoiceLineItem {
   id: string;
   invoiceId: string;
   loadingSlipId: string;
+  /** Order of the loading slip line (slip -> dispatch plan -> order). */
+  orderId?: string;
   itemId: string;
   itemSource?: OrderItemSource;
   npdId?: string;

@@ -85,6 +85,10 @@ interface InvoiceItemRow {
   totalQty: number;
   sources: Array<{ loadingSlipId: string; qty: number }>;
   allocations: InvoiceAllocationRow[];
+  /** One row per loading slip line: the slip it comes from and the rate on the slip line. */
+  slipId?: string;
+  slipNo?: string;
+  slipRate?: number;
 }
 
 const roundHalfUp = (value: number, decimals: number) => {
@@ -457,9 +461,10 @@ export function PendingInvoicing() {
   const getPendingSlip = (slip: LoadingSlip, includeInvoiceId = "") =>
     getPendingInvoicingSlip(pendingInvoicingContext, slip, includeInvoiceId);
 
+  // One invoice row per loading slip line. The order, PO and rate come from the
+  // slip line's dispatch plan (slip -> dispatch plan -> order); nothing is picked.
   const buildInvoiceRowsFromSlips = (selected: any[]) => {
-    const itemMap = new Map<string, InvoiceItemRow>();
-    const itemOrderQtyMap = new Map<string, Map<string, number>>();
+    const rowMap = new Map<string, InvoiceItemRow>();
 
     selected.forEach((slip) => {
       slip.lines.forEach((line: any) => {
@@ -472,87 +477,53 @@ export function PendingInvoicing() {
 
         const qty = Number(line.loadedQty || 0);
         const gstRate = Number(line.gstRate ?? item?.gstRate ?? 18);
-        const rate = Number(line.rate ?? item?.rate ?? order?.rate ?? 0);
+        const slipRate = Number(line.rate ?? item?.rate ?? order?.rate ?? 0);
         const itemName = resolveSlipLineItemName(line, order);
-        const itemKey = `${itemSource}::${itemId}`;
-        const existing = itemMap.get(itemKey);
+        const allocationKey = order?.id ? order.id : DIRECT_ALLOCATION_ID;
+        const rowKey = `${slip.id}::${itemSource}::${itemId}::${allocationKey}`;
+        const existing = rowMap.get(rowKey);
 
         if (existing) {
           existing.totalQty += qty;
-          existing.sources.push({ loadingSlipId: slip.id, qty });
-          if (!existing.defaultRate && rate) existing.defaultRate = rate;
+          existing.sources[0].qty += qty;
+          existing.allocations[0].qty += qty;
         } else {
-          itemMap.set(itemKey, {
+          rowMap.set(rowKey, {
             id: crypto.randomUUID(),
             itemId,
             itemSource,
             itemName,
             gstRate,
-            defaultRate: rate,
+            defaultRate: slipRate,
             totalQty: qty,
             sources: [{ loadingSlipId: slip.id, qty }],
-            allocations: [],
+            allocations: [{ id: crypto.randomUUID(), orderId: allocationKey, qty }],
+            slipId: slip.id,
+            slipNo: String(slip.slipNo || ""),
+            slipRate,
           });
         }
-
-        const byOrder = itemOrderQtyMap.get(itemKey) || new Map<string, number>();
-        const allocationKey = order?.id ? order.id : DIRECT_ALLOCATION_ID;
-        byOrder.set(allocationKey, (byOrder.get(allocationKey) || 0) + qty);
-        itemOrderQtyMap.set(itemKey, byOrder);
       });
     });
 
-    itemMap.forEach((row, itemKey) => {
-      const byOrder = itemOrderQtyMap.get(itemKey) || new Map<string, number>();
-      const allocations: InvoiceAllocationRow[] = Array.from(byOrder.entries()).map(([orderId, qty]) => ({
-        id: crypto.randomUUID(),
-        orderId,
-        qty,
-      }));
-      row.allocations = allocations.length ? allocations : [{ id: crypto.randomUUID(), orderId: "", qty: row.totalQty }];
-    });
-
-    return Array.from(itemMap.values());
+    return Array.from(rowMap.values());
   };
 
   const applySavedInvoiceAllocations = (rows: InvoiceItemRow[], invoiceId: string) => {
     const lineItemsForInvoice = invoiceLineItems.filter((line) => line.invoiceId === invoiceId);
     if (lineItemsForInvoice.length === 0) return rows;
 
+    // Rows are per loading slip line and keep the slip's own order; an invoice
+    // being edited only brings back the GST rate it was saved with.
     return rows.map((row) => {
-      const matchingLines = lineItemsForInvoice.filter((line) => String(line.itemId || "").trim() === row.itemId && normalizeOrderItemSource(line.itemSource || "FG") === row.itemSource);
+      const matchingLines = lineItemsForInvoice.filter((line) =>
+        String(line.itemId || "").trim() === row.itemId &&
+        normalizeOrderItemSource(line.itemSource || "FG") === row.itemSource &&
+        (!row.slipId || line.loadingSlipId === row.slipId)
+      );
       if (matchingLines.length === 0) return row;
-
-      const allocationsByOrder = new Map<string, number>();
-      let gstRate = row.gstRate;
-
-      matchingLines.forEach((line) => {
-        const slip = loadingSlips.find((entry) => entry.id === line.loadingSlipId);
-        const slipLine = slip?.lines?.find((entry: any) => {
-          const plan = plans.find((p) => p.id === entry.dispatchPlanId);
-          const order = orders.find((o) => o.id === plan?.orderId);
-          const source = normalizeOrderItemSource(entry.itemSource || order?.itemSource || "FG");
-          return resolveCanonicalSlipLineItemId(entry, order) === row.itemId && source === row.itemSource;
-        });
-        const plan = slipLine ? plans.find((p) => p.id === slipLine.dispatchPlanId) : undefined;
-        const orderId = String(plan?.orderId || "").trim();
-        if (orderId) {
-          allocationsByOrder.set(orderId, (allocationsByOrder.get(orderId) || 0) + Number(line.qty || 0));
-        }
-        gstRate = Number(line.gstRate ?? gstRate ?? 0);
-      });
-
-      const allocations = Array.from(allocationsByOrder.entries()).map(([orderId, qty]) => ({
-        id: crypto.randomUUID(),
-        orderId,
-        qty,
-      }));
-
-      return {
-        ...row,
-        gstRate,
-        allocations: allocations.length ? allocations : row.allocations,
-      };
+      const savedGst = matchingLines.map((line) => Number(line.gstRate)).find((rate) => Number.isFinite(rate));
+      return { ...row, gstRate: savedGst ?? row.gstRate };
     });
   };
 
@@ -1127,7 +1098,7 @@ export function PendingInvoicing() {
       }
       if (itemRow.allocations.some((a) => !String(a.orderId || "").trim())) {
         const itemName = itemRow.itemName || "Item";
-        alert(`Please select Order for all allocation rows of ${itemName}.`);
+        alert(`No order found for ${itemName} on loading slip ${itemRow.slipNo || ""}. Check the slip's dispatch plan.`);
         return;
       }
     }
@@ -1201,12 +1172,13 @@ export function PendingInvoicing() {
         return parts;
       };
 
+      // Each row is one loading slip line, so its quantity comes from that slip only.
       const poolsByItemId = new Map<string, Array<{ loadingSlipId: string; remaining: number }>>();
-      invoiceRows.forEach((row) => poolsByItemId.set(row.itemId, buildPool(row.sources || [])));
+      invoiceRows.forEach((row) => poolsByItemId.set(row.id, buildPool(row.sources || [])));
 
       const lineItems: InvoiceLineItem[] = [];
       for (const itemRow of invoiceRows) {
-        const pool = poolsByItemId.get(itemRow.itemId) || buildPool(itemRow.sources || []);
+        const pool = poolsByItemId.get(itemRow.id) || buildPool(itemRow.sources || []);
         for (const alloc of itemRow.allocations) {
           const order = orders.find((o) => o.id === alloc.orderId);
           if (alloc.orderId !== DIRECT_ALLOCATION_ID) {
@@ -1221,6 +1193,7 @@ export function PendingInvoicing() {
               id: crypto.randomUUID(),
               invoiceId,
               loadingSlipId: part.loadingSlipId,
+              orderId: alloc.orderId !== DIRECT_ALLOCATION_ID ? alloc.orderId : undefined,
               itemId: itemRow.itemId,
               itemSource: itemRow.itemSource,
               npdId: itemRow.itemSource === "FG" ? itemRow.itemId : undefined,
@@ -1599,129 +1572,58 @@ export function PendingInvoicing() {
                 <table className="min-w-full divide-y divide-black border-collapse">
                   <thead className="sticky top-0 z-30 bg-slate-100">
                     <tr className="divide-x divide-black">
+                      <th className="px-3 py-2 text-left text-[10px] font-black uppercase">Loading Slip</th>
                       <th className="px-3 py-2 text-left text-[10px] font-black uppercase">Item Name</th>
-                      <th className="px-3 py-2 text-left text-[10px] font-black uppercase min-w-[200px]">Order No / PO No</th>
+                      <th className="px-3 py-2 text-left text-[10px] font-black uppercase">Order No</th>
+                      <th className="px-3 py-2 text-left text-[10px] font-black uppercase">PO No</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Order Qty</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Dispatched</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Pending</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Rate</th>
-                      <th className="px-3 py-2 text-right text-[10px] font-black uppercase bg-indigo-50">DISPATCH NOW</th>
+                      <th className="px-3 py-2 text-right text-[10px] font-black uppercase bg-indigo-50">Qty</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase w-20">GST %</th>
                       <th className="px-3 py-2 text-right text-[10px] font-black uppercase">Amount</th>
-                      <th className="px-3 py-2 text-center text-[10px] font-black uppercase w-10"></th>
+                      <th className="px-1 py-2 w-2"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-black">
                     {invoiceRows.flatMap((itemRow) => {
                       const itemName = getInvoiceItemDisplayName(itemRow);
-                      const pendingOrdersForItem = orders.filter((o) => {
-                        if (o.companyId !== invoiceModal.companyId) return false;
-                        if (o.status === "Cancelled") return false;
-                        if (o.itemId !== itemRow.itemId || normalizeOrderItemSource(o.itemSource) !== itemRow.itemSource) return false;
-                        const dispatched = totalDispatchedByOrderId.get(o.id) || 0;
-                        return Math.max(0, Number(o.qty || 0) - dispatched) > 0;
-                      });
-
-                      const parentRow = (
-                        <tr key={itemRow.id} className="bg-slate-50 border-t-2 border-black">
-                          <td colSpan={10} className="px-3 py-2">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              {(() => {
-                                const allocatedTotal = itemRow.allocations.reduce((s, a) => s + Number(a.qty || 0), 0);
-                                const remaining = Number(itemRow.totalQty || 0) - allocatedTotal;
-                                return (
-                              <div className="text-[11px] font-black uppercase">
-                                {itemName}{" "}
-                                <span className="text-slate-500 font-bold">
-                                  | Total: {Number(itemRow.totalQty || 0).toLocaleString()} | Allocated: {allocatedTotal.toLocaleString()} | Remaining:{" "}
-                                  <span className={cn("font-black", remaining < -0.001 ? "text-rose-700" : remaining > 0.001 ? "text-amber-700" : "text-emerald-700")}>
-                                    {remaining.toLocaleString()}
-                                  </span>
-                                </span>
-                              </div>
-                                );
-                              })()}
-                              <div className="flex items-center gap-3">
-                                <button
-                                  type="button"
-                                  onClick={() => addAllocationRow(itemRow.id)}
-                                  className="px-3 py-1.5 bg-white border-2 border-black text-[10px] font-black uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-x-px hover:translate-y-px hover:shadow-none transition"
-                                >
-                                  + Add Order
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeInvoiceItemRow(itemRow.id)}
-                                  className="px-3 py-1.5 bg-white border-2 border-rose-700 text-[10px] font-black uppercase text-rose-700 hover:bg-rose-50 transition"
-                                >
-                                  Remove Item
-                                </button>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-
-                      const childRows = itemRow.allocations.map((alloc) => {
+                      return itemRow.allocations.map((alloc) => {
                         const order = orders.find((o) => o.id === alloc.orderId);
                         const isDirectAlloc = alloc.orderId === DIRECT_ALLOCATION_ID;
                         const dispatched = order ? (totalDispatchedByOrderId.get(order.id) || 0) : 0;
                         const orderQty = order ? Number(order.qty || 0) : 0;
                         const pending = order ? Math.max(0, orderQty - dispatched) : 0;
                         const rate = isDirectAlloc ? Number(itemRow.defaultRate || 0) : order ? Number(order.rate || 0) : 0;
+                        const slipRate = Number(itemRow.slipRate || 0);
+                        const rateDiffers = !isDirectAlloc && order && slipRate > 0 && Math.abs(slipRate - rate) > 0.001;
                         const amount = calculateRoundedInvoiceLine(
                           Number(alloc.qty || 0),
                           rate,
                           itemRow.gstRate,
                           gstSupplyType === "INTER_STATE"
                         ).amount;
-                        const otherAllocated = itemRow.allocations
-                          .filter((a) => a.id !== alloc.id)
-                          .reduce((s, a) => s + Number(a.qty || 0), 0);
-                        const maxAllowed = Math.max(0, Number(itemRow.totalQty || 0) - otherAllocated);
-                        const orderOptions = Array.from(
-                          new Map(
-                            [
-                              ...pendingOrdersForItem,
-                              ...(order && order.status !== "Cancelled" ? [order] : []),
-                            ].map((entry) => [entry.id, entry])
-                          ).values()
-                        );
-
                         return (
                           <tr key={alloc.id} className="divide-x divide-black hover:bg-slate-50 transition-colors">
+                            <td className="px-2 py-2 text-[11px] font-black whitespace-nowrap">{itemRow.slipNo || "-"}</td>
                             <td className="px-2 py-2">
-                              <div className="text-[11px] font-bold uppercase truncate max-w-[220px]">{itemName}</div>
+                              <div className="text-[11px] font-bold uppercase truncate max-w-[240px]" title={itemName}>{itemName}</div>
                             </td>
-                            <td className="px-2 py-2">
-                              <select
-                                value={alloc.orderId}
-                                onChange={(e) => updateAllocation(itemRow.id, alloc.id, { orderId: e.target.value })}
-                                className="w-full border-2 border-black rounded p-1 text-[11px] font-bold focus:ring-0"
-                              >
-                                <option value="">-- Choose Order --</option>
-                                {alloc.orderId === DIRECT_ALLOCATION_ID ? <option value={DIRECT_ALLOCATION_ID}>Direct Loading</option> : null}
-                                {orderOptions.map((o) => (
-                                  <option key={o.id} value={o.id}>
-                                    {o.orderNo} | {o.poNumber || "No PO"}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
+                            <td className="px-2 py-2 text-[11px] font-bold whitespace-nowrap">{isDirectAlloc ? "Direct Loading" : order?.orderNo || <span className="text-rose-700">No order</span>}</td>
+                            <td className="px-2 py-2 text-[11px] font-medium whitespace-nowrap">{isDirectAlloc ? "-" : order?.poNumber || "No PO"}</td>
                             <td className="px-2 py-2 text-right text-[11px] font-medium">{isDirectAlloc ? "-" : order ? orderQty.toLocaleString() : "-"}</td>
                             <td className="px-2 py-2 text-right text-[11px] font-medium text-slate-500">{isDirectAlloc ? "-" : order ? dispatched.toLocaleString() : "-"}</td>
                             <td className="px-2 py-2 text-right text-[11px] font-black text-indigo-700">{isDirectAlloc ? "Direct" : order ? pending.toLocaleString() : "-"}</td>
-                            <td className="px-2 py-2 text-right text-[11px] font-bold">{rate || "-"}</td>
-                            <td className="px-2 py-2 text-right bg-indigo-50/30">
-                              <input
-                                type="number"
-                                value={Number(alloc.qty || 0) || ""}
-                                min={0}
-                                max={maxAllowed}
-                                onChange={(e) => updateAllocation(itemRow.id, alloc.id, { qty: e.target.value === "" ? 0 : parseFloat(e.target.value) })}
-                                className="w-24 px-1 py-1 border-2 border-indigo-600 rounded text-right text-[11px] font-black focus:ring-0"
-                              />
+                            <td className="px-2 py-2 text-right text-[11px] font-bold">
+                              {rate || "-"}
+                              {rateDiffers ? (
+                                <div className="text-[10px] font-black text-amber-700" title="The loading slip line has a different rate from its order. The order rate is billed.">
+                                  Slip rate {slipRate} differs
+                                </div>
+                              ) : null}
                             </td>
+                            <td className="px-2 py-2 text-right text-[11px] font-black bg-indigo-50/30">{Number(alloc.qty || 0).toLocaleString()}</td>
                             <td className="px-2 py-2 text-right text-[11px]">
                               <select
                                 value={isExportInvoice ? EXPORT_GST_OPTION_VALUE : String(Number(itemRow.gstRate || 0))}
@@ -1736,39 +1638,33 @@ export function PendingInvoicing() {
                               </select>
                             </td>
                             <td className="px-2 py-2 text-right text-[11px] font-black">{format2(amount)}</td>
-                            <td className="px-2 py-2 text-center">
-                              <button onClick={() => removeAllocationRow(itemRow.id, alloc.id)} className="text-rose-600 hover:text-rose-800">
-                                <X size={14} />
-                              </button>
-                            </td>
+                            <td></td>
                           </tr>
                         );
                       });
-
-                      return [parentRow, ...childRows];
                     })}
                   </tbody>
                   <tfoot className="bg-slate-50 font-bold border-t border-black divide-y divide-black">
                     <tr className="divide-x divide-black">
-                      <td colSpan={8} className="px-3 py-2 text-right text-[10px] uppercase font-black">Total Before GST</td>
+                      <td colSpan={10} className="px-3 py-2 text-right text-[10px] uppercase font-black">Total Before GST</td>
                       <td className="px-3 py-2 text-right text-[11px] font-black">{format2(calculations.totalBeforeGst)}</td>
                       <td></td>
                     </tr>
                     {gstSupplyType === "INTER_STATE" ? (
                        <tr className="divide-x divide-black text-slate-500">
-                        <td colSpan={8} className="px-3 py-2 text-right text-[10px] uppercase">Total IGST</td>
+                        <td colSpan={10} className="px-3 py-2 text-right text-[10px] uppercase">Total IGST</td>
                         <td className="px-3 py-2 text-right text-[11px]">{format2(calculations.igst)}</td>
                         <td></td>
                       </tr>
                     ) : (
                       <>
                         <tr className="divide-x divide-black text-slate-500">
-                          <td colSpan={8} className="px-3 py-2 text-right text-[10px] uppercase">Total CGST</td>
+                          <td colSpan={10} className="px-3 py-2 text-right text-[10px] uppercase">Total CGST</td>
                           <td className="px-3 py-2 text-right text-[11px]">{format2(calculations.cgst)}</td>
                           <td></td>
                         </tr>
                         <tr className="divide-x divide-black text-slate-500">
-                          <td colSpan={8} className="px-3 py-2 text-right text-[10px] uppercase">Total SGST</td>
+                          <td colSpan={10} className="px-3 py-2 text-right text-[10px] uppercase">Total SGST</td>
                           <td className="px-3 py-2 text-right text-[11px]">{format2(calculations.sgst)}</td>
                           <td></td>
                         </tr>
@@ -1776,7 +1672,7 @@ export function PendingInvoicing() {
                     )}
                     {(calculations.otherChargesCgst || calculations.otherChargesSgst || calculations.otherChargesIgst) ? (
                       <tr className="divide-x divide-black text-slate-500">
-                        <td colSpan={8} className="px-3 py-2 text-right text-[10px] uppercase">Other Charges GST</td>
+                        <td colSpan={10} className="px-3 py-2 text-right text-[10px] uppercase">Other Charges GST</td>
                         <td className="px-3 py-2 text-right text-[11px]">
                           {format2(calculations.otherChargesCgst + calculations.otherChargesSgst + calculations.otherChargesIgst)}
                         </td>
@@ -1784,7 +1680,7 @@ export function PendingInvoicing() {
                       </tr>
                     ) : null}
                     <tr className="divide-x divide-black">
-                      <td colSpan={8} className="px-3 py-2 text-right text-[10px] uppercase text-slate-500">Other Charges</td>
+                      <td colSpan={10} className="px-3 py-2 text-right text-[10px] uppercase text-slate-500">Other Charges</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-2">
                           <input
@@ -1812,12 +1708,12 @@ export function PendingInvoicing() {
                       <td></td>
                     </tr>
                     <tr className="divide-x divide-black text-slate-500">
-                      <td colSpan={8} className="px-3 py-2 text-right text-[10px] uppercase">Total After GST</td>
+                      <td colSpan={10} className="px-3 py-2 text-right text-[10px] uppercase">Total After GST</td>
                       <td className="px-3 py-2 text-right text-[11px]">{format2(calculations.totalAfterGst)}</td>
                       <td></td>
                     </tr>
                     <tr className="divide-x divide-black">
-                      <td colSpan={8} className="px-3 py-2 text-right text-[10px] uppercase text-slate-500">TCS u/s 206C (% of taxable)</td>
+                      <td colSpan={10} className="px-3 py-2 text-right text-[10px] uppercase text-slate-500">TCS u/s 206C (% of taxable)</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-2">
                           <input
@@ -1836,7 +1732,7 @@ export function PendingInvoicing() {
                       <td></td>
                     </tr>
                     <tr className="divide-x divide-black">
-                      <td colSpan={8} className="px-3 py-2 text-right text-[10px] uppercase italic text-slate-400">Round Off</td>
+                      <td colSpan={10} className="px-3 py-2 text-right text-[10px] uppercase italic text-slate-400">Round Off</td>
                       <td className="px-3 py-2 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <input
@@ -1865,7 +1761,7 @@ export function PendingInvoicing() {
                       <td></td>
                     </tr>
                     <tr className="divide-x divide-black bg-slate-900 text-white">
-                      <td colSpan={8} className="px-3 py-3 text-right text-xs uppercase tracking-widest font-black">Grand Total</td>
+                      <td colSpan={10} className="px-3 py-3 text-right text-xs uppercase tracking-widest font-black">Grand Total</td>
                       <td className="px-3 py-3 text-right text-lg font-black">{format2(calculations.grandTotal)}</td>
                       <td></td>
                     </tr>
@@ -1875,7 +1771,7 @@ export function PendingInvoicing() {
               
               <div className="space-y-1 text-[11px] font-bold text-slate-600">
                 <div>
-                  Use <span className="font-black text-black">Add Order</span> on an item to split quantities across orders.
+                  One row per loading slip line. Order No, PO No and Rate come from each slip's dispatch plan.
                 </div>
                 {shouldShowTransporter ? (
                   <div className="text-amber-700">Transporter is required because Truck No is Other on the selected loading slip.</div>
