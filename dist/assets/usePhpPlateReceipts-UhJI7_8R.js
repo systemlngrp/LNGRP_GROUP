@@ -1,0 +1,1 @@
+import{r as a}from"./index-DFdjezfh.js";function n(t=!0){const[c,o]=a.useState([]);return a.useEffect(()=>{if(!t)return;let r=!1;const s=localStorage.getItem("authToken")||"";return fetch("/api/php-plate-receipts",{headers:{Authorization:`Bearer ${s}`}}).then(e=>e.ok?e.json():[]).then(e=>{!r&&Array.isArray(e)&&o(e)}).catch(()=>{}),()=>{r=!0}},[t]),c}export{n as u};
