@@ -187,7 +187,10 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     const rate = Number(materials.find((material) => material.id === materialId)?.gstRate);
     return Number.isFinite(rate) && rate >= 0 ? rate : 0;
   };
-  const [services] = useData<Service>("services", []);
+  const [services, setServices] = useData<Service>("services", []);
+  const [newServiceOpen, setNewServiceOpen] = useState(false);
+  const [newServiceName, setNewServiceName] = useState("");
+  const [savingNewService, setSavingNewService] = useState(false);
   const [materialGroups] = useData<MaterialGroup>("material-groups", []);
   const [units] = useData<UnitMaster>("units", []);
   const [colors] = useData<ColorMaster>("color_masters", []);
@@ -208,7 +211,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const [settings] = useData<Setting>("settings", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
-  const { activeFirm, setActiveFirm } = useAuth();
+  const { activeFirm, setActiveFirm, user } = useAuth();
   const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
 
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -396,6 +399,31 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const activeItemOptions = isServiceReturn || isDirectService ? serviceOptions : materialOptions;
   const activeItemLabel = isServiceReturn || isDirectService ? "Service" : isFgType ? "FG Item" : "Material";
   const activeItemPlaceholder = isServiceReturn || isDirectService ? "Select Service..." : isFgType ? "Select Item..." : "Select Material...";
+  const saveNewService = async () => {
+    const name = newServiceName.trim().replace(/\s+/g, " ");
+    if (!name) return;
+    const existing = services.find((service) => service.name.trim().toLowerCase() === name.toLowerCase());
+    if (existing) {
+      if (existing.active === "No") { alert(`"${existing.name}" already exists but is inactive. Activate it in Masters → Services.`); return; }
+      setCurrentItemId(existing.id);
+      setNewServiceOpen(false);
+      setNewServiceName("");
+      return;
+    }
+    setSavingNewService(true);
+    try {
+      const service: Service = { id: crypto.randomUUID(), name, active: "Yes", updatedBy: String(user?.name || user?.userId || "System User"), updateTimestamp: new Date().toISOString() };
+      await setServices([service, ...services]);
+      setCurrentItemId(service.id);
+      setNewServiceOpen(false);
+      setNewServiceName("");
+    } catch (error) {
+      console.error("Failed to save service:", error);
+      alert("Could not save the service.");
+    } finally {
+      setSavingNewService(false);
+    }
+  };
   const refreshMaterials = materialsMeta.refresh;
   const canAddNewMaterial = !isServiceReturn && !isDirectService && !isFgType;
   const openNewMaterial = () => {
@@ -3363,6 +3391,16 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                 <label className="text-sm font-bold text-black">
                   {activeItemLabel} <span className="text-red-600">*</span>
                 </label>
+                {isDirectService ? (
+                  <button
+                    type="button"
+                    onClick={() => { setNewServiceName(""); setNewServiceOpen(true); }}
+                    title="Add a new service to the Services master. Its name is used as the Tally ledger name."
+                    className="inline-flex items-center gap-1 rounded border border-black bg-white px-2 py-0.5 text-xs font-bold text-black hover:bg-slate-100"
+                  >
+                    <Plus size={13} /> New Service
+                  </button>
+                ) : null}
                 {canAddNewMaterial ? (
                   <button
                     type="button"
@@ -3374,6 +3412,22 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                   </button>
                 ) : null}
               </div>
+              {newServiceOpen ? (
+                <div className="mt-1 flex flex-col gap-2 rounded border-2 border-indigo-600 bg-white p-2">
+                  <input
+                    autoFocus
+                    value={newServiceName}
+                    onChange={(e) => setNewServiceName(e.target.value.slice(0, 200))}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveNewService(); } if (e.key === "Escape") setNewServiceOpen(false); }}
+                    placeholder="New service name (same as the Tally ledger)"
+                    className="w-full rounded border-2 border-black bg-yellow-50 p-[6px] text-black focus:border-indigo-600 focus:outline-none"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setNewServiceOpen(false)} className="rounded border border-black px-3 py-1 text-xs font-bold">Cancel</button>
+                    <button type="button" disabled={savingNewService || !newServiceName.trim()} onClick={() => void saveNewService()} className="rounded bg-indigo-700 px-3 py-1 text-xs font-bold text-white disabled:opacity-50">{savingNewService ? "Saving..." : "Save & select"}</button>
+                  </div>
+                </div>
+              ) : null}
               <Select key={`${activeItemSelectKey}-${currentItemSource}`} options={activeItemOptions} value={currentItemId} onChange={setCurrentItemId} placeholder={activeItemPlaceholder} />
             </div>
             {isServiceReturn ? (
