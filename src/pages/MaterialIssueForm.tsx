@@ -1,5 +1,5 @@
 import { displayJobNo } from "../lib/jobNumber";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useDeferredValue, useMemo, useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Camera, Plus, Trash2, X } from "lucide-react";
 import { getDataAuthHeaders, useData } from "../hooks/useData";
@@ -23,7 +23,7 @@ import { formatDate } from "../lib/utils";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 
-import { calculateMaterialIssueAmount, getAvailableReelPackingSlips, getNonReelAvailableQty, resolveMaterialIssueRate, round2 } from "../lib/materialMovement";
+import { calculateMaterialIssueAmount, getAllAvailableReelPackingSlips, getAvailableReelPackingSlips, getNonReelAvailableQty, resolveMaterialIssueRate, round2 } from "../lib/materialMovement";
 import {
   buildProductionCorrugatedSheetUsageMap,
   buildProductionMaterialUsageMap,
@@ -564,6 +564,47 @@ export function MaterialIssueForm() {
     setScannerMessage(`Added reel ${originalSlip.ourReelNo} (${Number(availableSlip.weightKg || 0).toFixed(2)} KG).`);
   };
 
+  // Find Reel: type our reel no. or supplier reel no. and add the reel
+  // straight to the issue (same as Manual Reel Issue). Available reels are
+  // worked out once when the data changes, not on every keystroke.
+  const [reelSearch, setReelSearch] = useState("");
+  const deferredReelSearch = useDeferredValue(reelSearch);
+  const allAvailableReels = useMemo(
+    () => (issueType === "Job" && productionId
+      ? getAllAvailableReelPackingSlips(issuePackingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber)
+      : []),
+    [issueType, productionId, issuePackingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber]
+  );
+  const reelSearchResults = useMemo(() => {
+    const query = deferredReelSearch.trim().toLowerCase();
+    if (query.length < 2) return [];
+    const selected = new Set(Object.values(selectedReels).flat());
+    const results: MaterialInPackingSlip[] = [];
+    for (const slip of allAvailableReels) {
+      if (selected.has(slip.id)) continue;
+      const ours = String(slip.ourReelNo || "").toLowerCase();
+      const supplier = String(slip.supplierReelNo || "").toLowerCase();
+      if (ours.includes(query) || supplier.includes(query)) results.push(slip);
+    }
+    return results
+      .sort((a, b) => {
+        const exactA = [a.ourReelNo, a.supplierReelNo].some((value) => String(value || "").toLowerCase() === query) ? 0 : 1;
+        const exactB = [b.ourReelNo, b.supplierReelNo].some((value) => String(value || "").toLowerCase() === query) ? 0 : 1;
+        return exactA - exactB || String(a.ourReelNo).localeCompare(String(b.ourReelNo), undefined, { numeric: true });
+      })
+      .slice(0, 20);
+  }, [deferredReelSearch, allAvailableReels, selectedReels]);
+
+  const addReelFromSearch = async (slip: MaterialInPackingSlip) => {
+    try {
+      await addReelFromQr(String(slip.ourReelNo || ""));
+      setReelSearch("");
+    } catch (error) {
+      setScannerMessageType("error");
+      setScannerMessage((error as Error).message || "Could not add this reel.");
+    }
+  };
+
   const handleOpenScanner = async () => {
     if (issueType !== "Job" || !productionId) {
       setScannerMessageType("error");
@@ -950,6 +991,44 @@ export function MaterialIssueForm() {
                 <Camera size={16} />
                 Scan Reel QR
               </button>
+            </div>
+          ) : null}
+          {issueType === "Job" && productionId ? (
+            <div className="md:col-span-2 rounded border border-black bg-slate-50 p-3">
+              <label className="text-sm font-bold">Find Reel</label>
+              <input
+                type="text"
+                value={reelSearch}
+                onChange={(e) => setReelSearch(e.target.value)}
+                placeholder="Type our reel no. or supplier reel no."
+                className="mt-1 w-full border-2 border-black rounded p-2"
+              />
+              {reelSearch.trim().length >= 2 ? (
+                reelSearchResults.length === 0 ? (
+                  <div className="mt-2 text-xs font-semibold text-slate-600">No available reel matches "{reelSearch.trim()}".</div>
+                ) : (
+                  <div className="mt-2 overflow-x-auto rounded border border-slate-300 bg-white">
+                    <table className="min-w-full border-collapse text-sm">
+                      <thead className="bg-black text-white">
+                        <tr>{["Our Reel No.", "Supplier Reel No.", "Material", "Available KG", ""].map((heading) => <th key={heading} className="px-3 py-2 text-left text-[11px] font-black uppercase">{heading}</th>)}</tr>
+                      </thead>
+                      <tbody>
+                        {reelSearchResults.map((slip) => (
+                          <tr key={slip.id} className="border-t border-slate-200">
+                            <td className="px-3 py-2 font-bold">{slip.ourReelNo}</td>
+                            <td className="px-3 py-2">{slip.supplierReelNo || "-"}</td>
+                            <td className="px-3 py-2 text-xs">{getMaterial(slip.materialId)?.name || ""}</td>
+                            <td className="px-3 py-2 font-semibold text-emerald-700">{Number(slip.weightKg || 0).toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right">
+                              <button type="button" onClick={() => void addReelFromSearch(slip)} disabled={isSubmitting} className="rounded bg-black px-3 py-1 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50">Add</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              ) : null}
             </div>
           ) : null}
           {scannerMessage ? (
