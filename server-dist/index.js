@@ -15760,13 +15760,16 @@ const createHandlers = (tableName) => {
                     try {
                         await conn.beginTransaction();
                         let wasApproved = false;
+                        let previousOrderRate = null;
+                        let slipRatesChanged = false;
                         const id = String(data.id || "").trim();
                         if (id) {
-                            const [existingRows] = await conn.query("SELECT status, approvedTimestamp, approvedEmail FROM `orders` WHERE id = ? LIMIT 1", [id]);
+                            const [existingRows] = await conn.query("SELECT status, approvedTimestamp, approvedEmail, rate FROM `orders` WHERE id = ? LIMIT 1", [id]);
                             const existing = existingRows?.[0];
                             const existingStatus = String(existing?.status || "").trim();
                             const existingApproved = hasWorkflowValue(existing?.approvedTimestamp) || hasWorkflowValue(existing?.approvedEmail);
                             wasApproved = existingApproved || approvalStatuses.has(existingStatus);
+                            previousOrderRate = existing ? Number(existing.rate) : null;
                         }
                         const nextStatus = String(data.status || "").trim();
                         const isNowApproved = hasWorkflowValue(data.approvedTimestamp) ||
@@ -15793,7 +15796,58 @@ const createHandlers = (tableName) => {
                         if (itemSource === "FG" && itemId && Number.isFinite(rateNumber) && rateNumber > 0) {
                             await conn.query("UPDATE `npd` SET `orderRate` = ?, `updatedBy` = ?, `updateTimestamp` = ? WHERE id = ?", [rateNumber, updatedBy, now, itemId]);
                         }
+                        // An order's rate edit flows to its loading slips that are not invoiced
+                        // yet, so the slip and the order never differ. Invoiced slips keep the
+                        // rate they were billed at.
+                        if (id &&
+                            previousOrderRate !== null &&
+                            "rate" in data &&
+                            Number.isFinite(rateNumber) &&
+                            rateNumber > 0 &&
+                            Math.abs(rateNumber - Number(previousOrderRate || 0)) > 0.0001) {
+                            const [planRows] = await conn.query("SELECT id FROM `dispatch_plans` WHERE orderId = ?", [id]);
+                            const planIds = new Set(planRows.map((row) => String(row.id)));
+                            if (planIds.size) {
+                                const [slipRows] = await conn.query("SELECT id, `lines` FROM `loading_slips` WHERE (invoiceId IS NULL OR TRIM(invoiceId) = '') AND COALESCE(loadingSource, '') <> 'DIRECT'");
+                                const candidates = slipRows
+                                    .map((row) => {
+                                    let lines = [];
+                                    try {
+                                        lines = typeof row.lines === "string" ? JSON.parse(row.lines || "[]") : (row.lines || []);
+                                    }
+                                    catch {
+                                        lines = [];
+                                    }
+                                    return { id: String(row.id), lines: Array.isArray(lines) ? lines : [] };
+                                })
+                                    .filter((slip) => slip.lines.some((line) => planIds.has(String(line?.dispatchPlanId || ""))));
+                                if (candidates.length) {
+                                    const [invoicedRows] = await conn.query("SELECT DISTINCT loadingSlipId FROM `invoice_line_items` WHERE loadingSlipId IN (?)", [candidates.map((slip) => slip.id)]);
+                                    const invoiced = new Set(invoicedRows.map((row) => String(row.loadingSlipId)));
+                                    for (const slip of candidates) {
+                                        if (invoiced.has(slip.id))
+                                            continue;
+                                        let changed = false;
+                                        const nextLines = slip.lines.map((line) => {
+                                            if (!planIds.has(String(line?.dispatchPlanId || "")))
+                                                return line;
+                                            if (Math.abs(Number(line?.rate) - rateNumber) <= 0.0001)
+                                                return line;
+                                            changed = true;
+                                            return { ...line, rate: rateNumber };
+                                        });
+                                        if (changed) {
+                                            await conn.query("UPDATE `loading_slips` SET `lines` = ?, `updatedBy` = ?, `updateTimestamp` = ? WHERE id = ?", [JSON.stringify(nextLines), updatedBy, now, slip.id]);
+                                            slipRatesChanged = true;
+                                            console.log("[DB] Order rate copied to loading slip", { orderId: id, slipId: slip.id, rate: rateNumber });
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         await conn.commit();
+                        if (slipRatesChanged)
+                            publishRealtimeDataChange(["loading_slips"]);
                         return res.json({ success: true });
                     }
                     catch (err) {
